@@ -27,8 +27,11 @@ Pergunta: *"Quais documentos preciso para matrícula?"* →
 4. Responda extrativo:
 
 ```markdown
+Resposta:
 Para a matrícula você precisa apresentar: <trechos verbatim da fonte>
-Fontes: [1] <URL> (acesso 2026-08-22)
+
+Fontes:
+[1] Edital SISU/UEFS 2026 — https://csa.uefs.br/... (acesso 2026-08-22 17:30) [PDF: completo]
 Em caso de divergência, prevalece o edital oficial.
 ```
 
@@ -56,7 +59,75 @@ Em caso de divergência, prevalece o edital oficial.
 
 ## Disciplina de citação
 
+### Citação por afirmação (obrigatório)
+
+Para cada afirmação relevante na resposta:
+
+1. Identifique a afirmação **antes** de redigir a frase.
+2. Localize o trecho na fonte que comprova diretamente essa afirmação.
+3. Verifique se o trecho trata:
+   - do mesmo processo seletivo (SISU, ProSel, etc.);
+   - do mesmo ano ou edição;
+   - da mesma instituição, campus, curso ou modalidade;
+   - de período ainda válido (não substituído por edital posterior).
+4. Cite o trecho entre aspas antes de incluir a referência numérica `[N]`.
+5. Se não houver trecho que comprove a afirmação, use:
+   `[!] Não foi possível confirmar esta informação nas fontes consultadas.`
+
+### Rejeição de rótulos como evidência
+
+Não use apenas um nome de seção ou página como evidência suficiente. Exemplos
+**inaceitáveis**:
+
+- "Consulte a página Chamada Regular" ← sem informar o que a página estabelece.
+- "Veja a Lista de Espera" ← sem apresentar prazo, condição ou regra encontrada.
+- "Os documentos estão no portal" ← sem listar os documentos ou citar o trecho.
+
+### Verificação de escopo
+
+Antes de citar uma fonte, confirme:
+- A fonte refere-se à **mesma seleção e ano** da pergunta?
+- A fonte não foi **substituída** por um edital retificador posterior?
+- A fonte é da **mesma instituição** (UEFS/CSA)?
+
+Se a fonte for de ano diferente, sinalize: *"Esta informação é do processo
+seletivo de YYYY e pode não se aplicar ao processo atual."*
+
+### Divergência entre fontes
+
+Se duas fontes conflitarem:
+1. Apresente os dois trechos.
+2. Aplique a regra de precedência: edital oficial > página informativa.
+3. Diga explicitamente: *"O edital (fonte [1]) prevalece sobre a página
+   informativa (fonte [2]) neste ponto."*
+
+### Status de PDF nas referências
+
+Ao citar um PDF, inclua o status de extração ao final da referência:
+
+```
+[N] Título — URL (acesso YYYY-MM-DD HH:mm) [PDF: completo]
+[N] Título — URL (acesso YYYY-MM-DD HH:mm) [PDF: parcial]
+[N] Título — URL (acesso YYYY-MM-DD HH:mm) [PDF: falhou]
+```
+
+- `[PDF: completo]` → `pdf_extraction_status == "completed"` — texto verificável.
+- `[PDF: parcial]` → `pdf_extraction_status == "partial"` — texto insuficiente;
+  não use como evidência interna de afirmação.
+- `[PDF: falhou]` → `pdf_extraction_status == "failed"` ou `text_error` presente —
+  não afirme conteúdo interno; informe a limitação ao usuário.
+
+### Não reutilize citações
+
+- Não cite uma URL apenas porque pertence ao mesmo site.
+- Não misture informações de fontes diferentes sem indicar a composição.
+- Se a citação serve para mais de uma afirmação, indique explicitamente qual
+  trecho suporta cada afirmação.
+
+## Regras gerais
+
 - Sempre cite a URL da página/PDF que você realmente leu neste turno.
 - Só afirme o que está na fonte; conflito entre fontes = dizer.
 - Nunca invente prazos, documentos ou datas.
 - `text_error` em PDF significa falha de leitura, não ausência de conteúdo.
+- Data e hora de acesso no formato: `YYYY-MM-DD HH:mm`.
