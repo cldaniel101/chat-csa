@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+.venv*/
+venv/
+env/
+.env
+.env.local
+dist/
+build/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.hypothesis/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data / indexes
+data/raw/
+data/bm25.db
+data/*.db
+knowledge/
+!knowledge/.gitkeep
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+
+.pi*
