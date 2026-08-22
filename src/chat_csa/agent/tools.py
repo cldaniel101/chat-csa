@@ -165,8 +165,10 @@ def web_csa_fetch(url: str, refresh: bool = False, extract_text: bool = False) -
     resultados, editais, cronogramas e listas de aprovados. O texto das
     páginas HTML inclui os links em formato markdown [texto](url) — siga-os
     para descobrir URLs de PDFs e subpáginas. Com extract_text=True, PDFs têm
-    o texto extraído (pdftotext) no campo 'text'. Nunca afirme que não há
-    informação sem ter chamado esta ferramenta ou web_csa_search antes.
+    o texto extraído no campo 'text' (pdftotext com fallback pypdf) ou um erro
+    claro no campo 'text_error'. Se houver 'text_error', não afirme conteúdo
+    interno do PDF; informe a limitação e cite a URL consultada. Nunca afirme
+    que não há informação sem ter chamado esta ferramenta ou web_csa_search antes.
 
     Args:
         url: URL completa no domínio https://csa.uefs.br.

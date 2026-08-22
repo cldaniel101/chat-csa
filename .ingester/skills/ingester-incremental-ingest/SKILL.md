@@ -19,6 +19,8 @@ Use para trazer o bundle em dia sem re-ingestão completa.
 4. Para cada item novo/alterado:
    - Página: `web_csa_fetch(url)` → texto limpo.
    - PDF: `web_csa_fetch(url_pdf, extract_text=True)` → campo `text`.
+     Se vier `text_error`, não crie conceito com conteúdo interno presumido do
+     PDF; registre a limitação no log e busque outra fonte oficial.
    - Snapshot cru: `bash("mkdir -p data/raw/2026-08-22 && ...")` com URL+timestamp.
    - Conceito OKF: `write("knowledge/<tema>/<slug>.md", ...)` com frontmatter
      YAML (`type`, `title`, `description`, `resource`, `tags`, `timestamp`).

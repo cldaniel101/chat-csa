@@ -7,9 +7,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1
 
-# Dependências de sistema (curl para healthcheck, build-essential para algumas wheels)
+# Dependências de sistema (curl para healthcheck, poppler-utils para ler PDFs)
 RUN apt-get update -qq && apt-get install -y --no-install-recommends \
-    curl ca-certificates \
+    curl ca-certificates poppler-utils \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -23,8 +23,8 @@ RUN pip install --upgrade pip hatchling && pip install .
 # Copia o restante (AGENTS, skills etc.)
 COPY .ingester ./.ingester
 COPY .consumer ./.consumer
-# Mantém outros arquivos do projeto, se presentes
-COPY docs ./docs 2>/dev/null || true
+# Mantém outros arquivos do projeto usados como referência
+COPY docs ./docs
 
 # Env padrão — sobrescreva em runtime
 ENV AGENT_CONFIG_DIR=.ingester \

@@ -24,7 +24,8 @@ extrai texto de PDF com `extract_text=True`) e filtre o texto você mesmo.
    `[Resultado Final Geral](https://csa.uefs.br/index.php/download/file/...)`.
 3. **Baixe e leia os PDFs**: para cada link de resultado relevante,
    `web_csa_fetch(url_do_pdf, extract_text=True)` → o campo `text` contém o
-   conteúdo do PDF.
+   conteúdo do PDF. Se vier `text_error`, não afirme conteúdo interno desse
+   PDF; registre a limitação e tente outro documento oficial relacionado.
 4. **Filtre você mesmo o nome** procurando no texto retornado (leia com
    atenção; nomes vêm em CAIXA ALTA, ex.: "PEDRO SILVA"). Se o PDF vier
    truncado, refaça o fetch do próximo arquivo relacionado.
@@ -45,3 +46,4 @@ extrai texto de PDF com `extract_text=True`) e filtre o texto você mesmo.
   de uma vez; escolha primeiro o mais provável pelo título do link.
 - Se o nome não aparecer, diga onde procurou e sugira verificar chamadas
   adicionais — não afirme aprovação/reprovação sem base.
+- `text_error` em PDF significa que a leitura falhou; não trate como lista vazia.

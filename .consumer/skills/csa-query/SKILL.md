@@ -18,6 +18,8 @@ Pergunta: *"Quais documentos preciso para matrícula?"* →
    `web_csa_search(query="documentos matrícula")` →
    `web_csa_fetch(url_da_pagina)`; se for PDF,
    `web_csa_fetch(url_do_pdf, extract_text=True)`.
+   Se o retorno trouxer `text_error`, não use o PDF como evidência interna:
+   informe a limitação e continue buscando outra fonte oficial.
 4. Responda extrativo:
 
 ```markdown
@@ -34,3 +36,4 @@ Em caso de divergência, prevalece o edital oficial.
 - Sempre cite a URL da página/PDF que você realmente leu neste turno.
 - Só afirme o que está na fonte; conflito entre fontes = dizer.
 - Nunca invente prazos, documentos ou datas.
+- `text_error` em PDF significa falha de leitura, não ausência de conteúdo.

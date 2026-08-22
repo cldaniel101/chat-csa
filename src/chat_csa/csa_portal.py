@@ -3,7 +3,8 @@
 Implementa a proposta v2 da discussão web-csa-tools-for-ingester:
 
 - ``fetch_page``  — GET com allowlist do domínio csa.uefs.br; HTML → texto
-  limpo (stdlib, sem deps extras) ou download binário (PDF/DOCX) para disco.
+  limpo ou download binário (PDF/DOCX) para disco. PDFs podem ter texto
+  extraído com ``pdftotext`` e fallback Python via ``pypdf``.
 - ``search_portal`` — consulta estruturada sobre os endpoints JSON
   ``/index.php/ajax/getMenu`` e ``/index.php/ajax/getSelecoesAtualizacoes``
   (filtro por palavra-chave/categoria e diff de atualizações por timestamp).
@@ -23,7 +24,7 @@ import threading
 import time
 from html.parser import HTMLParser
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 import httpx
 
@@ -204,28 +205,90 @@ def html_to_text(html: str, base_url: str = "") -> str:
 # ---------------------------------------------------------------------------
 
 
-def _extract_pdf_text(pdf_path: Path) -> str:
-    """Extrai texto de um PDF com pdftotext (poppler-utils).
-
-    Levanta erro claro se o poppler não estiver instalado.
-    """
+def _extract_pdf_text_with_pdftotext(pdf_path: Path) -> str:
+    """Extrai texto de um PDF com pdftotext (poppler-utils)."""
     import shutil
     import subprocess
 
     if shutil.which("pdftotext") is None:
         raise RuntimeError(
-            "pdftotext não encontrado: instale poppler-utils para extração de PDF "
-            "(ex.: apt install poppler-utils)"
+            "pdftotext não encontrado; instale poppler-utils para usar o extrator do sistema"
         )
     result = subprocess.run(
         ["pdftotext", "-layout", str(pdf_path), "-"],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=120,
     )
     if result.returncode != 0:
-        raise RuntimeError(f"pdftotext falhou em {pdf_path}: {result.stderr[:300]}")
+        detail = (result.stderr or result.stdout or "").strip()
+        raise RuntimeError(f"pdftotext falhou em {pdf_path}: {detail[:300]}")
     return result.stdout.strip()
+
+
+def _extract_pdf_text_with_pypdf(pdf_path: Path) -> str:
+    """Extrai texto de um PDF usando a dependência Python pypdf."""
+    try:
+        from pypdf import PdfReader
+    except ImportError as exc:
+        raise RuntimeError("pypdf não encontrado; execute `uv sync` ou instale a dependência Python") from exc
+
+    try:
+        reader = PdfReader(str(pdf_path))
+        chunks: list[str] = []
+        for page in reader.pages:
+            text = page.extract_text() or ""
+            if text.strip():
+                chunks.append(text.strip())
+        return "\n\n".join(chunks).strip()
+    except Exception as exc:
+        raise RuntimeError(f"pypdf falhou em {pdf_path}: {exc}") from exc
+
+
+def _extract_pdf_text(pdf_path: Path) -> str:
+    """Extrai texto de um PDF com Poppler e fallback Python.
+
+    A ordem prioriza ``pdftotext`` porque costuma preservar melhor layout de
+    editais/listas. Quando o binário não existe ou falha, ``pypdf`` mantém a
+    extração funcional em desenvolvimento e testes automatizados.
+    """
+    errors: list[str] = []
+    for name, extractor in (
+        ("pdftotext", _extract_pdf_text_with_pdftotext),
+        ("pypdf", _extract_pdf_text_with_pypdf),
+    ):
+        try:
+            text = extractor(pdf_path)
+        except Exception as exc:
+            errors.append(f"{name}: {exc}")
+            continue
+        if text:
+            return text
+        errors.append(f"{name}: nenhum texto extraível encontrado")
+
+    raise RuntimeError("Falha ao extrair texto do PDF. Tentativas: " + "; ".join(errors))
+
+
+def _filename_from_response(url: str, headers: httpx.Headers | dict, is_pdf: bool) -> str:
+    """Escolhe um nome estável para salvar o download em cache/bin."""
+    content_disposition = headers.get("Content-Disposition", "")
+    match = re.search(r"filename\*?=(?:UTF-8''|\"?)([^\";]+)", content_disposition, flags=re.IGNORECASE)
+    if match:
+        name = unquote(match.group(1).strip().strip('"'))
+    else:
+        name = urlparse(url).path.rstrip("/").split("/")[-1] or "download"
+    name = re.sub(r"[\\/:*?\"<>|]+", "_", name).strip() or "download"
+    if is_pdf and not name.lower().endswith(".pdf"):
+        name = f"{name}.pdf"
+    return name
+
+
+def _is_pdf_response(content_type: str, name: str, body: bytes) -> bool:
+    """Detecta PDF por Content-Type, extensão ou assinatura do arquivo."""
+    lower_type = content_type.lower()
+    return "pdf" in lower_type or name.lower().endswith(".pdf") or body.startswith(b"%PDF")
 
 
 def fetch_page(url: str, refresh: bool = False, extract_text: bool = False) -> dict:
@@ -255,7 +318,9 @@ def fetch_page(url: str, refresh: bool = False, extract_text: bool = False) -> d
     # binário: salva em disco (não cachear conteúdo na chave .cache)
     bin_dir = CACHE_DIR / "bin"
     bin_dir.mkdir(parents=True, exist_ok=True)
-    name = urlparse(url).path.rstrip("/").split("/")[-1] or "download"
+    raw_name = urlparse(url).path.rstrip("/").split("/")[-1] or "download"
+    is_pdf = _is_pdf_response(content_type, raw_name, resp.content)
+    name = _filename_from_response(url, resp.headers, is_pdf=is_pdf)
     dest = bin_dir / name
     dest.write_bytes(resp.content)
     result = {
@@ -266,12 +331,14 @@ def fetch_page(url: str, refresh: bool = False, extract_text: bool = False) -> d
         "path": str(dest),
         "size_bytes": len(resp.content),
     }
-    if extract_text and ("pdf" in content_type.lower() or name.lower().endswith(".pdf")):
-        # extração de texto embutida apenas para PDF (via pdftotext)
+    if extract_text and is_pdf:
+        # Extração de texto embutida apenas para PDF.
         try:
             result["text"] = _extract_pdf_text(dest)
         except Exception as e:
             result["text_error"] = str(e)
+    elif extract_text:
+        result["text_error"] = "extração de texto disponível apenas para PDF"
     return result
 
 

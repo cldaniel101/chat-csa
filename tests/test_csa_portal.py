@@ -7,8 +7,42 @@ de _request_with_backoff) e tmp_path para cache.
 
 import json
 
+import pytest
+
 import chat_csa.csa_portal as portal
 from chat_csa.agent.tools import web_csa_fetch, web_csa_search
+
+
+def _pdf_with_text(text: str) -> bytes:
+    escaped = text.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+    stream = f"BT /F1 12 Tf 72 100 Td ({escaped}) Tj ET".encode("latin-1")
+    objects = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        (
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] "
+            b"/Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>"
+        ),
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        b"<< /Length " + str(len(stream)).encode("ascii") + b" >>\nstream\n" + stream + b"\nendstream",
+    ]
+
+    pdf = bytearray(b"%PDF-1.4\n")
+    offsets = []
+    for index, obj in enumerate(objects, start=1):
+        offsets.append(len(pdf))
+        pdf.extend(f"{index} 0 obj\n".encode("ascii"))
+        pdf.extend(obj)
+        pdf.extend(b"\nendobj\n")
+
+    xref_offset = len(pdf)
+    pdf.extend(f"xref\n0 {len(objects) + 1}\n".encode("ascii"))
+    pdf.extend(b"0000000000 65535 f \n")
+    for offset in offsets:
+        pdf.extend(f"{offset:010d} 00000 n \n".encode("ascii"))
+    pdf.extend(f"trailer\n<< /Root 1 0 R /Size {len(objects) + 1} >>\n".encode("ascii"))
+    pdf.extend(f"startxref\n{xref_offset}\n%%EOF\n".encode("ascii"))
+    return bytes(pdf)
 
 
 def test_allowlist_blocks_foreign_url(monkeypatch):
@@ -131,18 +165,48 @@ def test_consumer_is_readonly_with_csa_tools(monkeypatch, tmp_path):
     assert not {"bash", "write", "edit"} & set(names)
 
 
-def test_pdf_extraction(tmp_path, monkeypatch):
-    # PDF mínimo válido gerado na mão não é viável; usamos pdftotext num PDF real
-    # de fixture: cria um PDF de 1 página com texto via pdftotext é impossível,
-    # então testamos apenas o caminho de erro para arquivo inválido.
+def test_fetch_pdf_extracts_text_with_python_fallback(tmp_path, monkeypatch):
+    monkeypatch.setattr(portal, "CACHE_DIR", tmp_path / "cache")
+    pdf = _pdf_with_text("Texto extraivel CSA UEFS")
+
+    class FakeResp:
+        status_code = 200
+        headers = {"Content-Type": "application/pdf"}
+        content = pdf
+        text = ""
+
+    monkeypatch.setattr(portal, "_request_with_backoff", lambda c, u: FakeResp())
+
+    def fail_pdftotext(_pdf_path):
+        raise RuntimeError("pdftotext não encontrado")
+
+    monkeypatch.setattr(portal, "_extract_pdf_text_with_pdftotext", fail_pdftotext)
+
+    out = json.loads(
+        web_csa_fetch.invoke(
+            {
+                "url": "https://csa.uefs.br/index.php/download/file/sisu261/resultado",
+                "extract_text": True,
+            }
+        )
+    )
+
+    assert out["content_type"] == "application/pdf"
+    assert out["size_bytes"] == len(pdf)
+    assert out["path"].endswith("resultado.pdf")
+    assert out["fetched_at"]
+    assert "Texto extraivel CSA UEFS" in out["text"]
+    assert "text_error" not in out
+
+
+def test_pdf_extraction_reports_clear_error(tmp_path):
     fake = tmp_path / "fake.pdf"
     fake.write_bytes(b"%PDF-1.4 broken")
-    try:
+
+    with pytest.raises(RuntimeError) as excinfo:
         portal._extract_pdf_text(fake)
-    except RuntimeError as e:
-        assert "pdftotext falhou" in str(e)
-    else:
-        raise AssertionError("deveria falhar em PDF inválido")
+
+    assert "Falha ao extrair texto do PDF" in str(excinfo.value)
 
 
 def test_html_links_preserved_as_markdown(tmp_path, monkeypatch):

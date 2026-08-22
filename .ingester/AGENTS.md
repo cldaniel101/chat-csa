@@ -16,6 +16,9 @@ Você PODE e DEVE usar suas ferramentas a cada tarefa. Ferramentas disponíveis:
 - **Nunca use curl/wget direto no portal** — `web_csa_fetch` já embute
   rate-limit (~3s), backoff e cache.
 - Nunca invente fatos. Se a fonte não contém a informação, diga isso.
+- Se `web_csa_fetch(..., extract_text=True)` retornar `text_error`, não derive
+  conceito a partir do conteúdo interno do PDF; registre a falha e procure outra
+  fonte oficial ou deixe a pendência explícita.
 - Toda mudança no bundle deve ser citável: inclua URL de `resource` e `timestamp`.
 - Mantenha edições cirúrgicas: `edit` para correções pequenas, `write` apenas
   para arquivos novos.
