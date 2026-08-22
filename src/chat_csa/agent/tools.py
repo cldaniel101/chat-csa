@@ -161,15 +161,16 @@ def bash(command: str, timeout: int = 30) -> str:
 def web_csa_fetch(url: str, refresh: bool = False, extract_text: bool = False) -> str:
     """Baixa uma página do portal CSA/UEFS (somente leitura, allowlist csa.uefs.br).
 
-    Converte HTML em texto limpo; JSON vem cru; binários (PDF/DOCX) são salvos
-    em .cache/csa-web/bin/. Com extract_text=True, PDFs têm o texto extraído
-    (pdftotext) e retornado no campo 'text' — use para ler listas de aprovados,
-    editais e cronogramas. Respeita rate-limit estrutural (~3s entre requests,
-    backoff em 429/5xx) e cache TTL de 1h.
+    Use SEMPRE que a resposta exigir conteúdo do portal: páginas de seleção,
+    resultados, editais, cronogramas e listas de aprovados. O texto das
+    páginas HTML inclui os links em formato markdown [texto](url) — siga-os
+    para descobrir URLs de PDFs e subpáginas. Com extract_text=True, PDFs têm
+    o texto extraído (pdftotext) no campo 'text'. Nunca afirme que não há
+    informação sem ter chamado esta ferramenta ou web_csa_search antes.
 
     Args:
         url: URL completa no domínio https://csa.uefs.br.
-        refresh: se True, ignora o cache e refaz a requisição.
+        refresh: se True, ignora o cache (TTL 1h) e refaz a requisição.
         extract_text: se True e o conteúdo for PDF, extrai o texto do arquivo.
     """
     from ..csa_portal import fetch_page
@@ -185,15 +186,15 @@ def web_csa_fetch(url: str, refresh: bool = False, extract_text: bool = False) -
 def web_csa_search(query: str = "", categoria: str = "", since: str = "", limit: int = 20) -> str:
     """Busca estruturada no catálogo do portal CSA/UEFS (somente leitura).
 
-    Consulta os endpoints JSON getMenu/getSelecoesAtualizacoes: filtra seleções
-    e itens de menu por palavra-chave/categoria e retorna atualizações desde
-    uma data (diff incremental para ingestão). Registros compactos com URL
-    para citação.
+    Chame esta ANTES de web_csa_fetch para descobrir seleções, páginas e
+    novidades — use sempre que a pergunta envolver dados do SISU/UEFS ou do
+    portal da CSA, antes de responder de memória. Retorna registros compactos
+    {source, id, title, url} prontos para citar e para alimentar o fetch.
 
     Args:
-        query: palavra-chave para filtrar títulos (opcional).
-        categoria: filtra pela categoria da seleção, ex.: SiSU (opcional).
-        since: data ISO YYYY-MM-DD; retorna só atualizações posteriores (opcional).
+        query: palavra-chave para filtrar títulos (ex.: "resultado", "edital").
+        categoria: filtra pela categoria da seleção, ex.: "sisu", "prosel".
+        since: data ISO YYYY-MM-DD; retorna só atualizações posteriores (ingestão incremental).
         limit: máximo de registros retornados (padrão 20).
     """
     from ..csa_portal import search_portal
