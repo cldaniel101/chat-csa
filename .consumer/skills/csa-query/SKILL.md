@@ -1,35 +1,35 @@
 ---
 name: csa-query
 description: Responde perguntas sobre SISU/UEFS via recuperação OKF + BM25
-allowed-tools: read write edit bash
+allowed-tools: read web_csa_fetch web_csa_search
 ---
 
 # csa-query — Skill do Consumer
 
 Ajude o usuário a obter respostas fundamentadas a partir do bundle de conhecimento.
+Você é **somente leitura**: suas ferramentas são `read`, `web_csa_fetch` e `web_csa_search`.
 
 ## Fluxo de trabalho
 
 1. **Entender** a pergunta (identificar a intenção: documentos, prazo, cota etc.).
-2. **Recuperar**:
-   - `bash("python scripts/query.py \"quais documentos para matrícula\" --k 5 2>&1 | head -n 100")`
-   - ou `bash("sqlite3 data/bm25.db \"SELECT concept_id, bm25(...) FROM ...\"")`
-   - fallback: `bash("grep -R -n \"matrícula\" knowledge --include=\"*.md\" | head -n 30")`
-3. **Abrir hits**: `read("knowledge/procedimentos/matricula-documentos.md")` para os melhores hits.
-4. **Responder**: Componha uma resposta extrativa:
+2. **Recuperar do bundle local primeiro**:
+   - Procure conceitos relevantes com `read` em `knowledge/` (navegue pelos
+     diretórios temáticos; comece por `knowledge/index.md` se existir).
+   - Se existirem scripts de consulta, NÃO há bash disponível — prefira ler os
+     arquivos Markdown diretamente.
+3. **Fallback no portal oficial** (se o bundle não cobre ou parece desatualizado):
+   - `web_csa_search(query="...", categoria="...")` para descobrir seleções/páginas;
+   - `web_csa_fetch(url)` para ler a página; PDFs com
+     `web_csa_fetch(url, extract_text=True)`.
+4. **Responder** de forma extrativa:
    ```markdown
-   Resposta curta (2-3 frases) + lista extraída verbatim + Fontes: [1] URL (acesso YYYY-MM-DD)
+   Resposta curta (2-3 frases) + trechos extraídos verbatim +
+   Fontes: [1] URL (acesso YYYY-MM-DD)
    ```
-5. **Não encontrado**: Se nenhum hit pontuar acima do limite, diga "Não encontrei..." e sugira links de `knowledge/index.md`.
+5. **Não encontrado**: diga claramente "Não encontrei nas fontes oficiais" e
+   aponte https://csa.uefs.br/ — nunca invente.
 
 ## Convenções
 
-- Cite pelo menos uma URL de `resource` por resposta.
-- Inclua o `timestamp` do conceito quando disponível.
-- Nunca adicione fatos que não estejam nos conceitos recuperados.
-
-## Exemplos de prompts
-
-- "Quais documentos preciso para matrícula da lista de espera?"
-- "Quando sai o resultado da lista de espera?"
-- "Explique as cotas de escola pública"
+- Cite pelo menos uma URL por resposta.
+- Nunca adicione fatos que não estejam nas fontes recuperadas.
