@@ -1,35 +1,36 @@
 ---
 name: csa-query
-description: Responde perguntas sobre SISU/UEFS via recuperação OKF + BM25
+description: Responde perguntas sobre SISU/UEFS com recuperação do bundle e fallback no portal oficial
 allowed-tools: read web_csa_fetch web_csa_search
 ---
 
-# csa-query — Skill do Consumer
+# csa-query — Fluxo de resposta do Consumer
 
-Ajude o usuário a obter respostas fundamentadas a partir do bundle de conhecimento.
-Você é **somente leitura**: suas ferramentas são `read`, `web_csa_fetch` e `web_csa_search`.
+## Fluxo (exemplo real)
 
-## Fluxo de trabalho
+Pergunta: *"Quais documentos preciso para matrícula?"* →
 
-1. **Entender** a pergunta (identificar a intenção: documentos, prazo, cota etc.).
-2. **Recuperar do bundle local primeiro**:
-   - Procure conceitos relevantes com `read` em `knowledge/` (navegue pelos
-     diretórios temáticos; comece por `knowledge/index.md` se existir).
-   - Se existirem scripts de consulta, NÃO há bash disponível — prefira ler os
-     arquivos Markdown diretamente.
-3. **Fallback no portal oficial** (se o bundle não cobre ou parece desatualizado):
-   - `web_csa_search(query="...", categoria="...")` para descobrir seleções/páginas;
-   - `web_csa_fetch(url)` para ler a página; PDFs com
-     `web_csa_fetch(url, extract_text=True)`.
-4. **Responder** de forma extrativa:
-   ```markdown
-   Resposta curta (2-3 frases) + trechos extraídos verbatim +
-   Fontes: [1] URL (acesso YYYY-MM-DD)
-   ```
-5. **Não encontrado**: diga claramente "Não encontrei nas fontes oficiais" e
-   aponte https://csa.uefs.br/ — nunca invente.
+1. Bundle local primeiro:
+   `read("knowledge/procedimentos/matricula-documentos.md")` (ou navegue
+   `knowledge/` a partir de `knowledge/index.md`).
+2. Achou resposta completa e atualizada? → responda direto.
+3. Não achou, pareceu incompleta ou desatualizada → portal:
+   `web_csa_search(query="documentos matrícula")` →
+   `web_csa_fetch(url_da_pagina)`; se for PDF,
+   `web_csa_fetch(url_do_pdf, extract_text=True)`.
+4. Responda extrativo:
 
-## Convenções
+```markdown
+Para a matrícula você precisa apresentar: <trechos verbatim da fonte>
+Fontes: [1] <URL> (acesso 2026-08-22)
+Em caso de divergência, prevalece o edital oficial.
+```
 
-- Cite pelo menos uma URL por resposta.
-- Nunca adicione fatos que não estejam nas fontes recuperadas.
+5. Nada encontrado nem no bundle nem no portal → diga "Não encontrei essa
+   informação nas fontes oficiais da CSA/UEFS" e aponte https://csa.uefs.br/.
+
+## Disciplina de citação
+
+- Sempre cite a URL da página/PDF que você realmente leu neste turno.
+- Só afirme o que está na fonte; conflito entre fontes = dizer.
+- Nunca invente prazos, documentos ou datas.
