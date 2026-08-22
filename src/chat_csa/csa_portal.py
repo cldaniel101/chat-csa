@@ -121,31 +121,63 @@ _BLOCK_TAGS = {
 
 
 class _TextExtractor(HTMLParser):
-    """Extrai texto visível e hrefs de links, descartando chrome técnico."""
+    """Extrai texto visível e links em formato markdown [texto](url).
 
-    def __init__(self) -> None:
+    Links relativos são resolvidos contra a URL da página (base_url), para
+    que o agente consiga descobrir URLs de PDFs e subpáginas a partir do
+    texto extraído.
+    """
+
+    def __init__(self, base_url: str = "") -> None:
         super().__init__()
         self._skip_depth = 0
         self._chunks: list[str] = []
-        self._links: list[str] = []
+        self._base_url = base_url
+        self._pending_href: str | None = None
+        self._link_text: list[str] = []
+
+    def _abs(self, href: str) -> str:
+        if href.startswith("http") or not self._base_url:
+            return href
+        from urllib.parse import urljoin
+
+        return urljoin(self._base_url, href)
 
     def handle_starttag(self, tag: str, attrs) -> None:  # type: ignore[override]
         if tag in _SKIP_TAGS:
             self._skip_depth += 1
         elif tag == "a":
             for name, value in attrs:
-                if name == "href" and value and value.startswith(("http", "/")):
-                    self._links.append(value)
+                if name == "href" and value:
+                    self._pending_href = value
+                    self._link_text = []
+                    break
 
     def handle_endtag(self, tag: str) -> None:  # type: ignore[override]
         if tag in _SKIP_TAGS and self._skip_depth > 0:
             self._skip_depth -= 1
+        elif tag == "a":
+            text = " ".join(t.strip() for t in self._link_text)
+            if self._pending_href:
+                label = text or self._pending_href
+                self._chunks.append(f"[{label}]({self._abs(self._pending_href)}) ")
+            elif text:
+                self._chunks.append(text + " ")
+            self._pending_href = None
+            self._link_text = []
         elif tag in _BLOCK_TAGS:
             self._chunks.append("\n")
 
     def handle_data(self, data: str) -> None:
-        if self._skip_depth == 0 and data.strip():
-            self._chunks.append(data.strip() + " ")
+        if self._skip_depth:
+            return
+        stripped = data.strip()
+        if not stripped:
+            return
+        if self._pending_href is not None:
+            self._link_text.append(stripped)
+        else:
+            self._chunks.append(stripped + " ")
 
     @property
     def text(self) -> str:
@@ -158,8 +190,8 @@ class _TextExtractor(HTMLParser):
         return "\n".join(out)
 
 
-def html_to_text(html: str) -> str:
-    ext = _TextExtractor()
+def html_to_text(html: str, base_url: str = "") -> str:
+    ext = _TextExtractor(base_url=base_url)
     try:
         ext.feed(html)
     except Exception:
@@ -217,7 +249,7 @@ def fetch_page(url: str, refresh: bool = False, extract_text: bool = False) -> d
         return {"url": url, "error": f"HTTP {resp.status_code}", "fetched_at": _now_iso()}
     content_type = resp.headers.get("Content-Type", "")
     if "html" in content_type.lower() or "json" in content_type.lower():
-        text = html_to_text(resp.text) if "html" in content_type.lower() else resp.text
+        text = html_to_text(resp.text, base_url=url) if "html" in content_type.lower() else resp.text
         _cache_put(url, content_type, text)
         return _build_result(url, content_type, text)
     # binário: salva em disco (não cachear conteúdo na chave .cache)

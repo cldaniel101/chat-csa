@@ -143,3 +143,21 @@ def test_pdf_extraction(tmp_path, monkeypatch):
         assert "pdftotext falhou" in str(e)
     else:
         raise AssertionError("deveria falhar em PDF inválido")
+
+
+def test_html_links_preserved_as_markdown(tmp_path, monkeypatch):
+    monkeypatch.setattr(portal, "CACHE_DIR", tmp_path / "cache")
+    html = (
+        '<html><body><h1>Resultados</h1>'
+        '<a href="/index.php/download/file/sisu261/sisu261_resultado">Resultado Final</a>'
+        "</body></html>"
+    )
+
+    class FakeResp:
+        status_code = 200
+        headers = {"Content-Type": "text/html; charset=UTF-8"}
+        text = html
+
+    monkeypatch.setattr(portal, "_request_with_backoff", lambda c, u: FakeResp())
+    out = json.loads(web_csa_fetch.invoke({"url": "https://csa.uefs.br/index.php/sisu261/x"}))
+    assert "[Resultado Final](https://csa.uefs.br/index.php/download/file/sisu261/sisu261_resultado)" in out["content"]
