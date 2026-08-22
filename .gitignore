@@ -48,3 +48,6 @@ csa_reverse/
 
 # Cache das tools web_csa_* do portal CSA
 .cache/
+
+cards*.json
+cards*.md
