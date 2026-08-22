@@ -55,16 +55,15 @@ https://csa.uefs.br/index.php/sisu261/inicial
 
 A utilização de fontes oficiais é um dos princípios centrais do projeto, buscando reduzir o risco de informações incorretas ou desatualizadas.
 
-## 🤖 Funcionamento proposto
+## 🤖 Funcionamento
 
-De forma geral, o sistema deverá seguir o seguinte fluxo:
+De forma geral, o sistema funciona da seguinte maneira:
 
 1. O candidato envia uma pergunta em linguagem natural.
-2. O sistema interpreta a dúvida apresentada.
-3. O assistente busca informações relevantes nas fontes oficiais do SISU/UEFS.
-4. O conteúdo encontrado é utilizado como contexto para o modelo de Inteligência Artificial.
-5. Uma resposta clara e objetiva é apresentada ao usuário.
-6. Sempre que possível, a origem da informação é indicada para permitir sua verificação.
+2. O agente **consumer** busca informações relevantes no bundle de conhecimento (OKF) curado a partir das fontes oficiais do SISU/UEFS e, se necessário, consulta o portal da CSA diretamente.
+3. O conteúdo recuperado fundamenta uma resposta **extrativa**, com citações (URL + timestamp).
+4. Se a informação não existir nas fontes oficiais, o sistema declara isso explicitamente em vez de inventar.
+5. A resposta indica sempre a origem da informação para permitir sua verificação.
 
 ## ✅ Requisitos importantes
 
@@ -80,31 +79,28 @@ O assistente deverá priorizar:
 
 O sistema **não substitui os editais, comunicados ou orientações oficiais da UEFS**. Em situações de divergência, sempre prevalecerá a documentação publicada oficialmente pela universidade.
 
-## 🧠 Inteligência Artificial e recuperação de informações
+## 🧠 Arquitetura — Bundle OKF + recuperação determinística
 
-Uma das possibilidades para implementação do projeto é utilizar uma arquitetura baseada em **RAG — Retrieval-Augmented Generation (Geração Aumentada por Recuperação)**.
-
-Nesse modelo, a IA não depende apenas do conhecimento previamente adquirido pelo modelo. Antes de gerar uma resposta, o sistema recupera informações relevantes a partir da base documental do SISU/UEFS.
-
-Fluxo simplificado:
+O projeto **não utiliza RAG** (embeddings vetoriais + geração aumentada por recuperação). Em vez disso, adota uma abordagem **determinística e auditável**, baseada em um bundle de conhecimento curado no formato **OKF — Open Knowledge Format** e em recuperação lexical (**BM25**), conforme detalhado em [`docs/proposta-okf-bm25.md`](docs/proposta-okf-bm25.md):
 
 ```text
-Pergunta do usuário
+Fontes oficiais da CSA/UEFS (portal csa.uefs.br)
+        ↓  (agente ingester — crawl, normalização, curadoria)
+Bundle de conhecimento OKF (conceitos versionados em Markdown)
+        ↓  (recuperação determinística — BM25 / consulta direta)
+Agente consumer — resposta extrativa com citações
         ↓
-Interpretação da pergunta
-        ↓
-Busca nas informações oficiais
-        ↓
-Recuperação dos conteúdos relevantes
-        ↓
-Modelo de linguagem
-        ↓
-Resposta fundamentada
-        ↓
-Indicação da fonte
+Usuário (resposta verificável, com URL e timestamp)
 ```
 
-Essa abordagem pode contribuir para aumentar a confiabilidade e a rastreabilidade das respostas.
+Motivações principais dessa escolha:
+
+* **Zero alucinação no caminho crítico**: as respostas são extrativas, extraídas verbatim de conceitos curados;
+* **Auditabilidade**: cada frase é rastreável até uma fonte oficial;
+* **Terminologia literal**: consultas sobre SISU são lexicais ("comprovante de cota racial", "lista de espera") — correspondência lexical supera busca semântica;
+* **Custo e simplicidade**: sem banco vetorial nem API de embeddings — roda offline e barato.
+
+> **Pendência conhecida:** o suporte à busca BM25 ainda não está implementado no consumer — hoje ele responde consultando diretamente os conceitos do bundle e o portal via `web_csa_fetch`/`web_csa_search`. A integração BM25 está prevista na proposta (`docs/proposta-okf-bm25.md`).
 
 ## 📋 Escopo inicial
 
