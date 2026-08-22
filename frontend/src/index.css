@@ -1,17 +1,64 @@
+/*
+ * Tokens do design system — extraídos de docs/DESIGN.md (portal CSA/UEFS).
+ * Fonte da verdade: frontmatter YAML de docs/DESIGN.md.
+ */
+@import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&family=Lato:wght@400;600&display=swap');
+
 :root {
-  --bg: #0a0a0f;
-  --surface: #13131a;
-  --surface-2: #1c1c24;
-  --border: #2a2a35;
-  --text: #e6e6eb;
-  --muted: #9a9aa8;
-  --accent: #7c5cff;
-  --accent-2: #5b8def;
-  --accent-soft: rgba(124, 92, 255, 0.12);
-  --success: #22c55e;
-  --radius: 12px;
-  --sans: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-  --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  /* Cores */
+  --c-primary: #ff7300;
+  --c-primary-hover: #e86800;
+  --c-secondary: #589c36;
+  --c-tertiary: #2d7fef;
+  --c-neutral: #f4f4f2;
+  --c-surface: #ffffff;
+  --c-on-surface: #444444;
+  --c-on-primary: #ffffff;
+  /* Texto sobre superfícies laranja — branco falha WCAG AA (2.73:1);
+     marrom-escuro garante contraste >= 4.5:1 */
+  --c-on-accent: #472800;
+  --c-muted: #909090;
+  --c-border: #dddcdc;
+  --c-border-strong: #d4d0c8;
+  --c-success: #63af1b;
+  --c-warning: #f2b100;
+  --c-error: #b31717;
+  --c-link: #393939;
+
+  /* Tipografia */
+  --font-body: 'Open Sans', Georgia, Verdana, Helvetica, sans-serif;
+  --font-alt: 'Lato', 'Open Sans', sans-serif;
+
+  /* Formas */
+  --radius-sm: 3px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
+  --radius-full: 9999px;
+
+  /* Espaçamento */
+  --sp-xs: 4px;
+  --sp-sm: 8px;
+  --sp-md: 16px;
+  --sp-lg: 20px;
+  --sp-xl: 30px;
+
+  /* Elevação (sombras suaves do portal) */
+  --shadow-soft: 0 0 4px #e1dfd8;
+  --shadow-focus: 0 0 2px #aaa;
+
+  /* Aliases usados pelos componentes */
+  --bg: var(--c-neutral);
+  --surface: var(--c-surface);
+  --surface-2: #f8f8f6;
+  --border: var(--c-border);
+  --text: var(--c-on-surface);
+  --muted: var(--c-muted);
+  --accent: var(--c-primary);
+  --accent-hover: var(--c-primary-hover);
+  --accent-soft: rgba(255, 115, 0, 0.1);
+  --success: var(--c-success);
+  --radius: var(--radius-lg);
+  --sans: var(--font-body);
 }
 
 * { box-sizing: border-box; }
@@ -19,16 +66,20 @@ html, body, #root { height: 100%; }
 body {
   margin: 0;
   font-family: var(--sans);
-  background: radial-gradient(1200px 600px at 20% -10%, rgba(124,92,255,0.12), transparent 60%),
-              radial-gradient(900px 500px at 90% 0%, rgba(91,141,239,0.10), transparent 60%),
-              var(--bg);
+  font-size: 14px;
+  line-height: 1.55;
+  background:
+    radial-gradient(900px 400px at 15% -10%, rgba(255, 115, 0, 0.05), transparent 60%),
+    radial-gradient(800px 380px at 95% 0%, rgba(88, 156, 54, 0.06), transparent 60%),
+    var(--bg);
   color: var(--text);
   -webkit-font-smoothing: antialiased;
 }
-a { color: var(--accent); text-decoration: none; }
+a { color: var(--c-link); text-decoration: none; }
+a:hover { color: var(--accent); }
 button, input, textarea, select { font: inherit; }
 
 /* scrollbar */
 *::-webkit-scrollbar { width: 6px; height: 6px; }
-*::-webkit-scrollbar-thumb { background: #2a2a35; border-radius: 999px; }
+*::-webkit-scrollbar-thumb { background: #c9c7c0; border-radius: var(--radius-full); }
 *::-webkit-scrollbar-track { background: transparent; }

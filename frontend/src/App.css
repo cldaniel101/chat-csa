@@ -4,13 +4,14 @@
   flex-direction: column;
 }
 
-/* Header */
+/* Header — faixa superior laranja como no portal CSA/UEFS */
 .header {
   position: sticky;
   top: 0;
   z-index: 10;
   backdrop-filter: blur(12px);
-  background: rgba(10,10,15,0.7);
+  background: rgba(255,255,255,0.88);
+  border-top: 4px solid var(--c-primary);
   border-bottom: 1px solid var(--border);
 }
 .header-inner {
@@ -31,12 +32,12 @@
 .brand-badge {
   width: 32px;
   height: 32px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   display: grid;
   place-items: center;
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  color: white;
-  font-weight: 800;
+  background: var(--c-secondary);
+  color: var(--c-on-primary);
+  font-weight: 700;
   font-size: 14px;
 }
 .nav {
@@ -56,8 +57,8 @@
 }
 .pill.active {
   background: var(--accent-soft);
-  border-color: rgba(124,92,255,0.4);
-  color: white;
+  border-color: rgba(255,115,0,0.45);
+  color: var(--c-link);
 }
 .user {
   display: flex;
@@ -88,6 +89,7 @@
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
+  box-shadow: var(--shadow-soft);
   padding: 14px;
   height: fit-content;
   position: sticky;
@@ -102,7 +104,7 @@
 }
 .agent-card {
   padding: 12px;
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   border: 1px solid var(--border);
   background: var(--surface-2);
   cursor: pointer;
@@ -112,6 +114,7 @@
   border-color: var(--accent);
   background: var(--accent-soft);
 }
+.dot.off { background: var(--c-error); }
 .agent-card h4 { margin: 0 0 4px; font-size: 14px; }
 .agent-card p { margin: 0; font-size: 12px; color: var(--muted); line-height: 1.4; }
 .status {
@@ -123,7 +126,6 @@
   margin-top: 6px;
 }
 .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--success); }
-.dot.off { background: #ef4444; }
 
 /* Chat */
 .chat {
@@ -132,6 +134,7 @@
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
+  box-shadow: var(--shadow-soft);
   overflow: hidden;
   min-height: 560px;
 }
@@ -165,15 +168,15 @@
 }
 .bubble.user {
   align-self: flex-end;
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  color: white;
-  border-bottom-right-radius: 4px;
+  background: var(--accent);
+  color: var(--c-on-accent);
+  border-bottom-right-radius: var(--radius-sm);
 }
 .bubble.bot {
   align-self: flex-start;
   background: var(--surface-2);
   border: 1px solid var(--border);
-  border-bottom-left-radius: 4px;
+  border-bottom-left-radius: var(--radius-sm);
 }
 .bubble.meta {
   font-size: 11px;
@@ -196,28 +199,31 @@
   background: var(--surface);
   border: 1px solid var(--border);
   color: var(--text);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   padding: 10px 12px;
   outline: none;
   resize: none;
 }
-.input-bar input:focus { border-color: var(--accent); }
+.input-bar input:focus,
+.input-bar textarea:focus { border-color: var(--accent); box-shadow: var(--shadow-focus); }
 .btn {
   background: var(--accent);
-  color: white;
+  color: var(--c-on-accent);
   border: none;
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   padding: 10px 14px;
   font-weight: 600;
   font-size: 14px;
   cursor: pointer;
 }
+.btn:hover:not(:disabled) { background: var(--accent-hover); }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn.ghost {
   background: transparent;
-  border: 1px solid var(--border);
-  color: var(--text);
+  border: 1px solid var(--c-border-strong);
+  color: #5e5e5e;
 }
+.btn.ghost:hover:not(:disabled) { background: var(--surface-2); }
 
 /* Login */
 .center {
@@ -231,7 +237,8 @@
   max-width: 380px;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-soft);
   padding: 20px;
 }
 .card h1 { margin: 0 0 4px; font-size: 20px; }
@@ -239,32 +246,33 @@
 .field { display: grid; gap: 6px; margin-bottom: 12px; }
 .field label { font-size: 12px; color: var(--muted); }
 .field input {
-  background: var(--surface-2);
+  background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   padding: 10px 12px;
-  color: var(--text);
+  color: #555555;
   outline: none;
 }
-.field input:focus { border-color: var(--accent); }
+.field input:focus { border-color: var(--accent); box-shadow: var(--shadow-focus); }
 .alert {
   padding: 8px 10px;
   border-radius: 8px;
   font-size: 13px;
   margin-bottom: 12px;
 }
-.alert.err { background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.3); color: #fecaca; }
-.alert.ok { background: rgba(34,197,94,0.12); border: 1px solid rgba(34,197,94,0.3); color: #bbf7d0; }
+.alert.err { background: rgba(179,23,23,0.08); border: 1px solid rgba(179,23,23,0.35); border-top: 3px solid var(--c-error); color: var(--c-error); }
+.alert.ok { background: rgba(99,175,27,0.1); border: 1px solid rgba(99,175,27,0.4); border-top: 3px solid var(--c-success); color: #3f6e12; }
 
 /* Admin */
 .admin {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
+  box-shadow: var(--shadow-soft);
   padding: 16px;
 }
 .table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.table th, .table td { text-align: left; padding: 10px; border-bottom: 1px solid var(--border); }
-.table th { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
+.table th, .table td { text-align: left; padding: 10px; border-bottom: 1px solid lightgray; }
+.table th { background: #eeeeee; color: var(--c-link); font-weight: normal; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
 .inline-form { display: flex; gap: 8px; margin-bottom: 14px; }
-.inline-form input { flex: 1; background: var(--surface-2); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 8px 10px; }
+.inline-form input { flex: 1; background: var(--surface); border: 1px solid var(--border); color: #555555; border-radius: var(--radius-md); padding: 8px 10px; }
