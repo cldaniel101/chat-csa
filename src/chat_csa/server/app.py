@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 import uuid
 from collections.abc import AsyncIterator
@@ -101,6 +102,49 @@ def _extract_text_from_agent_result(result: dict) -> str:
     return str(content)
 
 
+SENSITIVE_KEYWORDS = {"edital", "prazo", "matrícula", "matricula", "lista", "espera", "resultado", "cronograma"}
+
+def _is_sensitive(text: str) -> bool:
+    lower = text.lower()
+    return any(k in lower for k in SENSITIVE_KEYWORDS)
+
+def _extract_read_urls(messages: list) -> set[str]:
+    urls = set()
+    for m in messages:
+        if isinstance(m, dict):
+            # Formato de dicionário (menos comum aqui, mas previne quebra)
+            pass
+        elif getattr(m, "tool_calls", None):
+            for tc in m.tool_calls:
+                if tc.get("name") == "web_csa_fetch":
+                    url = tc.get("args", {}).get("url")
+                    if url:
+                        urls.add(url.strip())
+    return urls
+_CITED_URL_RE = re.compile(r"https?://[^\s)]+")
+
+def validate_agent_response(question: str, response_text: str, read_urls: set[str]) -> str | None:
+    """Valida a resposta. Retorna uma mensagem de erro controlada se falhar, ou None se passar."""
+    sensitive = _is_sensitive(question)
+    has_fontes = "\nfontes:" in response_text.lower() or "\nfonte:" in response_text.lower()
+    
+    if sensitive and not has_fontes:
+        return "[Erro de Validação] A resposta para esta pergunta foi bloqueada porque o agente não incluiu a seção de Fontes oficiais. Consulte diretamente o portal https://csa.uefs.br/."
+    
+    # Extrai as URLs citadas
+    cited_urls = set(_CITED_URL_RE.findall(response_text))
+    cleaned_cited = {u.rstrip(").,;'\"") for u in cited_urls}
+    
+    for url in cleaned_cited:
+        if "csa.uefs.br" in url:
+            # Encontra se a url citada (ou parte base dela) está nas URLs efetivamente lidas
+            base_url = url.split("#")[0]
+            if not any(base_url in r.split("#")[0] for r in read_urls):
+                return f"[Erro de Validação] A resposta foi bloqueada porque citou uma URL não lida ou inexistente ({url}). Consulte o portal https://csa.uefs.br/."
+    
+    return None
+
+
 def create_app(config_dir: str | Path | None = None) -> FastAPI:
     config_dir = Path(config_dir or os.getenv("AGENT_CONFIG_DIR") or ".ingester")
 
@@ -163,43 +207,54 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
         completion_id = f"chatcmpl-{uuid.uuid4().hex[:24]}"
         created = int(time.time())
 
-        if not stream:
+        last_user_msg = str(next((m.content for m in reversed(lc_messages) if isinstance(m, HumanMessage)), ""))
+        force_buffer = _is_sensitive(last_user_msg)
+
+        if not stream or force_buffer:
             result = await agent.ainvoke({"messages": lc_messages})
             text = _extract_text_from_agent_result(result)
-            return JSONResponse(
-                {
+            
+            read_urls = _extract_read_urls(result.get("messages", []))
+            err = validate_agent_response(last_user_msg, text, read_urls)
+            if err:
+                text = err
+
+            if not stream:
+                return JSONResponse(
+                    {
+                        "id": completion_id,
+                        "object": "chat.completion",
+                        "created": created,
+                        "model": model,
+                        "choices": [{"index": 0, "message": {"role": "assistant", "content": text}, "finish_reason": "stop"}],
+                        "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+                    }
+                )
+            
+            # Streaming simulado após buffer (para consultas críticas)
+            async def fake_event_stream() -> AsyncIterator[str]:
+                yield f"data: {json.dumps({'id': completion_id,'object':'chat.completion.chunk','created':created,'model':model,'choices':[{'index':0,'delta':{'role':'assistant'},'finish_reason':None}]})}\n\n"
+                payload = {
                     "id": completion_id,
-                    "object": "chat.completion",
+                    "object": "chat.completion.chunk",
                     "created": created,
                     "model": model,
-                    "choices": [
-                        {
-                            "index": 0,
-                            "message": {"role": "assistant", "content": text},
-                            "finish_reason": "stop",
-                        }
-                    ],
-                    "usage": {
-                        "prompt_tokens": 0,
-                        "completion_tokens": 0,
-                        "total_tokens": 0,
-                    },
+                    "choices": [{"index": 0, "delta": {"content": text}, "finish_reason": None}],
                 }
-            )
+                yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+                yield f"data: {json.dumps({'id': completion_id,'object':'chat.completion.chunk','created':created,'model':model,'choices':[{'index':0,'delta':{},'finish_reason':'stop'}]})}\n\n"
+                yield "data: [DONE]\n\n"
+                
+            return StreamingResponse(fake_event_stream(), media_type="text/event-stream")
 
-        # Streaming: SSE no formato de chunk da OpenAI
+        # Streaming real (apenas para consultas não-críticas, pois validação exige texto final completo)
         async def event_stream() -> AsyncIterator[str]:
-            # chunk inicial com o role
             yield f"data: {json.dumps({'id': completion_id,'object':'chat.completion.chunk','created':created,'model':model,'choices':[{'index':0,'delta':{'role':'assistant'},'finish_reason':None}]})}\n\n"
-            # Faz streaming dos tokens do agente
-            # astream do langgraph com stream_mode="messages" retorna (message_chunk, metadata)
             try:
                 async for chunk in agent.astream({"messages": lc_messages}, stream_mode="messages"):
-                    # em langgraph mais novo, chunk é tupla (AIMessageChunk, metadata)
                     msg_chunk = chunk[0] if isinstance(chunk, tuple) else chunk
                     text = getattr(msg_chunk, "content", "")
                     if isinstance(text, list):
-                        # achata conteúdo em lista
                         flat = ""
                         for part in text:
                             if isinstance(part, dict) and "text" in part:
@@ -221,7 +276,6 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
             except Exception as e:
                 err = {"error": {"message": str(e), "type": "server_error"}}
                 yield f"data: {json.dumps(err)}\n\n"
-            # fim
             yield f"data: {json.dumps({'id': completion_id,'object':'chat.completion.chunk','created':created,'model':model,'choices':[{'index':0,'delta':{},'finish_reason':'stop'}]})}\n\n"
             yield "data: [DONE]\n\n"
 
@@ -249,17 +303,34 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
         agent, _, _, _ = build_agent(config_dir=config_dir)
         lc_messages = _openai_messages_to_lc(messages, system_prompt)
 
-        if not stream:
+        last_user_msg = str(next((m.content for m in reversed(lc_messages) if isinstance(m, HumanMessage)), ""))
+        force_buffer = _is_sensitive(last_user_msg)
+
+        if not stream or force_buffer:
             result = await agent.ainvoke({"messages": lc_messages})
             text = _extract_text_from_agent_result(result)
-            return JSONResponse(
-                {
-                    "model": model,
-                    "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                    "message": {"role": "assistant", "content": text},
-                    "done": True,
-                }
-            )
+            
+            read_urls = _extract_read_urls(result.get("messages", []))
+            err = validate_agent_response(last_user_msg, text, read_urls)
+            if err:
+                text = err
+
+            if not stream:
+                return JSONResponse(
+                    {
+                        "model": model,
+                        "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                        "message": {"role": "assistant", "content": text},
+                        "done": True,
+                    }
+                )
+            
+            # Streaming falso para Ollama
+            async def fake_ollama_stream() -> AsyncIterator[str]:
+                yield json.dumps({"model": model, "message": {"role": "assistant", "content": text}, "done": False}) + "\n"
+                yield json.dumps({"model": model, "message": {"role": "assistant", "content": ""}, "done": True}) + "\n"
+
+            return StreamingResponse(fake_ollama_stream(), media_type="application/x-ndjson")
 
         async def ollama_stream() -> AsyncIterator[str]:
             async for chunk in agent.astream({"messages": lc_messages}, stream_mode="messages"):
