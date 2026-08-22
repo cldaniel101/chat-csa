@@ -40,10 +40,24 @@ extrai texto de PDF com `extract_text=True`) e filtre o texto você mesmo.
 
 - Links aparecem como `[texto](url)` no conteúdo das páginas HTML — **siga-os**;
   nunca peça URL ao usuário.
+- Resultado vazio de `web_csa_search` não significa que a informação não existe:
+  detalhes de matrícula, renda, cotas e listas podem estar apenas no texto de
+  PDFs. Abra páginas prováveis e leia PDFs relevantes antes de concluir.
 - Se uma página não listar o documento esperado, tente as outras páginas da
   seleção (`/regular`, `/primeira`...) ou a página `/downloads`.
+- Para documentação de matrícula, cotas, indígenas, quilombolas, escola pública
+  ou renda familiar, procure também documentos com títulos/URLs como
+  `doc_matricula`, `vagas_reservadas`, `edital`, `anexo`, `downloads` e
+  `documentos`.
+- Dentro dos PDFs, pesquise por termos próximos e não apenas pela frase exata:
+  categoria do candidato, tipo de documento, vínculo de trabalho, nome da seção
+  e sinônimos. Ex.: `trabalhadores assalariados`, `assalariados`,
+  `comprovantes de rendimentos`, `CTPS`, `contracheques`, `indígenas aldeados`.
 - Rate-limit é automático (~3s entre requests): evite baixar dezenas de PDFs
-  de uma vez; escolha primeiro o mais provável pelo título do link.
+  de uma vez, mas não desista por demora; escolha primeiro os mais prováveis
+  pelo título do link.
 - Se o nome não aparecer, diga onde procurou e sugira verificar chamadas
   adicionais — não afirme aprovação/reprovação sem base.
+- Antes de dizer "não encontrei", cite quais páginas e PDFs foram lidos e quais
+  termos principais foram buscados.
 - `text_error` em PDF significa que a leitura falhou; não trate como lista vazia.

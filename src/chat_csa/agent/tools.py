@@ -168,7 +168,9 @@ def web_csa_fetch(url: str, refresh: bool = False, extract_text: bool = False) -
     o texto extraído no campo 'text' (pdftotext com fallback pypdf) ou um erro
     claro no campo 'text_error'. Se houver 'text_error', não afirme conteúdo
     interno do PDF; informe a limitação e cite a URL consultada. Nunca afirme
-    que não há informação sem ter chamado esta ferramenta ou web_csa_search antes.
+    que não há informação apenas porque web_csa_search não encontrou termo:
+    abra páginas prováveis, siga links de PDFs e leia os PDFs relevantes com
+    extract_text=True antes de declarar ausência.
 
     Args:
         url: URL completa no domínio https://csa.uefs.br.

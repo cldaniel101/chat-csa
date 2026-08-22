@@ -14,10 +14,14 @@ Pergunta: *"Quais documentos preciso para matrícula?"* →
    `read("knowledge/procedimentos/matricula-documentos.md")` (ou navegue
    `knowledge/` a partir de `knowledge/index.md`).
 2. Achou resposta completa e atualizada? → responda direto.
-3. Não achou, pareceu incompleta ou desatualizada → portal:
-   `web_csa_search(query="documentos matrícula")` →
-   `web_csa_fetch(url_da_pagina)`; se for PDF,
-   `web_csa_fetch(url_do_pdf, extract_text=True)`.
+3. Não achou, pareceu incompleta ou desatualizada → portal. Não pare em uma
+   única chamada de busca:
+   - `web_csa_search(query="documentos matrícula")`
+   - `web_csa_search(query="edital matrícula")`
+   - `web_csa_search(query="<termos do usuário>")`
+   - `web_csa_search(categoria="sisu")` quando a pergunta for sobre SiSU
+   Depois faça `web_csa_fetch(url_da_pagina)` nas páginas prováveis e, se for
+   PDF, `web_csa_fetch(url_do_pdf, extract_text=True)`.
    Se o retorno trouxer `text_error`, não use o PDF como evidência interna:
    informe a limitação e continue buscando outra fonte oficial.
 4. Responda extrativo:
@@ -28,8 +32,27 @@ Fontes: [1] <URL> (acesso 2026-08-22)
 Em caso de divergência, prevalece o edital oficial.
 ```
 
-5. Nada encontrado nem no bundle nem no portal → diga "Não encontrei essa
-   informação nas fontes oficiais da CSA/UEFS" e aponte https://csa.uefs.br/.
+5. Nada encontrado nem no bundle nem no portal → só então diga "Não encontrei
+   essa informação nas fontes oficiais da CSA/UEFS", mas inclua as páginas/PDFs
+   efetivamente consultados e aponte https://csa.uefs.br/.
+
+## Busca persistente antes de "não encontrado"
+
+- `web_csa_search` é um índice de catálogo; ele pode não conter termos que
+  aparecem apenas no corpo de PDFs. Não use resultado vazio da busca como prova
+  de ausência.
+- Para perguntas sobre documentação de matrícula, ações afirmativas, indígenas,
+  renda ou vínculo de trabalho, priorize páginas e PDFs de `downloads`,
+  `documentos para matrícula`, `edital`, `vagas reservadas` e anexos.
+- Ao ler PDF, procure no texto por variações do termo do usuário. Exemplo:
+  "TRABALHADORES ASSALARIADOS indígenas" deve acionar buscas por
+  `trabalhadores assalariados`, `assalariados`, `comprovantes de rendimentos`,
+  `indígenas aldeados`, `vagas reservadas`, `contracheques`, `CTPS`.
+- Se encontrar uma seção ampla e uma subseção específica, responda combinando
+  as duas, deixando claro o escopo. Ex.: documentação específica de indígenas
+  + comprovantes de renda para trabalhadores assalariados.
+- Se ainda não encontrou, diga "não encontrei depois de consultar..." e liste
+  as URLs lidas. Isso é diferente de "não existe".
 
 ## Disciplina de citação
 
