@@ -9,7 +9,7 @@ from pathlib import Path
 from langchain_core.language_models import BaseChatModel
 
 from .prompt import build_system_prompt
-from .tools import ALL_TOOLS
+from .tools import ALL_TOOLS, CSA_TOOLS, read
 
 
 def get_llm(
@@ -50,6 +50,25 @@ def get_llm(
         raise ValueError(f"Unknown LLM_PROVIDER={provider!r} (expected openai|ollama|fake)")
 
 
+def tools_for_config(root: Path) -> list:
+    """Lista de ferramentas para uma raiz de config.
+
+    - Ingester (.ingester): ferramentas completas (read/write/edit/bash) + as
+      de leitura do portal CSA (web_csa_fetch / web_csa_search).
+    - Consumer (.consumer): somente leitura — `read` + as ferramentas CSA.
+      O consumidor responde a partir do bundle; não escreve nem executa comandos.
+    Override via CHAT_CSA_EXTRA_TOOLS=ingester|none.
+    """
+    extra = os.getenv("CHAT_CSA_EXTRA_TOOLS", "").lower()
+    if extra == "none":
+        return list(ALL_TOOLS)
+    if root.name.startswith(".ingester") or extra == "ingester":
+        return [*ALL_TOOLS, *CSA_TOOLS]
+    if root.name.startswith(".consumer") or extra == "consumer":
+        return [read, *CSA_TOOLS]
+    return list(ALL_TOOLS)
+
+
 def build_agent(
     config_dir: str | Path = ".ingester",
     provider: str | None = None,
@@ -70,16 +89,19 @@ def build_agent(
     system_prompt = build_system_prompt(root)
     llm = get_llm(provider=provider, model=model, temperature=temperature)
 
+    # Ferramentas do portal CSA apenas para o agente ingester (leitura only)
+    tools = tools_for_config(root)
+
     # Prefere o novo langchain.agents.create_agent (LangChain v1)
     try:
         from langchain.agents import create_agent  # type: ignore
 
-        agent = create_agent(llm, tools=ALL_TOOLS, system_prompt=system_prompt)
+        agent = create_agent(llm, tools=tools, system_prompt=system_prompt)
         return agent, system_prompt, root, llm
     except Exception:
         pass
 
     from langgraph.prebuilt import create_react_agent
 
-    agent = create_react_agent(llm, ALL_TOOLS, prompt=system_prompt)
+    agent = create_react_agent(llm, tools, prompt=system_prompt)
     return agent, system_prompt, root, llm

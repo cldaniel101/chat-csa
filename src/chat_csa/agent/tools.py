@@ -157,7 +157,59 @@ def bash(command: str, timeout: int = 30) -> str:
         return f"Error: {e}"
 
 
+@tool
+def web_csa_fetch(url: str, refresh: bool = False, extract_text: bool = False) -> str:
+    """Baixa uma página do portal CSA/UEFS (somente leitura, allowlist csa.uefs.br).
+
+    Converte HTML em texto limpo; JSON vem cru; binários (PDF/DOCX) são salvos
+    em .cache/csa-web/bin/. Com extract_text=True, PDFs têm o texto extraído
+    (pdftotext) e retornado no campo 'text' — use para ler listas de aprovados,
+    editais e cronogramas. Respeita rate-limit estrutural (~3s entre requests,
+    backoff em 429/5xx) e cache TTL de 1h.
+
+    Args:
+        url: URL completa no domínio https://csa.uefs.br.
+        refresh: se True, ignora o cache e refaz a requisição.
+        extract_text: se True e o conteúdo for PDF, extrai o texto do arquivo.
+    """
+    from ..csa_portal import fetch_page
+
+    try:
+        import json as _json
+        return _json.dumps(fetch_page(url, refresh=refresh, extract_text=extract_text), ensure_ascii=False)
+    except Exception as e:
+        return f"Error: {e}"
+
+
+@tool
+def web_csa_search(query: str = "", categoria: str = "", since: str = "", limit: int = 20) -> str:
+    """Busca estruturada no catálogo do portal CSA/UEFS (somente leitura).
+
+    Consulta os endpoints JSON getMenu/getSelecoesAtualizacoes: filtra seleções
+    e itens de menu por palavra-chave/categoria e retorna atualizações desde
+    uma data (diff incremental para ingestão). Registros compactos com URL
+    para citação.
+
+    Args:
+        query: palavra-chave para filtrar títulos (opcional).
+        categoria: filtra pela categoria da seleção, ex.: SiSU (opcional).
+        since: data ISO YYYY-MM-DD; retorna só atualizações posteriores (opcional).
+        limit: máximo de registros retornados (padrão 20).
+    """
+    from ..csa_portal import search_portal
+
+    try:
+        import json as _json
+        return _json.dumps(
+            search_portal(query=query, categoria=categoria, since=since, limit=limit),
+            ensure_ascii=False,
+        )
+    except Exception as e:
+        return f"Error: {e}"
+
+
 ALL_TOOLS = [read, write, edit, bash]
+CSA_TOOLS = [web_csa_fetch, web_csa_search]
 
 # Para agentes que preferem consulta por dict
 TOOL_MAP = {t.name: t for t in ALL_TOOLS}
