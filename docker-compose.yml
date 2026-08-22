@@ -1,0 +1,52 @@
+services:
+  ingester:
+    build: .
+    ports:
+      - "${INGESTER_PORT:-8001}:8000"
+    environment:
+      AGENT_CONFIG_DIR: "${INGESTER_CONFIG_DIR:-.ingester}"
+      LLM_PROVIDER: "${INGESTER_LLM_PROVIDER:-${LLM_PROVIDER:-ollama}}"
+      LLM_MODEL: "${INGESTER_LLM_MODEL:-${LLM_MODEL:-llama3.2}}"
+      OLLAMA_BASE_URL: "${OLLAMA_BASE_URL:-http://host.docker.internal:11434}"
+      OLLAMA_MODEL: "${OLLAMA_MODEL:-${LLM_MODEL:-llama3.2}}"
+      OPENAI_API_KEY: "${INGESTER_OPENAI_API_KEY:-${OPENAI_API_KEY:-}}"
+      OPENAI_BASE_URL: "${OPENAI_BASE_URL:-}"
+      HOST: "${INGESTER_HOST:-0.0.0.0}"
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./knowledge:/app/knowledge
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "${FRONTEND_PORT:-5173}:80"
+    depends_on:
+      - ingester
+      - consumer
+    environment:
+      VITE_INGESTER_URL: "http://localhost:${INGESTER_PORT:-8001}"
+      VITE_CONSUMER_URL: "http://localhost:${CONSUMER_PORT:-8002}"
+    restart: unless-stopped
+
+  consumer:
+    build: .
+    ports:
+      - "${CONSUMER_PORT:-8002}:8000"
+    environment:
+      AGENT_CONFIG_DIR: "${CONSUMER_CONFIG_DIR:-.consumer}"
+      LLM_PROVIDER: "${CONSUMER_LLM_PROVIDER:-${LLM_PROVIDER:-ollama}}"
+      LLM_MODEL: "${CONSUMER_LLM_MODEL:-${LLM_MODEL:-llama3.2}}"
+      OLLAMA_BASE_URL: "${OLLAMA_BASE_URL:-http://host.docker.internal:11434}"
+      OLLAMA_MODEL: "${OLLAMA_MODEL:-${LLM_MODEL:-llama3.2}}"
+      OPENAI_API_KEY: "${CONSUMER_OPENAI_API_KEY:-${OPENAI_API_KEY:-}}"
+      OPENAI_BASE_URL: "${OPENAI_BASE_URL:-}"
+      HOST: "${CONSUMER_HOST:-0.0.0.0}"
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./knowledge:/app/knowledge
+    restart: unless-stopped
