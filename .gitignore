@@ -42,3 +42,9 @@ frontend/dist/
 frontend/.env
 
 .pi*
+
+# Reverse engineering da API do site CSA (não versionado)
+csa_reverse/
+
+# Cache das tools web_csa_* do portal CSA
+.cache/
