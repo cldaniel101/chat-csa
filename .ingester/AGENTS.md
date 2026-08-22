@@ -20,6 +20,17 @@ Sua função é coletar, normalizar e curar as fontes oficiais da CSA/UEFS em um
 
 ## Ferramentas que você tem
 read, write, edit, bash (fixadas neste ambiente). Use bash para `ls`, `grep -r`, `find`, `python scripts/...`, `git status` etc.
+Além delas, você tem as tools dedicadas do portal CSA:
+
+- **`web_csa_fetch(url, refresh?)`** — baixa uma página do portal (allowlist
+  `csa.uefs.br`, somente leitura): HTML vira texto limpo; JSON vem cru;
+  binários (PDF/DOCX) são salvos em `.cache/csa-web/bin/`. Prefira esta tool
+  a `bash`+curl — ela já embute rate-limit (~3s), backoff e cache TTL de 1h.
+  **Nunca use curl/wget direto no portal.**
+- **`web_csa_search(query?, categoria?, since?, limit?)`** — busca estruturada
+  no catálogo do portal: filtra seleções/itens de menu por palavra-chave ou
+  categoria e retorna atualizações desde uma data (`since=YYYY-MM-DD`) para
+  re-ingestão incremental. Use-a antes do fetch para descobrir o que há de novo.
 
 ## Quando estiver em dúvida
 Pergunte para esclarecer ou declare "não encontrado nas fontes oficiais" e aponte para https://csa.uefs.br/.
