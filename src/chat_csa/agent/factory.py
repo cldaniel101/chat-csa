@@ -32,10 +32,22 @@ def get_llm(
     elif provider == "ollama":
         from langchain_ollama import ChatOllama
 
+        # Ollama Cloud exige token Bearer; Ollama local ignora headers extras.
+        # A versão instalada do langchain-ollama não tem parâmetro api_key,
+        # então o header vai via client_kwargs (cliente sync e async).
+        extra: dict = {}
+        if os.getenv("OLLAMA_API_KEY"):
+            headers = {"Authorization": f"Bearer {os.getenv('OLLAMA_API_KEY')}"}
+            extra = {
+                "client_kwargs": {"headers": headers},
+                "async_client_kwargs": {"headers": headers},
+            }
+
         return ChatOllama(
             model=model or os.getenv("OLLAMA_MODEL", "llama3.2"),
             temperature=temperature,
             base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
+            **extra,
         )
     elif provider == "fake":
         # para testes/CI sem LLM — precisa de suporte a bind_tools
