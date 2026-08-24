@@ -50,3 +50,4 @@ csa_reverse/
 .cache/
 .vercel
 .env*
+!frontend/.env.production
