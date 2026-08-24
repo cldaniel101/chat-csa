@@ -1,0 +1,13 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "builds": [
+    {
+      "src": "api/index.py",
+      "use": "@vercel/python",
+      "config": {
+        "includeFiles": ["src/chat_csa/**", ".ingester/**"]
+      }
+    }
+  ],
+  "rewrites": [{ "source": "/(.*)", "destination": "/api/index.py" }]
+}
