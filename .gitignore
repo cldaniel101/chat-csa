@@ -48,6 +48,9 @@ csa_reverse/
 
 # Cache das tools web_csa_* do portal CSA
 .cache/
+
+# Artefatos de sessão do playwright-cli
+.playwright-cli/
 .vercel
 .env*
 !frontend/.env.production
