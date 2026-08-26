@@ -3,6 +3,7 @@
 **Status:** Proposta em rascunho — substitui o fluxo RAG de `README.md:93-126`  
 **Autor:** Davi Macêdo Gomes (+ equipe Chat CSA)  
 **Data:** 2026-08-21  
+**Atualização:** 2026-08-26 — Estrutura inicial do bundle OKF criada em `knowledge/` com ~25 conceitos (editais, cronogramas, procedimentos, modalidades, FAQs). Conteúdo gerado como placeholder realista, pendente revisão humana.  
 **Decide:** Arquitetura de recuperação e representação de conhecimento  
 **Relacionado:** `README.md` (assistente SISU/UEFS, CSA/UEFS como fonte da verdade)
 
