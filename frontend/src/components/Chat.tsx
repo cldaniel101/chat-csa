@@ -1,11 +1,30 @@
 import { useEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
 import { useSearchParams, Link } from "react-router-dom";
+import remarkGfm from "remark-gfm";
 import { chatCompletion } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import type { AgentId } from "../api/client";
 import { getAgentUrl } from "../api/client";
 
 type Msg = { role: "user" | "assistant"; content: string };
+
+function MarkdownMessage({ content }: { content: string }) {
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={{
+        a: ({ children, href }) => (
+          <a href={href} target="_blank" rel="noreferrer">
+            {children}
+          </a>
+        ),
+      }}
+    >
+      {content}
+    </ReactMarkdown>
+  );
+}
 
 export default function Chat() {
   const [search, setSearch] = useSearchParams();
@@ -86,7 +105,7 @@ export default function Chat() {
         )}
         {messages.map((m, i) => (
           <div key={i} className={`bubble ${m.role === "user" ? "user" : "bot"}`}>
-            {m.content}
+            {m.role === "assistant" ? <MarkdownMessage content={m.content} /> : m.content}
           </div>
         ))}
         {loading && <div className="bubble bot">…</div>}

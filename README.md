@@ -283,6 +283,31 @@ ollama serve  # default http://localhost:11434
 # then make run-both reads OLLAMA_BASE_URL from .env
 ```
 
+### Extração de texto de PDFs
+
+`web_csa_fetch(url_pdf, extract_text=True)` baixa o PDF oficial para
+`.cache/csa-web/bin/` e retorna `path`, `size_bytes`, `content_type` e
+`fetched_at`. Quando a leitura funciona, o campo `text` contém o texto
+extraído. Quando falha, o campo `text_error` explica a causa; nesse caso o
+agente deve informar a limitação e não afirmar conteúdo interno do PDF.
+
+A extração tenta `pdftotext` primeiro e usa `pypdf` como fallback Python.
+`pypdf` é instalado junto com as dependências do projeto (`uv sync` ou
+`pip install .`). Para melhorar a fidelidade de layout localmente, instale
+também o Poppler:
+
+```bash
+# Debian/Ubuntu
+sudo apt-get install poppler-utils
+
+# macOS
+brew install poppler
+```
+
+No Windows, instale uma distribuição do Poppler e adicione a pasta que contém
+`pdftotext.exe` ao `PATH`. A imagem Docker do projeto já inclui
+`poppler-utils`.
+
 ### Docker (no uv needed)
 
 ```bash

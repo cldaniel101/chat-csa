@@ -54,3 +54,6 @@ csa_reverse/
 .vercel
 .env*
 !frontend/.env.production
+
+cards*.json
+cards*.md
