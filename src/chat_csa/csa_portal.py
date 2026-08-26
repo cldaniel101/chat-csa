@@ -40,6 +40,16 @@ CACHE_TTL_S = float(__import__("os").getenv("CSA_CACHE_TTL_S", "3600"))
 MAX_BACKOFF_S = 60.0
 USER_AGENT = "chat-csa-ingester/1.0 (projeto de extensao UEFS; leitura apenas)"
 
+# Segmentos de URL que indicam documento oficial (edital, resultado final, matrícula)
+_OFFICIAL_URL_SEGMENTS = (
+    "/edital",
+    "/downloads",
+    "/resultado_final",
+    "/matricula",
+    "/regulamento",
+    "/convocacao",
+)
+
 _lock = threading.Lock()
 _last_request_ts = 0.0
 
@@ -271,6 +281,32 @@ def _extract_pdf_text(pdf_path: Path) -> str:
     raise RuntimeError("Falha ao extrair texto do PDF. Tentativas: " + "; ".join(errors))
 
 
+def _count_pdf_pages_with_text(pdf_path: Path) -> int | None:
+    """Retorna a quantidade de páginas com texto extraível via pypdf.
+
+    Retorna None se pypdf não estiver disponível ou a leitura falhar.
+    Usado apenas para preencher o campo ``pages_extracted`` nos metadados.
+    """
+    try:
+        from pypdf import PdfReader
+
+        reader = PdfReader(str(pdf_path))
+        return sum(1 for p in reader.pages if (p.extract_text() or "").strip())
+    except Exception:
+        return None
+
+
+def _is_official_url(url: str) -> bool:
+    """Infere se a URL aponta para um documento oficial (edital, resultado, matrícula).
+
+    A heurística é baseada em segmentos de caminho comuns no portal csa.uefs.br.
+    Não substitui julgamento humano, mas permite que o agente diferencie
+    fontes primárias (edital, convocação) de páginas informativas genéricas.
+    """
+    lower = url.lower()
+    return any(seg in lower for seg in _OFFICIAL_URL_SEGMENTS)
+
+
 def _filename_from_response(url: str, headers: httpx.Headers | dict, is_pdf: bool) -> str:
     """Escolhe um nome estável para salvar o download em cache/bin."""
     content_disposition = headers.get("Content-Disposition", "")
@@ -296,6 +332,16 @@ def fetch_page(url: str, refresh: bool = False, extract_text: bool = False) -> d
 
     HTML é convertido para texto limpo; binários (PDF/DOCX...) são salvos
     em disco sob CACHE_DIR/bin/ e retornados via campo 'path'.
+
+    Campos retornados (todos os tipos):
+    - url, fetched_at, content_type, is_official  (sempre presentes)
+    - source_type: "pdf" | "html" | "json" | "binary"
+    - cached, truncated, chars, content  (HTML/JSON)
+    - path, size_bytes, title            (binários)
+    - text                               (PDF com extração concluída)
+    - text_error                         (PDF com falha de extração)
+    - pdf_extraction_status              ("completed" | "partial" | "failed") — apenas PDF com extract_text=True
+    - pages_extracted                    (int) — apenas PDF com pypdf bem-sucedido
     """
     _assert_allowed(url)
 
@@ -309,7 +355,13 @@ def fetch_page(url: str, refresh: bool = False, extract_text: bool = False) -> d
         resp = _request_with_backoff(client, url)
 
     if resp.status_code != 200:
-        return {"url": url, "error": f"HTTP {resp.status_code}", "fetched_at": _now_iso()}
+        return {
+            "url": url,
+            "error": f"HTTP {resp.status_code}",
+            "fetched_at": _now_iso(),
+            "is_official": _is_official_url(url),
+            "source_type": "html",
+        }
     content_type = resp.headers.get("Content-Type", "")
     if "html" in content_type.lower() or "json" in content_type.lower():
         text = html_to_text(resp.text, base_url=url) if "html" in content_type.lower() else resp.text
@@ -323,22 +375,35 @@ def fetch_page(url: str, refresh: bool = False, extract_text: bool = False) -> d
     name = _filename_from_response(url, resp.headers, is_pdf=is_pdf)
     dest = bin_dir / name
     dest.write_bytes(resp.content)
-    result = {
+    result: dict = {
         "url": url,
         "title": name,
         "fetched_at": _now_iso(),
         "content_type": content_type,
+        "source_type": "pdf" if is_pdf else "binary",
+        "is_official": _is_official_url(url),
         "path": str(dest),
         "size_bytes": len(resp.content),
     }
     if extract_text and is_pdf:
         # Extração de texto embutida apenas para PDF.
         try:
-            result["text"] = _extract_pdf_text(dest)
+            extracted = _extract_pdf_text(dest)
+            result["text"] = extracted
+            # Status: completo quando há conteúdo substantivo (≥50 chars)
+            if len(extracted.strip()) >= 50:  # noqa: PLR2004
+                result["pdf_extraction_status"] = "completed"
+                pages = _count_pdf_pages_with_text(dest)
+                if pages is not None:
+                    result["pages_extracted"] = pages
+            else:
+                result["pdf_extraction_status"] = "partial"
         except Exception as e:
             result["text_error"] = str(e)
+            result["pdf_extraction_status"] = "failed"
     elif extract_text:
         result["text_error"] = "extração de texto disponível apenas para PDF"
+        result["pdf_extraction_status"] = "failed"
     return result
 
 
@@ -351,11 +416,21 @@ def _build_result(url: str, content_type: str, body: str, cached: bool = False) 
     if len(content) > max_chars:
         content = content[:max_chars]
         truncated = True
+    # Determina source_type pelo Content-Type
+    lower_ct = content_type.lower()
+    if "html" in lower_ct:
+        source_type = "html"
+    elif "json" in lower_ct:
+        source_type = "json"
+    else:
+        source_type = "binary"
     return {
         "url": url,
         "title": first_line,
         "fetched_at": _now_iso(),
         "content_type": content_type,
+        "source_type": source_type,
+        "is_official": _is_official_url(url),
         "cached": cached,
         "truncated": truncated,
         "chars": len(content),
