@@ -24,7 +24,6 @@ Thumbs.db
 data/raw/
 data/bm25.db
 data/*.db
-# knowledge/ é versionado (base OKF curada do Chat CSA)
 
 # IDE
 .vscode/

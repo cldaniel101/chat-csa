@@ -120,6 +120,41 @@ O projeto deverá contemplar dúvidas relacionadas ao processo SISU/UEFS, inclui
 
 Assuntos que não estejam documentados nas fontes oficiais utilizadas pelo sistema deverão ser tratados com cautela, evitando inferências apresentadas como fatos.
 
+## 📖 Base de Conhecimento (Knowledge)
+
+A base de conhecimento do Chat CSA é um conjunto de arquivos Markdown curados no formato **OKF (Open Knowledge Format)**, organizados na pasta `knowledge/` na raiz do repositório. Ela é a **fonte única da verdade** usada pelo agente consumer para responder perguntas.
+
+**Para obter a base funcional, basta clonar o repositório:**
+
+```bash
+git clone https://github.com/cldaniel101/chat-csa.git
+# A pasta knowledge/ já vem incluída com os conceitos curados
+```
+
+Não é necessário executar scripts extras, downloads ou configurações adicionais para ter acesso à base mínima.
+
+### Estrutura
+
+```text
+knowledge/
+├── index.md                    # Índice raiz — categorias e convenções
+├── log.md                      # Registro cronológico de alterações
+├── editais/                    # Documentos normativos oficiais
+├── cronogramas/                # Datas e prazos do processo seletivo
+├── procedimentos/              # Passos para inscrição, matrícula, etc.
+├── modalidades/                # Regras de concorrência e cotas
+└── perguntas-frequentes/       # FAQs curadas a partir das fontes oficiais
+```
+
+### Convenções
+
+- Cada conceito possui **frontmatter YAML** com `type`, `title`, `description`, `resource` (URL oficial), `tags` e `timestamp`.
+- Índices (`index.md`) não possuem frontmatter — servem para navegação.
+- Cross-links usam caminhos relativos dentro do bundle.
+- Toda alteração é rastreada via Git (`git blame`, `git log`) e registrada em `knowledge/log.md`.
+
+> **Decisão arquitetural:** A base é versionada diretamente no repositório para garantir auditabilidade, reprodutibilidade e onboarding instantâneo. Veja detalhes em [`docs/adr/001-versionamento-base-conhecimento.md`](docs/adr/001-versionamento-base-conhecimento.md).
+
 ## 🛠️ Etapas do projeto
 
 O desenvolvimento pode ser dividido nas seguintes etapas:
