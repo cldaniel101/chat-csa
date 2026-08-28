@@ -137,10 +137,11 @@ def validate_agent_response(question: str, response_text: str, read_urls: set[st
     
     for url in cleaned_cited:
         if "csa.uefs.br" in url:
-            # Encontra se a url citada (ou parte base dela) está nas URLs efetivamente lidas
             base_url = url.split("#")[0]
             if not any(base_url in r.split("#")[0] for r in read_urls):
-                return f"[Erro de Validação] A resposta foi bloqueada porque citou uma URL não lida ou inexistente ({url}). Consulte o portal https://csa.uefs.br/."
+                # Hotfix protótipo: só bloqueia se for pergunta sensível; caso contrário permite (knowledge/ será refeito depois)
+                if sensitive:
+                    return f"[Erro de Validação] A resposta foi bloqueada porque citou uma URL não lida ou inexistente ({url}). Consulte o portal https://csa.uefs.br/."
     
     return None
 
