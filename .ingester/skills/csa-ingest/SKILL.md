@@ -1,6 +1,6 @@
 ---
 name: csa-ingest
-description: Ingesta fontes oficiais da CSA/UEFS em um bundle OKF + índice BM25
+description: Ingesta fontes oficiais da CSA/UEFS em um bundle OKF
 allowed-tools: read write edit bash
 ---
 
@@ -25,8 +25,7 @@ Ajude o usuário a ingerir e curar fontes da CSA/UEFS.
    ```
    Corpo: `# Contexto`, `# Conteúdo`, `# Citations` (URLs externas).
 4. **Validar**: `bash("python scripts/validate_okf.py knowledge 2>&1 | head -n 100")` ou checagens manuais.
-5. **Indexar**: `bash("python scripts/build_index.py --bundle knowledge --out data/bm25.db 2>&1")`
-6. **Registrar**: `edit("knowledge/log.md", oldText, newText)` com uma entrada datada.
+5. **Registrar**: `edit("knowledge/log.md", oldText, newText)` com uma entrada datada.
 
 ## Convenções
 
@@ -38,5 +37,5 @@ Ajude o usuário a ingerir e curar fontes da CSA/UEFS.
 ## Exemplos de prompts
 
 - "Ingesta o edital mais recente de https://csa.uefs.br/index.php/sisu261/editais"
-- "Reconstrua o índice BM25 e mostre os top 3 hits para 'documentos matrícula'"
+- "Valide o bundle OKF e liste conceitos sobre 'documentos matrícula'"
 - "Valide o bundle OKF e corrija links quebrados"

@@ -1,6 +1,6 @@
 ---
 name: ingester-incremental-ingest
-description: Ingestão incremental das fontes do portal CSA por data — descobre novidades, baixa e atualiza o bundle OKF/BM25
+description: Ingestão incremental das fontes do portal CSA por data — descobre novidades, baixa e atualiza o bundle OKF
 allowed-tools: read write edit bash web_csa_fetch web_csa_search
 ---
 
@@ -24,8 +24,7 @@ Use para trazer o bundle em dia sem re-ingestão completa.
    - Snapshot cru: `bash("mkdir -p data/raw/2026-08-22 && ...")` com URL+timestamp.
    - Conceito OKF: `write("knowledge/<tema>/<slug>.md", ...)` com frontmatter
      YAML (`type`, `title`, `description`, `resource`, `tags`, `timestamp`).
-5. Reconstruir índice BM25 (`data/bm25.db`) conforme skill `csa-ingest`.
-6. Registrar no log:
+5. Registrar no log:
 
 ```markdown
 ## 2026-08-22
