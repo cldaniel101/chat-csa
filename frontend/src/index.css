@@ -1,29 +1,35 @@
 /*
- * Tokens do design system — extraídos de docs/DESIGN.md (portal CSA/UEFS).
- * Fonte da verdade: frontmatter YAML de docs/DESIGN.md.
+ * Tokens do design system do widget CSA.
  */
 @import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&family=Lato:wght@400;600&display=swap');
 
 :root {
+  /* Identidade principal CSA */
+  --csa-pink: #ee5983;
+  --csa-magenta: #a11284;
+  --csa-pink-surface: #efcfe4;
+  --csa-page-background: #f5f5f5cc;
+  --csa-white: #ffffff;
+  --csa-text: #191919;
+  --csa-yellow: #ffd15c;
+
   /* Cores */
-  --c-primary: #ff7300;
-  --c-primary-hover: #e86800;
-  --c-secondary: #589c36;
-  --c-tertiary: #2d7fef;
-  --c-neutral: #f4f4f2;
-  --c-surface: #ffffff;
-  --c-on-surface: #444444;
-  --c-on-primary: #ffffff;
-  /* Texto sobre superfícies laranja — branco falha WCAG AA (2.73:1);
-     marrom-escuro garante contraste >= 4.5:1 */
-  --c-on-accent: #472800;
-  --c-muted: #909090;
+  --c-primary: var(--csa-magenta);
+  --c-primary-hover: var(--csa-pink);
+  --c-secondary: var(--csa-pink);
+  --c-tertiary: var(--csa-yellow);
+  --c-neutral: var(--csa-page-background);
+  --c-surface: var(--csa-white);
+  --c-on-surface: var(--csa-text);
+  --c-on-primary: var(--csa-white);
+  --c-on-accent: var(--csa-white);
+  --c-muted: #6f6f6f;
   --c-border: #dddcdc;
-  --c-border-strong: #d4d0c8;
-  --c-success: #63af1b;
-  --c-warning: #f2b100;
+  --c-border-strong: #d8bed1;
+  --c-success: var(--csa-yellow);
+  --c-warning: var(--csa-yellow);
   --c-error: #b31717;
-  --c-link: #393939;
+  --c-link: var(--csa-magenta);
 
   /* Tipografia */
   --font-body: 'Open Sans', Georgia, Verdana, Helvetica, sans-serif;
@@ -35,34 +41,42 @@
   --radius-lg: 6px;
   --radius-full: 9999px;
 
-  /* Espaçamento */
+  /* Espacamento */
   --sp-xs: 4px;
   --sp-sm: 8px;
   --sp-md: 16px;
   --sp-lg: 20px;
   --sp-xl: 30px;
 
-  /* Elevação (sombras suaves do portal) */
+  /* Elevacao */
   --shadow-soft: 0 0 4px #e1dfd8;
-  --shadow-focus: 0 0 2px #aaa;
+  --shadow-focus: 0 0 0 3px rgb(238 89 131 / 22%);
 
   /* Aliases usados pelos componentes */
-  --bg: var(--c-neutral);
+  --bg: var(--csa-page-background);
   --surface: var(--c-surface);
   --surface-2: #f8f8f6;
   --border: var(--c-border);
   --text: var(--c-on-surface);
   --muted: var(--c-muted);
-  --accent: var(--c-primary);
-  --accent-hover: var(--c-primary-hover);
-  --accent-soft: rgba(255, 115, 0, 0.1);
+  --accent: var(--csa-magenta);
+  --accent-hover: var(--csa-pink);
+  --accent-soft: rgb(238 89 131 / 12%);
   --success: var(--c-success);
   --radius: var(--radius-lg);
   --sans: var(--font-body);
 }
 
-* { box-sizing: border-box; }
-html, body, #root { height: 100%; }
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
 body {
   margin: 0;
   font-family: var(--sans);
@@ -72,11 +86,33 @@ body {
   color: var(--text);
   -webkit-font-smoothing: antialiased;
 }
-a { color: var(--c-link); text-decoration: none; }
-a:hover { color: var(--accent); }
-button, input, textarea, select { font: inherit; }
 
-/* scrollbar */
-*::-webkit-scrollbar { width: 6px; height: 6px; }
-*::-webkit-scrollbar-thumb { background: #c9c7c0; border-radius: var(--radius-full); }
-*::-webkit-scrollbar-track { background: transparent; }
+a {
+  color: var(--c-link);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--accent-hover);
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: #d8bed1;
+  border-radius: var(--radius-full);
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
