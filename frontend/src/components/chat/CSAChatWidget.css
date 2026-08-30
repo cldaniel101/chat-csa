@@ -351,6 +351,15 @@
   text-underline-offset: 2px;
 }
 
+.csa-chat-citation {
+  margin-left: 1px;
+  color: var(--csa-magenta);
+  font-size: 0.72em;
+  font-weight: 700;
+  line-height: 0;
+  vertical-align: super;
+}
+
 .csa-chat-message code {
   padding: 1px 4px;
   border: 1px solid rgb(238 89 131 / 28%);
@@ -373,6 +382,71 @@
   padding: 0;
   border: 0;
   background: transparent;
+}
+
+.csa-chat-sources {
+  margin-top: 12px;
+  padding: 9px 10px;
+  border: 1px solid rgb(161 18 132 / 14%);
+  border-left: 3px solid var(--csa-pink);
+  border-radius: var(--radius-md);
+  background: rgb(255 255 255 / 68%);
+  color: #68445d;
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.csa-chat-sources h4 {
+  margin: 0 0 6px;
+  color: var(--csa-magenta);
+  font-size: 10.5px;
+  font-style: normal;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.csa-chat-source-list {
+  display: grid;
+  gap: 6px;
+}
+
+.csa-chat-source-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 5px;
+  align-items: start;
+}
+
+.csa-chat-source-index {
+  color: var(--csa-magenta);
+  font-size: 0.8em;
+  font-weight: 700;
+  line-height: 1;
+  vertical-align: super;
+}
+
+.csa-chat-source-copy {
+  min-width: 0;
+  font-style: italic;
+}
+
+.csa-chat-source-copy p {
+  margin: 0;
+}
+
+.csa-chat-source-copy a {
+  color: var(--csa-magenta);
+  font-style: normal;
+  font-weight: 600;
+}
+
+.csa-chat-sources-note {
+  margin: 8px 0 0;
+  color: #7b4f69;
+  font-size: 11px;
+  font-style: italic;
 }
 
 .csa-chat-status {

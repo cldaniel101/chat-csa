@@ -8,12 +8,14 @@ import type { AppendMessage } from "@assistant-ui/react";
 import { BsStars } from "react-icons/bs";
 import { ChevronDown, Send } from "lucide-react";
 import {
+  Children,
   useCallback,
   useEffect,
   useRef,
   useState,
   type FormEvent,
   type KeyboardEvent,
+  type ReactNode,
 } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -37,6 +39,11 @@ type CSAChatWidgetProps = {
   isAuthenticated?: boolean;
 };
 
+type SourceEntry = {
+  id: string;
+  text: string;
+};
+
 function getTextContent(message: AppendMessage) {
   return message.content
     .filter((part) => part.type === "text")
@@ -45,20 +52,154 @@ function getTextContent(message: AppendMessage) {
     .trim();
 }
 
-function MarkdownMessage({ content }: { content: string }) {
+const CITATION_PATTERN = /\[(\d+)\]/g;
+const SOURCES_HEADING_PATTERN =
+  /(?:^|\n)\s*(?:#{1,6}\s*)?(?:\*\*|__)?fontes?\s*:(?:\*\*|__)?/i;
+const OFFICIAL_NOTICE_PATTERN =
+  /\s*(Em caso de diverg[êe]ncia,\s+prevalece o edital oficial\.?)\s*$/i;
+const SOURCE_ENTRY_PATTERN = /\[(\d+)\]\s*([\s\S]*?)(?=\s*\[\d+\]\s|$)/g;
+
+function renderCitationText(text: string): ReactNode {
+  const parts: ReactNode[] = [];
+  let lastIndex = 0;
+
+  for (const match of text.matchAll(CITATION_PATTERN)) {
+    const index = match.index ?? 0;
+    const label = match[0];
+
+    if (index > lastIndex) {
+      parts.push(text.slice(lastIndex, index));
+    }
+
+    parts.push(
+      <sup className="csa-chat-citation" key={`${label}-${index}`}>
+        {label}
+      </sup>,
+    );
+    lastIndex = index + label.length;
+  }
+
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex));
+  }
+
+  return parts.length > 0 ? parts : text;
+}
+
+function renderMarkdownChildren(children: ReactNode): ReactNode {
+  return Children.map(children, (child) => {
+    if (typeof child === "string") {
+      return renderCitationText(child);
+    }
+
+    return child;
+  });
+}
+
+function splitMessageSections(content: string) {
+  const match = SOURCES_HEADING_PATTERN.exec(content);
+
+  if (!match) {
+    return { answer: content.trim(), sources: "" };
+  }
+
+  return {
+    answer: content.slice(0, match.index).trim(),
+    sources: content.slice(match.index + match[0].length).trim(),
+  };
+}
+
+function splitSourcesNotice(sources: string) {
+  const match = OFFICIAL_NOTICE_PATTERN.exec(sources);
+
+  if (!match) {
+    return { references: sources.trim(), notice: "" };
+  }
+
+  return {
+    references: sources.slice(0, match.index).trim(),
+    notice: match[1].trim(),
+  };
+}
+
+function parseSourceEntries(sources: string): SourceEntry[] {
+  return Array.from(sources.matchAll(SOURCE_ENTRY_PATTERN), (match) => ({
+    id: match[1],
+    text: match[2].trim(),
+  })).filter((entry) => entry.text.length > 0);
+}
+
+const markdownComponents = {
+  a: ({ children, href }: { children?: ReactNode; href?: string }) => (
+    <a href={href} target="_blank" rel="noreferrer">
+      {children}
+    </a>
+  ),
+  p: ({ children }: { children?: ReactNode }) => (
+    <p>{renderMarkdownChildren(children)}</p>
+  ),
+  li: ({ children }: { children?: ReactNode }) => (
+    <li>{renderMarkdownChildren(children)}</li>
+  ),
+  strong: ({ children }: { children?: ReactNode }) => (
+    <strong>{renderMarkdownChildren(children)}</strong>
+  ),
+  em: ({ children }: { children?: ReactNode }) => (
+    <em>{renderMarkdownChildren(children)}</em>
+  ),
+};
+
+function SourcesBlock({ content }: { content: string }) {
+  const { references, notice } = splitSourcesNotice(content);
+  const entries = parseSourceEntries(references);
+
+  if (!references && !notice) {
+    return null;
+  }
+
   return (
-    <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
-      components={{
-        a: ({ children, href }) => (
-          <a href={href} target="_blank" rel="noreferrer">
-            {children}
-          </a>
-        ),
-      }}
-    >
-      {content}
-    </ReactMarkdown>
+    <section className="csa-chat-sources" aria-label="Fontes consultadas">
+      {references && <h4>Fontes</h4>}
+      {entries.length > 0 ? (
+        <div className="csa-chat-source-list">
+          {entries.map((entry) => (
+            <div className="csa-chat-source-item" key={entry.id}>
+              <sup className="csa-chat-source-index">[{entry.id}]</sup>
+              <div className="csa-chat-source-copy">
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  components={markdownComponents}
+                >
+                  {entry.text}
+                </ReactMarkdown>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="csa-chat-source-copy">
+          <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+            {references}
+          </ReactMarkdown>
+        </div>
+      )}
+      {notice && <p className="csa-chat-sources-note">{notice}</p>}
+    </section>
+  );
+}
+
+function MarkdownMessage({ content }: { content: string }) {
+  const { answer, sources } = splitMessageSections(content);
+
+  return (
+    <>
+      {answer && (
+        <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+          {answer}
+        </ReactMarkdown>
+      )}
+      {sources && <SourcesBlock content={sources} />}
+    </>
   );
 }
 

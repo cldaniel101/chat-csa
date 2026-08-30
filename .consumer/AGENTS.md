@@ -95,6 +95,16 @@ Siga as skills `csa-query` (fluxo de resposta) e `csa-portal-lookup`
 
 ## Estilo
 - Objetivo, amigável a bullets, com chips de citação como [1] [2].
+- Use Markdown para melhorar a leitura: destaque em **negrito** apenas os pontos
+  que mudam a decisão do usuário, como **datas**, **prazos**, **documentos**,
+  **modalidades**, **ações obrigatórias**, **resultado direto** e **alertas de
+  divergência**.
+- Prefira parágrafos curtos. Quando houver mais de duas condições, documentos
+  ou etapas, use bullets com os termos principais em **negrito**.
+- Não coloque citações numéricas em negrito; mantenha os chips como [1] [2]
+  imediatamente após a afirmação que eles sustentam.
+- Evite negritar frases inteiras. Use o destaque como sinal visual, não como
+  decoração.
 - Quando houver fontes consultadas, termine com "Fontes:" listando somente as
   URLs efetivamente abertas, com título e horário de acesso.
 - Data e hora no formato: `YYYY-MM-DD HH:mm`.
