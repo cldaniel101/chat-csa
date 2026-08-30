@@ -152,7 +152,61 @@ def _extract_read_urls(messages: list) -> set[str]:
                     if url:
                         urls.add(url.strip())
     return urls
+
+
 _CITED_URL_RE = re.compile(r"https?://[^\s)]+")
+_LEADING_RESPONSE_LABEL_RE = re.compile(
+    r"^\s*(?:#{1,6}\s*)?(?:\*\*|__)?resposta\s*:(?:\*\*|__)?\s*",
+    re.IGNORECASE,
+)
+_SOURCES_SECTION_RE = re.compile(
+    r"\n\s*(?:#{1,6}\s*)?(?:\*\*|__)?fontes?\s*:(?:\*\*|__)?[\s\S]*$",
+    re.IGNORECASE,
+)
+_INLINE_CITATION_RE = re.compile(r"\s*\[\d+\]")
+_OFFICIAL_NOTICE_RE = re.compile(
+    r"^\s*Em caso de divergência, prevalece o edital oficial\.?\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+_CONVERSATIONAL_RE = re.compile(
+    r"^(?:oi+|ol[aá]+|opa+|e\s+a[ií]|bom\s+dia|boa\s+tarde|boa\s+noite|"
+    r"tudo\s+bem|como\s+vai|obrigad[oa]|valeu|beleza|entendi|tchau|at[eé]\s+mais)"
+    r"[!,.?\s]*$",
+    re.IGNORECASE,
+)
+
+
+def _is_conversational(text: str) -> bool:
+    """Identifica mensagens sociais curtas que não exigem consulta a fontes."""
+    return bool(_CONVERSATIONAL_RE.fullmatch(text.strip()))
+
+
+def _has_source_lookup(messages: list) -> bool:
+    """Informa se o agente realmente abriu uma fonte local ou remota."""
+    for message in messages:
+        tool_calls = (
+            message.get("tool_calls", [])
+            if isinstance(message, dict)
+            else getattr(message, "tool_calls", [])
+        )
+        for tool_call in tool_calls or []:
+            name = tool_call.get("name") or tool_call.get("function", {}).get("name")
+            if name in {"read", "web_csa_fetch"}:
+                return True
+    return False
+
+
+def _format_agent_response(response_text: str, *, source_was_consulted: bool) -> str:
+    """Remove rótulos artificiais e citações sem uma fonte efetivamente consultada."""
+    formatted = _LEADING_RESPONSE_LABEL_RE.sub("", response_text, count=1).strip()
+    if source_was_consulted:
+        return formatted
+
+    formatted = _SOURCES_SECTION_RE.sub("", formatted)
+    formatted = _OFFICIAL_NOTICE_RE.sub("", formatted)
+    formatted = _INLINE_CITATION_RE.sub("", formatted)
+    return formatted.strip()
+
 
 def validate_agent_response(question: str, response_text: str, read_urls: set[str]) -> str | None:
     """Valida a resposta. Retorna uma mensagem de erro controlada se falhar, ou None se passar."""
@@ -236,7 +290,7 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
 
         cached = lookup_cached_answer(last_user_msg)
         if cached is not None:
-            text = cached.to_markdown()
+            text = _format_agent_response(cached.to_markdown(), source_was_consulted=True)
             if not stream:
                 return JSONResponse(
                     {
@@ -272,13 +326,17 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
 
         lc_messages = _openai_messages_to_lc(messages, system_prompt)
 
-        force_buffer = _is_sensitive(last_user_msg)
+        force_buffer = _is_sensitive(last_user_msg) or _is_conversational(last_user_msg)
 
         if not stream or force_buffer:
             result = await agent.ainvoke({"messages": lc_messages})
-            text = _extract_text_from_agent_result(result)
+            result_messages = result.get("messages", [])
+            text = _format_agent_response(
+                _extract_text_from_agent_result(result),
+                source_was_consulted=_has_source_lookup(result_messages),
+            )
             
-            read_urls = _extract_read_urls(result.get("messages", []))
+            read_urls = _extract_read_urls(result_messages)
             err = validate_agent_response(last_user_msg, text, read_urls)
             if err:
                 text = err
@@ -366,7 +424,7 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
         last_user_msg = _last_user_message_text(messages)
         cached = lookup_cached_answer(last_user_msg)
         if cached is not None:
-            text = cached.to_markdown()
+            text = _format_agent_response(cached.to_markdown(), source_was_consulted=True)
             if not stream:
                 return JSONResponse(
                     {
@@ -396,13 +454,17 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
         agent, _, _, _ = build_agent(config_dir=config_dir)
         lc_messages = _openai_messages_to_lc(messages, system_prompt)
 
-        force_buffer = _is_sensitive(last_user_msg)
+        force_buffer = _is_sensitive(last_user_msg) or _is_conversational(last_user_msg)
 
         if not stream or force_buffer:
             result = await agent.ainvoke({"messages": lc_messages})
-            text = _extract_text_from_agent_result(result)
+            result_messages = result.get("messages", [])
+            text = _format_agent_response(
+                _extract_text_from_agent_result(result),
+                source_was_consulted=_has_source_lookup(result_messages),
+            )
             
-            read_urls = _extract_read_urls(result.get("messages", []))
+            read_urls = _extract_read_urls(result_messages)
             err = validate_agent_response(last_user_msg, text, read_urls)
             if err:
                 text = err

@@ -6,7 +6,14 @@ inseguras ou que desrespeitam regras de citação, e se permite respostas válid
 
 from langchain_core.messages import AIMessage
 
-from chat_csa.server.app import _extract_read_urls, _is_sensitive, validate_agent_response
+from chat_csa.server.app import (
+    _extract_read_urls,
+    _format_agent_response,
+    _has_source_lookup,
+    _is_conversational,
+    _is_sensitive,
+    validate_agent_response,
+)
 
 
 def test_is_sensitive():
@@ -16,6 +23,51 @@ def test_is_sensitive():
     assert _is_sensitive("Tem lista de espera?") is True
     assert _is_sensitive("Quem é o reitor?") is False
     assert _is_sensitive("Qual a cor do céu?") is False
+
+
+def test_is_conversational():
+    assert _is_conversational("Opa") is True
+    assert _is_conversational("Olá!") is True
+    assert _is_conversational("Obrigado") is True
+    assert _is_conversational("Como funciona a lista de espera?") is False
+
+
+def test_format_agent_response_remove_rotulo_resposta():
+    response = "Resposta:\nA matrícula é feita pelo SIDOC. [1]\n\nFontes:\n[1] Edital — https://csa.uefs.br/edital"
+
+    formatted = _format_agent_response(response, source_was_consulted=True)
+
+    assert formatted.startswith("A matrícula")
+    assert "Resposta:" not in formatted
+    assert "Fontes:" in formatted
+
+
+def test_format_agent_response_sem_consulta_remove_fontes_e_citacoes():
+    response = "**Resposta:** Opa! Como posso ajudar? [1]\n\nFontes:\n[1] Portal CSA — https://csa.uefs.br/"
+
+    formatted = _format_agent_response(response, source_was_consulted=False)
+
+    assert formatted == "Opa! Como posso ajudar?"
+
+
+def test_has_source_lookup_exige_fonte_aberta():
+    search_only = [
+        AIMessage(
+            content="",
+            tool_calls=[{"name": "web_csa_search", "args": {"query": "SiSU"}, "id": "t1"}],
+        )
+    ]
+    fetched = [
+        AIMessage(
+            content="",
+            tool_calls=[
+                {"name": "web_csa_fetch", "args": {"url": "https://csa.uefs.br/"}, "id": "t2"}
+            ],
+        )
+    ]
+
+    assert _has_source_lookup(search_only) is False
+    assert _has_source_lookup(fetched) is True
 
 
 def test_extract_read_urls():

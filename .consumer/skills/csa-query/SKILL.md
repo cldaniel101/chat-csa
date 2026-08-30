@@ -27,7 +27,6 @@ Pergunta: *"Quais documentos preciso para matrícula?"* →
 4. Responda extrativo:
 
 ```markdown
-Resposta:
 Para a matrícula você precisa apresentar: <trechos verbatim da fonte>
 
 Fontes:
@@ -126,6 +125,11 @@ Ao citar um PDF, inclua o status de extração ao final da referência:
 
 ## Regras gerais
 
+- Responda diretamente, sem o rótulo `Resposta:`.
+- Em saudações, agradecimentos e outras mensagens sociais curtas, não consulte
+  fontes e não inclua a seção `Fontes:`.
+- Só inclua `Fontes:` quando uma fonte tiver sido efetivamente aberta neste
+  turno com `read` ou `web_csa_fetch`.
 - Sempre cite a URL da página/PDF que você realmente leu neste turno.
 - Só afirme o que está na fonte; conflito entre fontes = dizer.
 - Nunca invente prazos, documentos ou datas.

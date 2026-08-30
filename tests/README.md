@@ -129,7 +129,7 @@ Usa **respostas simuladas** (strings) e **monkeypatch** no portal — sem LLM re
 
 | Cenário | Teste(s) | O que verifica |
 |---------|----------|----------------|
-| **1** | `test_cenario1_uma_afirmacao_uma_fonte` | Resposta com 1 afirmação tem seções `Resposta:`/`Fontes:` e 1 linha de fonte válida |
+| **1** | `test_cenario1_uma_afirmacao_uma_fonte` | Resposta direta com 1 afirmação tem seção `Fontes:` e 1 linha de fonte válida |
 | **2** | `test_cenario2_multiplas_afirmacoes_fontes_distintas` | 2 afirmações com referências `[1]` e `[2]` apontando para URLs distintas |
 | **3** | `test_cenario3_rotulo_sem_trecho_invalido` | Detecta ausência de trecho substantivo na resposta inaceitável; resposta aceitável tem trecho entre aspas |
 | **4** | `test_cenario4_fonte_oficial_com_trecho` | Fonte de edital oficial contém trecho verbatim entre aspas |
@@ -154,7 +154,6 @@ Os testes de qualidade de citação verificam que o agente produza respostas
 no seguinte formato:
 
 ```
-Resposta:
 "<trecho verbatim da fonte que sustenta a afirmação>" [N]
 
 Fontes:

@@ -40,9 +40,9 @@ def _has_fontes_section(text: str) -> bool:
     return "Fontes:" in text
 
 
-def _has_resposta_section(text: str) -> bool:
-    """Verifica se a resposta contém uma seção 'Resposta:'."""
-    return "Resposta:" in text
+def _has_resposta_label(text: str) -> bool:
+    """Verifica se a resposta começa com o rótulo artificial 'Resposta:'."""
+    return bool(re.match(r"^\s*Resposta:", text, re.IGNORECASE))
 
 
 def _count_fontes(text: str) -> int:
@@ -85,7 +85,6 @@ def _is_valid_markdown_for_frontend(text: str) -> bool:
 # ---------------------------------------------------------------------------
 
 RESP_SINGLE = """\
-Resposta:
 "O prazo para confirmação de interesse na lista de espera é de 3 dias úteis a
 partir da publicação da convocação." [1]
 
@@ -95,7 +94,6 @@ Em caso de divergência, prevalece o edital oficial.
 """
 
 RESP_MULTIPLE = """\
-Resposta:
 "A matrícula deve ser realizada presencialmente na secretaria do curso." [1]
 "Os documentos exigidos incluem RG, CPF e histórico escolar." [2]
 
@@ -106,7 +104,6 @@ Em caso de divergência, prevalece o edital oficial.
 """
 
 RESP_LABEL_ONLY = """\
-Resposta:
 Consulte a página Chamada Regular.
 
 Fontes:
@@ -114,7 +111,6 @@ Fontes:
 """
 
 RESP_OFFICIAL = """\
-Resposta:
 "Conforme o edital, item 4.3: as vagas remanescentes serão preenchidas por lista de espera." [1]
 
 Fontes:
@@ -123,7 +119,6 @@ Em caso de divergência, prevalece o edital oficial.
 """
 
 RESP_CONFLICT = """\
-Resposta:
 O edital (fonte [1]) informa prazo de 5 dias; a página informativa (fonte [2]) indica 3 dias.
 O edital prevalece: o prazo correto é de 5 dias úteis.
 
@@ -136,7 +131,6 @@ Em caso de divergência, prevalece o edital oficial.
 """
 
 RESP_WRONG_YEAR = """\
-Resposta:
 [!] Esta informação é do processo seletivo de 2025 e pode não se aplicar ao processo atual.
 "Em 2025, o prazo foi de 3 dias úteis." [1]
 
@@ -146,7 +140,6 @@ Em caso de divergência, prevalece o edital oficial.
 """
 
 RESP_NO_SOURCES = """\
-Resposta:
 [!] Não foi possível confirmar esta informação nas fontes consultadas.
 Consultei as seguintes URLs sem encontrar o trecho solicitado:
 - https://csa.uefs.br/index.php/sisu261/inicial
@@ -157,7 +150,6 @@ Nenhuma fonte com trecho verificável encontrada. Acesse https://csa.uefs.br/ pa
 """
 
 RESP_NO_AFFIRMATION = """\
-Resposta:
 [!] Não foi possível confirmar o prazo de inscrição nas fontes consultadas neste turno.
 As páginas consultadas não continham o trecho específico solicitado.
 
@@ -166,7 +158,6 @@ Fontes:
 """
 
 RESP_PTBR_SISU = """\
-Resposta:
 "Para participar da lista de espera do SISU/UEFS 2026, o candidato deve confirmar
 o interesse no período indicado no cronograma oficial." [1]
 
@@ -181,8 +172,8 @@ Em caso de divergência, prevalece o edital oficial.
 # ---------------------------------------------------------------------------
 
 def test_cenario1_uma_afirmacao_uma_fonte():
-    """Resposta com afirmação única deve ter 'Resposta:', 'Fontes:' e exatamente 1 fonte válida."""
-    assert _has_resposta_section(RESP_SINGLE)
+    """Resposta com afirmação única deve ser direta e ter exatamente uma fonte válida."""
+    assert not _has_resposta_label(RESP_SINGLE)
     assert _has_fontes_section(RESP_SINGLE)
     assert _count_fontes(RESP_SINGLE) == 1
 
@@ -433,7 +424,7 @@ def test_cenario14_perguntas_ptbr(pergunta, palavra_chave):
     # Verifica que os termos-chave típicos são detectáveis (base para busca futura)
     assert palavra_chave in pergunta.lower()
     # Verifica que a resposta simulada para SISU segue o formato correto
-    assert _has_resposta_section(RESP_PTBR_SISU)
+    assert not _has_resposta_label(RESP_PTBR_SISU)
     assert _has_fontes_section(RESP_PTBR_SISU)
     assert _count_fontes(RESP_PTBR_SISU) >= 1
 

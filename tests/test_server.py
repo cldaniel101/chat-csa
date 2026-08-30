@@ -49,16 +49,19 @@ def test_models():
 
 
 def test_chat_completions_non_stream():
-    app = create_app(".ingester")
+    app = create_app(".consumer")
     c = TestClient(app)
     r = c.post(
         "/v1/chat/completions",
-        json={"model": "chat-csa", "messages": [{"role": "user", "content": "hello"}]},
+        json={"model": "chat-csa", "messages": [{"role": "user", "content": "Opa"}]},
     )
     assert r.status_code == 200
     body = r.json()
     assert body["object"] == "chat.completion"
     assert len(body["choices"]) == 1
+    content = body["choices"][0]["message"]["content"]
+    assert not content.startswith("Resposta:")
+    assert "Fontes:" not in content
 
 
 def test_chat_completions_stream():
@@ -89,6 +92,8 @@ def test_chat_completions_uses_markdown_cache(tmp_path, monkeypatch):
     body = r.json()
     content = body["choices"][0]["message"]["content"]
     assert "ENEM 2024 pode ser utilizado" in content
+    assert not content.startswith("Resposta:")
+    assert "Fontes:" in content
     assert body["chat_csa"]["cache"]["hit"] is True
 
 
