@@ -38,6 +38,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 
 from ..agent.factory import build_agent
 from ..agent.prompt import build_system_prompt
+from ..qa_cache import QACacheHit, lookup_cached_answer
 from . import auth as auth_store
 from .models import ChatMessage, ModelCard, ModelsResponse
 
@@ -76,6 +77,36 @@ def _openai_messages_to_lc(messages: list[ChatMessage], system_prompt: str):
         else:
             lc.append(HumanMessage(content=content))
     return lc
+
+
+def _message_content_to_text(content) -> str:
+    """Converte conteúdo OpenAI/Ollama em texto plano para busca no cache."""
+    if isinstance(content, list):
+        texts = []
+        for part in content:
+            if isinstance(part, dict) and "text" in part:
+                texts.append(str(part["text"]))
+            else:
+                texts.append(str(part))
+        return "\n".join(texts)
+    return "" if content is None else str(content)
+
+
+def _last_user_message_text(messages: list[ChatMessage]) -> str:
+    for message in reversed(messages):
+        if message.role == "user":
+            return _message_content_to_text(message.content)
+    return ""
+
+
+def _cache_metadata(hit: QACacheHit) -> dict:
+    return {
+        "hit": True,
+        "id": hit.entry.entry_id,
+        "score": round(hit.score, 3),
+        "matched_question": hit.matched_question,
+        "path": str(hit.entry.path),
+    }
 
 
 def _extract_text_from_agent_result(result: dict) -> str:
@@ -199,16 +230,48 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
         messages = [ChatMessage(**m) if isinstance(m, dict) else m for m in messages_raw]
         stream = bool(body.get("stream", False))
         model = body.get("model", "chat-csa")
+        completion_id = f"chatcmpl-{uuid.uuid4().hex[:24]}"
+        created = int(time.time())
+        last_user_msg = _last_user_message_text(messages)
+
+        cached = lookup_cached_answer(last_user_msg)
+        if cached is not None:
+            text = cached.to_markdown()
+            if not stream:
+                return JSONResponse(
+                    {
+                        "id": completion_id,
+                        "object": "chat.completion",
+                        "created": created,
+                        "model": model,
+                        "choices": [{"index": 0, "message": {"role": "assistant", "content": text}, "finish_reason": "stop"}],
+                        "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+                        "chat_csa": {"cache": _cache_metadata(cached)},
+                    }
+                )
+
+            async def cached_event_stream() -> AsyncIterator[str]:
+                yield f"data: {json.dumps({'id': completion_id,'object':'chat.completion.chunk','created':created,'model':model,'choices':[{'index':0,'delta':{'role':'assistant'},'finish_reason':None}]})}\n\n"
+                payload = {
+                    "id": completion_id,
+                    "object": "chat.completion.chunk",
+                    "created": created,
+                    "model": model,
+                    "choices": [{"index": 0, "delta": {"content": text}, "finish_reason": None}],
+                    "chat_csa": {"cache": _cache_metadata(cached)},
+                }
+                yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+                yield f"data: {json.dumps({'id': completion_id,'object':'chat.completion.chunk','created':created,'model':model,'choices':[{'index':0,'delta':{},'finish_reason':'stop'}]})}\n\n"
+                yield "data: [DONE]\n\n"
+
+            return StreamingResponse(cached_event_stream(), media_type="text/event-stream")
 
         # Recarrega prompt + agente a cada request (barato; mantém hot-reload)
         system_prompt = build_system_prompt(Path(config_dir).resolve())
         agent, _, _, _ = build_agent(config_dir=config_dir)
 
         lc_messages = _openai_messages_to_lc(messages, system_prompt)
-        completion_id = f"chatcmpl-{uuid.uuid4().hex[:24]}"
-        created = int(time.time())
 
-        last_user_msg = str(next((m.content for m in reversed(lc_messages) if isinstance(m, HumanMessage)), ""))
         force_buffer = _is_sensitive(last_user_msg)
 
         if not stream or force_buffer:
@@ -300,11 +363,39 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
         for m in messages_raw:
             messages.append(ChatMessage(role=m.get("role", "user"), content=m.get("content", "")))
 
+        last_user_msg = _last_user_message_text(messages)
+        cached = lookup_cached_answer(last_user_msg)
+        if cached is not None:
+            text = cached.to_markdown()
+            if not stream:
+                return JSONResponse(
+                    {
+                        "model": model,
+                        "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                        "message": {"role": "assistant", "content": text},
+                        "done": True,
+                        "chat_csa_cache": _cache_metadata(cached),
+                    }
+                )
+
+            async def cached_ollama_stream() -> AsyncIterator[str]:
+                yield json.dumps(
+                    {
+                        "model": model,
+                        "message": {"role": "assistant", "content": text},
+                        "done": False,
+                        "chat_csa_cache": _cache_metadata(cached),
+                    },
+                    ensure_ascii=False,
+                ) + "\n"
+                yield json.dumps({"model": model, "message": {"role": "assistant", "content": ""}, "done": True}) + "\n"
+
+            return StreamingResponse(cached_ollama_stream(), media_type="application/x-ndjson")
+
         system_prompt = build_system_prompt(Path(config_dir).resolve())
         agent, _, _, _ = build_agent(config_dir=config_dir)
         lc_messages = _openai_messages_to_lc(messages, system_prompt)
 
-        last_user_msg = str(next((m.content for m in reversed(lc_messages) if isinstance(m, HumanMessage)), ""))
         force_buffer = _is_sensitive(last_user_msg)
 
         if not stream or force_buffer:

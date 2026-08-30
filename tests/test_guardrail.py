@@ -4,8 +4,9 @@ Verifica se o post-processor de app.py bloqueia corretamente respostas
 inseguras ou que desrespeitam regras de citação, e se permite respostas válidas.
 """
 
-from chat_csa.server.app import validate_agent_response, _is_sensitive, _extract_read_urls
 from langchain_core.messages import AIMessage
+
+from chat_csa.server.app import _extract_read_urls, _is_sensitive, validate_agent_response
 
 
 def test_is_sensitive():

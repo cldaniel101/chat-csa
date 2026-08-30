@@ -19,7 +19,6 @@ import pytest
 import chat_csa.csa_portal as portal
 from chat_csa.agent.tools import web_csa_fetch
 
-
 # ---------------------------------------------------------------------------
 # Helpers de validação de formato de resposta
 # ---------------------------------------------------------------------------
