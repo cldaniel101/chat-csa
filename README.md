@@ -81,13 +81,13 @@ O sistema **não substitui os editais, comunicados ou orientações oficiais da 
 
 ## 🧠 Arquitetura — Bundle OKF + recuperação determinística
 
-O projeto **não utiliza RAG** (embeddings vetoriais + geração aumentada por recuperação). Em vez disso, adota uma abordagem **determinística e auditável**, baseada em um bundle de conhecimento curado no formato **OKF — Open Knowledge Format** e em recuperação lexical (**BM25**), conforme detalhado em [`docs/proposta-okf-bm25.md`](docs/proposta-okf-bm25.md):
+O projeto **não utiliza RAG** (embeddings vetoriais + geração aumentada por recuperação). Em vez disso, adota uma abordagem **determinística e auditável**, baseada em um bundle de conhecimento curado no formato **OKF — Open Knowledge Format** e em recuperação determinística por consulta direta aos conceitos curados e ao portal da CSA quando necessário:
 
 ```text
 Fontes oficiais da CSA/UEFS (portal csa.uefs.br)
         ↓  (agente ingester — crawl, normalização, curadoria)
 Bundle de conhecimento OKF (conceitos versionados em Markdown)
-        ↓  (recuperação determinística — BM25 / consulta direta)
+        ↓  (recuperação determinística — consulta direta ao bundle e ao portal)
 Agente consumer — resposta extrativa com citações
         ↓
 Usuário (resposta verificável, com URL e timestamp)
@@ -100,7 +100,7 @@ Motivações principais dessa escolha:
 * **Terminologia literal**: consultas sobre SISU são lexicais ("comprovante de cota racial", "lista de espera") — correspondência lexical supera busca semântica;
 * **Custo e simplicidade**: sem banco vetorial nem API de embeddings — roda offline e barato.
 
-> **Pendência conhecida:** o suporte à busca BM25 ainda não está implementado no consumer — hoje ele responde consultando diretamente os conceitos do bundle e o portal via `web_csa_fetch`/`web_csa_search`. A integração BM25 está prevista na proposta (`docs/proposta-okf-bm25.md`).
+O consumer responde consultando diretamente os conceitos do bundle e o portal via `web_csa_fetch`/`web_csa_search`.
 
 ## 📋 Escopo inicial
 
@@ -251,7 +251,7 @@ This repo ships a **simple LangChain agent** with a filesystem skill system that
 
 | Agent | Config dir | Purpose |
 |-------|------------|---------|
-| **Ingester** | `.ingester/` | Crawl → normalize → curate CSA sources into OKF bundle + BM25 index |
+| **Ingester** | `.ingester/` | Crawl → normalize → curate CSA sources into OKF bundle |
 | **Consumer** | `.consumer/` | Answer questions via retrieval (extractive, cited) |
 
 Each dir is a standalone *AGENTS home*:
@@ -391,7 +391,7 @@ make frontend-build    # production build -> frontend/dist (served by nginx in d
 | `make lint` / `format` / `test` | ruff + pytest |
 | `make docker-build` / `docker-run*` / `docker-run-both` | container flow |
 
-See `docs/proposta-okf-bm25.md` for the OKF+BM25 architecture.
+See `knowledge/index.md` for the OKF bundle structure.
 
 ## 🚧 Status
 

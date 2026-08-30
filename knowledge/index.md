@@ -17,7 +17,7 @@ Universidade Estadual de Feira de Santana (UEFS).
 - **Formato:** OKF v0.1 — arquivos Markdown com frontmatter YAML.
 - **Fonte única:** Portal CSA/UEFS (`https://csa.uefs.br/`).
 - **Versionamento:** Cada alteração é rastreada via `git`; consulte o [log de atualizações](./log.md).
-- **Arquitetura:** Veja [docs/proposta-okf-bm25.md](/docs/proposta-okf-bm25.md) para detalhes sobre a decisão arquitetural.
+- **Arquitetura:** Bundle OKF curado como fonte única da verdade; consultas diretas aos conceitos e ao portal via ferramentas dedicadas.
 
 ## Convenções
 

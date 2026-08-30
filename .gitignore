@@ -22,7 +22,6 @@ Thumbs.db
 
 # Data / indexes
 data/raw/
-data/bm25.db
 data/*.db
 
 # IDE

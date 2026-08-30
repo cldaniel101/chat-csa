@@ -11,6 +11,5 @@ build
 .env
 .env.local
 data/raw
-data/bm25.db
 .ingester/skills/*/README.md
 .consumer/skills/*/README.md

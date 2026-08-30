@@ -37,7 +37,7 @@ Concretamente:
 | **Git LFS** | Arquivos Markdown são texto puro e leves; LFS é projetado para binários grandes — overhead injustificado. |
 | **Repositório separado** | Fragmenta o projeto; exige sincronização manual; impede CI unificado. |
 | **Download via script** | Quebra a reprodutibilidade; exige infraestrutura extra; não garante versão específica. |
-| **Manter ignorado** | Impede auditoria, violando os princípios de design documentados em `docs/proposta-okf-bm25.md`. |
+| **Manter ignorado** | Impede auditoria, violando os princípios de design do bundle OKF (versionável e auditável). |
 
 ## Consequências
 
@@ -56,6 +56,5 @@ Concretamente:
 
 ## Referências
 
-- [docs/proposta-okf-bm25.md](../proposta-okf-bm25.md) — Proposta arquitetural OKF + BM25 (§5, §8)
 - [knowledge/index.md](../../knowledge/index.md) — Índice raiz do bundle
 - [knowledge/log.md](../../knowledge/log.md) — Log de alterações do bundle
