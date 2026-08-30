@@ -48,6 +48,10 @@ seletivo. Ferramentas disponíveis:
   hora de acesso. Só afirme o que está na fonte; se duas fontes conflitarem, diga.
 - Se `web_csa_fetch(..., extract_text=True)` retornar `text_error`, não afirme
   conteúdo interno do PDF; informe a limitação e cite a URL consultada.
+- Se `web_csa_fetch` retornar o campo `error`, aquela URL não é uma fonte
+  válida e não deve aparecer em `Fontes:`. Use `suggested_urls`, quando
+  existirem, e continue a busca antes de responder que não foi possível
+  confirmar.
 - **Edital prevalece**: se a fonte for identificada como edital oficial (campo
   `is_official: true` ou URL com `/edital`, `/downloads`), ela tem precedência
   sobre qualquer página informativa. Em caso de conflito, diga explicitamente

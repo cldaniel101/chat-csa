@@ -4,7 +4,7 @@ Verifica se o post-processor de app.py bloqueia corretamente respostas
 inseguras ou que desrespeitam regras de citação, e se permite respostas válidas.
 """
 
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, ToolMessage
 
 from chat_csa.server.app import (
     _extract_read_urls,
@@ -70,6 +70,32 @@ def test_has_source_lookup_exige_fonte_aberta():
     assert _has_source_lookup(fetched) is True
 
 
+def test_has_source_lookup_ignora_fetch_com_erro():
+    messages = [
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": "web_csa_fetch",
+                    "args": {"url": "https://csa.uefs.br/index.php/sisu/inicial"},
+                    "id": "t1",
+                }
+            ],
+        ),
+        ToolMessage(
+            content=(
+                '{"url":"https://csa.uefs.br/index.php/sisu261/inicial",'
+                '"resolved_from_url":"https://csa.uefs.br/index.php/sisu/inicial",'
+                '"error":"Página não encontrada no portal CSA/UEFS"}'
+            ),
+            tool_call_id="t1",
+        ),
+    ]
+
+    assert _has_source_lookup(messages) is False
+    assert _extract_read_urls(messages) == set()
+
+
 def test_extract_read_urls():
     # Cria estrutura de mensagens simulando chamadas de tool
     messages = [
@@ -103,7 +129,7 @@ def test_guardrail_bloqueia_tema_sensivel_sem_fonte():
     
     err = validate_agent_response(question, resp, read)
     assert err is not None
-    assert "bloqueada porque o agente não incluiu a seção de Fontes" in err
+    assert "Não consegui confirmar essa informação" in err
 
 
 def test_guardrail_bloqueia_url_nao_lida():
@@ -114,8 +140,7 @@ def test_guardrail_bloqueia_url_nao_lida():
     
     err = validate_agent_response(question, resp, read)
     assert err is not None
-    assert "não lida ou inexistente" in err
-    assert "https://csa.uefs.br/falso" in err
+    assert "Não consegui validar uma das fontes citadas" in err
 
 
 def test_guardrail_ignora_ancoras_na_validacao():

@@ -133,25 +133,86 @@ def _extract_text_from_agent_result(result: dict) -> str:
     return str(content)
 
 
-SENSITIVE_KEYWORDS = {"edital", "prazo", "matrícula", "matricula", "lista", "espera", "resultado", "cronograma"}
+SENSITIVE_KEYWORDS = {
+    "classificação",
+    "classificacao",
+    "concorrência",
+    "concorrencia",
+    "convocação",
+    "convocacao",
+    "corte",
+    "curso",
+    "documento",
+    "documentos",
+    "edital",
+    "enem",
+    "espera",
+    "lista",
+    "matrícula",
+    "matricula",
+    "máxima",
+    "maxima",
+    "mínima",
+    "minima",
+    "modalidade",
+    "nota",
+    "notas",
+    "prazo",
+    "resultado",
+    "vagas",
+    "cronograma",
+}
 
 def _is_sensitive(text: str) -> bool:
     lower = text.lower()
     return any(k in lower for k in SENSITIVE_KEYWORDS)
 
 def _extract_read_urls(messages: list) -> set[str]:
-    urls = set()
+    called_urls = set()
+    successful_urls = set()
+    failed_urls = set()
+    saw_fetch_result = False
+
     for m in messages:
         if isinstance(m, dict):
-            # Formato de dicionário (menos comum aqui, mas previne quebra)
-            pass
-        elif getattr(m, "tool_calls", None):
-            for tc in m.tool_calls:
-                if tc.get("name") == "web_csa_fetch":
-                    url = tc.get("args", {}).get("url")
-                    if url:
-                        urls.add(url.strip())
-    return urls
+            tool_calls = m.get("tool_calls", [])
+            content = m.get("content", "")
+        else:
+            tool_calls = getattr(m, "tool_calls", [])
+            content = getattr(m, "content", "")
+
+        for tc in tool_calls or []:
+            if tc.get("name") == "web_csa_fetch":
+                url = tc.get("args", {}).get("url")
+                if url:
+                    called_urls.add(url.strip())
+
+        if not isinstance(content, str) or not content.lstrip().startswith("{"):
+            continue
+
+        try:
+            payload = json.loads(content)
+        except json.JSONDecodeError:
+            continue
+
+        if not isinstance(payload, dict) or not payload.get("url"):
+            continue
+
+        saw_fetch_result = True
+        url = str(payload["url"]).strip()
+        if payload.get("error"):
+            failed_urls.add(url)
+            requested_url = payload.get("resolved_from_url")
+            if requested_url:
+                failed_urls.add(str(requested_url).strip())
+        else:
+            successful_urls.add(url)
+
+    if successful_urls:
+        return successful_urls
+    if saw_fetch_result:
+        return called_urls - failed_urls
+    return called_urls
 
 
 _CITED_URL_RE = re.compile(r"https?://[^\s)]+")
@@ -183,6 +244,9 @@ def _is_conversational(text: str) -> bool:
 
 def _has_source_lookup(messages: list) -> bool:
     """Informa se o agente realmente abriu uma fonte local ou remota."""
+    has_fetch_call = False
+    saw_fetch_result = False
+
     for message in messages:
         tool_calls = (
             message.get("tool_calls", [])
@@ -191,8 +255,34 @@ def _has_source_lookup(messages: list) -> bool:
         )
         for tool_call in tool_calls or []:
             name = tool_call.get("name") or tool_call.get("function", {}).get("name")
-            if name in {"read", "web_csa_fetch"}:
+            if name == "read":
                 return True
+            if name == "web_csa_fetch":
+                has_fetch_call = True
+
+        content = (
+            message.get("content", "")
+            if isinstance(message, dict)
+            else getattr(message, "content", "")
+        )
+        if not isinstance(content, str) or not content.lstrip().startswith("{"):
+            continue
+
+        try:
+            payload = json.loads(content)
+        except json.JSONDecodeError:
+            continue
+
+        if not isinstance(payload, dict) or not payload.get("url"):
+            continue
+
+        saw_fetch_result = True
+        if not payload.get("error"):
+            return True
+
+    if has_fetch_call and not saw_fetch_result:
+        return True
+
     return False
 
 
@@ -214,7 +304,7 @@ def validate_agent_response(question: str, response_text: str, read_urls: set[st
     has_fontes = "\nfontes:" in response_text.lower() or "\nfonte:" in response_text.lower()
     
     if sensitive and not has_fontes:
-        return "[Erro de Validação] A resposta para esta pergunta foi bloqueada porque o agente não incluiu a seção de Fontes oficiais. Consulte diretamente o portal https://csa.uefs.br/."
+        return "Não consegui confirmar essa informação em uma fonte oficial válida neste momento. Tente novamente em instantes ou consulte o portal da CSA/UEFS: https://csa.uefs.br/."
     
     # Extrai as URLs citadas
     cited_urls = set(_CITED_URL_RE.findall(response_text))
@@ -226,7 +316,7 @@ def validate_agent_response(question: str, response_text: str, read_urls: set[st
             if not any(base_url in r.split("#")[0] for r in read_urls):
                 # Hotfix protótipo: só bloqueia se for pergunta sensível; caso contrário permite (knowledge/ será refeito depois)
                 if sensitive:
-                    return f"[Erro de Validação] A resposta foi bloqueada porque citou uma URL não lida ou inexistente ({url}). Consulte o portal https://csa.uefs.br/."
+                    return "Não consegui validar uma das fontes citadas pelo agente. Para evitar informação incorreta, refaça a pergunta ou consulte o portal da CSA/UEFS: https://csa.uefs.br/."
     
     return None
 

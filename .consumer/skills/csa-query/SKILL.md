@@ -24,6 +24,8 @@ Pergunta: *"Quais documentos preciso para matrícula?"* →
    PDF, `web_csa_fetch(url_do_pdf, extract_text=True)`.
    Se o retorno trouxer `text_error`, não use o PDF como evidência interna:
    informe a limitação e continue buscando outra fonte oficial.
+   Se o retorno trouxer `error`, trate a URL como inválida para citação; siga
+   `suggested_urls`, se houver, e continue a busca antes de declarar ausência.
 4. Responda extrativo:
 
 ```markdown
