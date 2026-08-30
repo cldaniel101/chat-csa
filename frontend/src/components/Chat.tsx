@@ -78,7 +78,7 @@ export default function Chat() {
         <div>
           <h2>{agent === "ingester" ? "Ingester" : "Consumer"} — Chat</h2>
           <span>
-            {agent === "ingester" ? "Curates CSA sources → OKF bundle" : "Answers via BM25 + citations"} ·{" "}
+            {agent === "ingester" ? "Curates CSA sources → OKF bundle" : "Answers with citations"} ·{" "}
             <span className="status">
               <span className={`dot ${health === "ok" ? "" : "off"}`} /> {health === "ok" ? "online" : health === "checking" ? "checking…" : "offline"}
             </span>

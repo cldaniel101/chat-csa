@@ -17,7 +17,7 @@ function Sidebar() {
 
       <div className={`agent-card ${agent === "consumer" ? "active" : ""}`} onClick={() => setSearch({ agent: "consumer" })}>
         <h4>Consumer</h4>
-        <p>Public chat. Answers via BM25 + citations from the curated bundle.</p>
+        <p>Public chat. Answers with citations from the curated bundle.</p>
         <span className="status"><span className="dot" /> port {import.meta.env.VITE_CONSUMER_URL || "8002"} · no login</span>
       </div>
 
