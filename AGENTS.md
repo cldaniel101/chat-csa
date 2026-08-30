@@ -11,7 +11,7 @@ Neste projeto:
 ## 🌿 Convenções de Git
 
 - **Conventional Commits**: `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`.
-- Mensagens de commit em português, no imperativo (ex.: `feat: adiciona busca BM25`).
+- Mensagens de commit em português, no imperativo (ex.: `feat: adiciona busca no portal`).
 - Um commit por mudança lógica; commits pequenos e atômicos.
 - `main` = estável (apenas versões). Trabalho do dia a dia acontece em `development`.
 - Não commitar segredos, `.env`, `.venv/`, `frontend/node_modules/` ou caches.
