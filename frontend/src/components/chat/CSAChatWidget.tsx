@@ -5,7 +5,8 @@ import {
   useExternalStoreRuntime,
 } from "@assistant-ui/react";
 import type { AppendMessage } from "@assistant-ui/react";
-import { ChevronDown, MessageCircle, Send } from "lucide-react";
+import { BsStars } from "react-icons/bs";
+import { ChevronDown, Send } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -215,7 +216,7 @@ export function CSAChatWidget({
                 aria-label={open ? "Minimizar Assistente CSA" : "Abrir Assistente CSA"}
                 aria-expanded={open}
               >
-                <MessageCircle
+                <BsStars
                   className={`csa-chat-launcher-icon ${open ? "is-hidden" : ""}`}
                   size={27}
                   aria-hidden="true"
@@ -263,7 +264,7 @@ export function CSAChatWidget({
             {messages.length === 0 && (
               <div className="csa-chat-welcome">
                 <div className="csa-chat-welcome-icon" aria-hidden="true">
-                  <MessageCircle size={26} />
+                  <BsStars size={26} />
                 </div>
                 <h3>
                   Olá! <span aria-hidden="true">👋</span>

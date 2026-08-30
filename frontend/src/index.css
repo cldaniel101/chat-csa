@@ -68,10 +68,7 @@ body {
   font-family: var(--sans);
   font-size: 14px;
   line-height: 1.55;
-  background:
-    radial-gradient(900px 400px at 15% -10%, rgba(255, 115, 0, 0.05), transparent 60%),
-    radial-gradient(800px 380px at 95% 0%, rgba(88, 156, 54, 0.06), transparent 60%),
-    var(--bg);
+  background: var(--bg);
   color: var(--text);
   -webkit-font-smoothing: antialiased;
 }

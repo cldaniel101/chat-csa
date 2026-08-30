@@ -1,4 +1,5 @@
-import { MessageCircle, Trash2, X } from "lucide-react";
+import { BsStars } from "react-icons/bs";
+import { Trash2, X } from "lucide-react";
 
 export type ChatHealth = "ok" | "off" | "checking";
 
@@ -24,7 +25,7 @@ export function ChatHeader({
   return (
     <header className="csa-chat-header">
       <div className="csa-chat-header-icon" aria-hidden="true">
-        <MessageCircle size={22} strokeWidth={2} />
+        <BsStars size={22} />
       </div>
 
       <div className="csa-chat-heading">
