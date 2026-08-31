@@ -355,27 +355,25 @@ make docker-build
 docker compose up   # ingester :${INGESTER_PORT:-8001} + consumer :${CONSUMER_PORT:-8002} + frontend :${FRONTEND_PORT:-5173}
 # per-agent overrides also work:
 # INGESTER_LLM_PROVIDER=openai INGESTER_OPENAI_API_KEY=sk-... docker compose up
-# frontend respects VITE_INGESTER_URL / VITE_CONSUMER_URL at build time
+# frontend respects VITE_CONSUMER_URL at build time
 ```
 
 > **Why two vars?** `AGENT_CONFIG_DIR` is per-process (one agent = one dir + one port). `.env.example` therefore ships **both** `INGESTER_CONFIG_DIR` + `CONSUMER_CONFIG_DIR` (and `INGESTER_PORT`/`CONSUMER_PORT`) plus a fallback `AGENT_CONFIG_DIR`/`PORT` for single-agent mode. `Makefile` and `docker-compose.yml` read the `INGESTER_*`/`CONSUMER_*` set; the server itself still honors `AGENT_CONFIG_DIR` per instance.
 
 ### React Chat (frontend/)
 
-Vite + React + React Router chat that talks to **both** agents via their OpenAI-compatible endpoints.
+Vite + React chat widget **exclusivo do consumer** — botão flutuante que conversa com o agente consumer via endpoint OpenAI-compatible.
 
 ```bash
-cp frontend/.env.example frontend/.env   # VITE_INGESTER_URL=http://localhost:8001 etc.
+cp frontend/.env.example frontend/.env   # VITE_CONSUMER_URL=http://localhost:8002
 make frontend-install
 make frontend-dev      # http://localhost:5173
 make frontend-build    # production build -> frontend/dist (served by nginx in docker)
 ```
 
-- **Agent switcher**: sidebar toggle between Consumer (public) and Ingester (protected).
 - **Consumer**: open chat, no login.
-- **Ingester**: requires login (`admin / sudo123`). Login hits `POST /auth/login` on the ingester API and stores a bearer token.
-- **Admin CRUD**: `/admin` page (protected) — list/add/edit/delete users via `GET/POST/PUT/DELETE /admin/users` on the ingester API. In-memory store, seeded with `admin/sudo123`.
-- Env: `VITE_INGESTER_URL` / `VITE_CONSUMER_URL` (defaults 8001/8002). With Docker Compose the frontend is at `http://localhost:5173` and proxies to both backends.
+- **Ingester**: painel próprio em FastHTML servido pelo backend (`/admin`), com tela de login e chat SSE — o frontend React não participa mais.
+- Env: `VITE_CONSUMER_URL` (default 8002). Com Docker Compose o frontend fica em `http://localhost:5173` e conversa com o consumer em `:8002`.
 
 ### Makefile DX
 

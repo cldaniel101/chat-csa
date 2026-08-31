@@ -27,7 +27,6 @@ services:
       - ingester
       - consumer
     environment:
-      VITE_INGESTER_URL: "http://localhost:${INGESTER_PORT:-8001}"
       VITE_CONSUMER_URL: "http://localhost:${CONSUMER_PORT:-8002}"
     restart: unless-stopped
 
