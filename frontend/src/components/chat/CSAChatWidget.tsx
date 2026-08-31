@@ -19,7 +19,7 @@ import {
 } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { chatCompletion, getAgentUrl, type AgentId } from "../../api/client";
+import { chatCompletion, getConsumerUrl } from "../../api/client";
 import { ChatHeader, type ChatHealth } from "./ChatHeader";
 import { ChatStatus } from "./ChatStatus";
 import { ChatSuggestions } from "./ChatSuggestions";
@@ -33,11 +33,7 @@ type ChatMessage = {
   isError?: boolean;
 };
 
-type CSAChatWidgetProps = {
-  agent?: AgentId;
-  token?: string | null;
-  isAuthenticated?: boolean;
-};
+type CSAChatWidgetProps = Record<string, never>;
 
 type SourceEntry = {
   id: string;
@@ -203,41 +199,30 @@ function MarkdownMessage({ content }: { content: string }) {
   );
 }
 
-export function CSAChatWidget({
-  agent = "consumer",
-  token = null,
-  isAuthenticated = false,
-}: CSAChatWidgetProps) {
+export function CSAChatWidget(_props: CSAChatWidgetProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [healthResult, setHealthResult] = useState<{
-    agent: AgentId;
-    status: ChatHealth;
-  }>({ agent, status: "checking" });
+  const [health, setHealth] = useState<ChatHealth>("checking");
   const [open, setOpen] = useState(false);
   const messagesRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  const needsAuth = agent === "ingester";
-  const canChat = !needsAuth || isAuthenticated;
-  const health = healthResult.agent === agent ? healthResult.status : "checking";
-
   useEffect(() => {
     const controller = new AbortController();
-    const url = getAgentUrl(agent).replace(/\/$/, "");
+    const url = getConsumerUrl().replace(/\/$/, "");
 
     fetch(`${url}/health`, { signal: controller.signal })
       .then((response) => {
-        setHealthResult({ agent, status: response.ok ? "ok" : "off" });
+        setHealth(response.ok ? "ok" : "off");
       })
       .catch((error: unknown) => {
         if (error instanceof DOMException && error.name === "AbortError") return;
-        setHealthResult({ agent, status: "off" });
+        setHealth("off");
       });
 
     return () => controller.abort();
-  }, [agent]);
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -255,7 +240,7 @@ export function CSAChatWidget({
   const sendMessage = useCallback(
     async (text: string) => {
       const prompt = text.trim();
-      if (!prompt || loading || !canChat) return;
+      if (!prompt || loading) return;
 
       const userMessage: ChatMessage = {
         id: generateId(),
@@ -270,9 +255,7 @@ export function CSAChatWidget({
 
       try {
         const reply = await chatCompletion(
-          agent,
           nextMessages.map(({ role, content }) => ({ role, content })),
-          { token: needsAuth ? token : null },
         );
 
         setMessages([
@@ -302,13 +285,13 @@ export function CSAChatWidget({
         setLoading(false);
       }
     },
-    [agent, canChat, loading, messages, needsAuth, token],
+    [loading, messages],
   );
 
   const runtime = useExternalStoreRuntime<ChatMessage>({
     messages,
     isRunning: loading,
-    isDisabled: !canChat,
+    isDisabled: false,
     convertMessage: (message) => ({
       id: message.id,
       role: message.role,
@@ -322,11 +305,11 @@ export function CSAChatWidget({
 
   const submitPrompt = useCallback(
     (prompt: string) => {
-      if (!prompt.trim() || loading || !canChat) return;
+      if (!prompt.trim() || loading) return;
       setInput("");
       runtime.threads.main.append(prompt);
     },
-    [canChat, loading, runtime],
+    [loading, runtime],
   );
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -391,12 +374,6 @@ export function CSAChatWidget({
             onClose={() => setOpen(false)}
           />
 
-          {!canChat && (
-            <div className="csa-chat-auth-message" role="alert">
-              Este agente exige autenticação. <a href="/login">Entrar como administrador</a>.
-            </div>
-          )}
-
           <div
             className="csa-chat-messages"
             ref={messagesRef}
@@ -412,9 +389,7 @@ export function CSAChatWidget({
                 </h3>
                 <p>Sou o assistente do processo seletivo da UEFS.</p>
                 <p>Como posso ajudar?</p>
-                {canChat && (
-                  <ChatSuggestions onSelect={submitPrompt} disabled={loading} />
-                )}
+                <ChatSuggestions onSelect={submitPrompt} disabled={loading} />
               </div>
             )}
 
@@ -449,15 +424,12 @@ export function CSAChatWidget({
               value={input}
               onChange={(event) => setInput(event.target.value)}
               onKeyDown={handleComposerKeyDown}
-              placeholder={
-                canChat ? "Digite sua pergunta..." : "Entre para conversar com este agente"
-              }
-              disabled={!canChat || loading}
+              placeholder="Digite sua pergunta..."
             />
             <button
               type="submit"
               className="csa-chat-send"
-              disabled={!input.trim() || loading || !canChat}
+              disabled={!input.trim() || loading}
               aria-label="Enviar mensagem"
               title="Enviar mensagem"
             >
