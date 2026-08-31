@@ -30,7 +30,7 @@ COPY docs ./docs
 ENV AGENT_CONFIG_DIR=.ingester \
     LLM_PROVIDER=ollama \
     OLLAMA_BASE_URL=http://host.docker.internal:11434 \
-    LLM_MODEL=llama3.2 \
+    LLM_MODEL=gemma4:31b-cloud \
     HOST=0.0.0.0 \
     PORT=8000
 
