@@ -48,7 +48,11 @@ csa_reverse/
 
 # Artefatos de sessão do playwright-cli
 .playwright-cli/
-.vercel
+# Link do projeto Vercel: só o project.json é versionado (ids não são secretos)
+.vercel/*
+!.vercel/project.json
+frontend/.vercel/*
+!frontend/.vercel/project.json
 .env*
 !frontend/.env.production
 
