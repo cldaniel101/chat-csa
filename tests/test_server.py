@@ -76,10 +76,25 @@ def test_chat_completions_stream():
     assert "[DONE]" in r.text
 
 
-def test_chat_completions_uses_markdown_cache(tmp_path, monkeypatch):
+def test_chat_completions_injects_cached_faq_as_context(tmp_path, monkeypatch):
     cache_file = tmp_path / "faq.md"
     _write_static_cache(cache_file)
     monkeypatch.setenv("CHAT_CSA_QA_CACHE_PATHS", str(cache_file))
+
+    import sys
+
+    # chat_csa/server/__init__.py reexporta `app` (FastAPI), então o atributo
+    # do pacote sombreia o submódulo; sys.modules garante o módulo real.
+    server_app = sys.modules["chat_csa.server.app"]
+
+    captured: dict = {}
+    real_build = server_app.build_system_prompt
+
+    def spy(root, extra=None):
+        captured["extra"] = extra
+        return real_build(root, extra=extra)
+
+    monkeypatch.setattr(server_app, "build_system_prompt", spy)
 
     app = create_app(tmp_path / "config")
     c = TestClient(app)
@@ -89,15 +104,16 @@ def test_chat_completions_uses_markdown_cache(tmp_path, monkeypatch):
     )
 
     assert r.status_code == 200
+    # FAQ curada entrou no prompt como referência (não como resposta direta)
+    assert "FAQ-001" in captured["extra"]
+    assert "ENEM 2024 pode ser utilizado" in captured["extra"]
+    # Sem short-circuit: resposta vem do fluxo normal do agente, nunca verbatim do Markdown
     body = r.json()
-    content = body["choices"][0]["message"]["content"]
-    assert "ENEM 2024 pode ser utilizado" in content
-    assert not content.startswith("Resposta:")
-    assert "Fontes:" in content
-    assert body["chat_csa"]["cache"]["hit"] is True
+    assert "chat_csa" not in body
+    assert "ENEM 2024 pode ser utilizado" not in body["choices"][0]["message"]["content"]
 
 
-def test_chat_completions_stream_uses_markdown_cache(tmp_path, monkeypatch):
+def test_chat_completions_stream_with_cached_faq_uses_normal_flow(tmp_path, monkeypatch):
     cache_file = tmp_path / "faq.md"
     _write_static_cache(cache_file)
     monkeypatch.setenv("CHAT_CSA_QA_CACHE_PATHS", str(cache_file))
@@ -110,7 +126,7 @@ def test_chat_completions_stream_uses_markdown_cache(tmp_path, monkeypatch):
     )
 
     assert r.status_code == 200
-    assert "ENEM 2024 pode ser utilizado" in r.text
+    assert "text/event-stream" in r.headers["content-type"]
     assert "[DONE]" in r.text
 
 

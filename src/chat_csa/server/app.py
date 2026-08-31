@@ -38,7 +38,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 
 from ..agent.factory import build_agent
 from ..agent.prompt import build_system_prompt
-from ..qa_cache import QACacheHit, lookup_cached_answer
+from ..qa_cache import format_faq_reference, lookup_cached_matches
 from . import auth as auth_store
 from .admin import build_admin_panel
 from .models import ChatMessage, ModelCard, ModelsResponse
@@ -100,14 +100,26 @@ def _last_user_message_text(messages: list[ChatMessage]) -> str:
     return ""
 
 
-def _cache_metadata(hit: QACacheHit) -> dict:
-    return {
-        "hit": True,
-        "id": hit.entry.entry_id,
-        "score": round(hit.score, 3),
-        "matched_question": hit.matched_question,
-        "path": str(hit.entry.path),
-    }
+def _faq_reference_block(question: str) -> str:
+    """Monta o bloco de FAQ curada injetado no system prompt quando há entradas relevantes.
+
+    A FAQ não responde diretamente: entra como referência curada para o agente
+    formular a resposta no turno, adaptada ao contexto da conversa.
+    """
+    hits = lookup_cached_matches(question)
+    if not hits:
+        return ""
+    lines = [
+        "## FAQ curada (referências recuperadas para a pergunta do usuário)",
+        "",
+        "Use essas respostas como referência primária quando aplicáveis, adaptando-as ao contexto da conversa e citando as fontes. "
+        "Entradas que avisam que a informação pode mudar exigem conferência nas fontes oficiais antes de afirmar datas, prazos ou situação atual. "
+        "Se a pergunta envolver situação individual, cotas, documentos ou datas críticas, confirme nas fontes oficiais mesmo quando a FAQ cobrir o tema.",
+    ]
+    for hit in hits:
+        lines.append("")
+        lines.append(format_faq_reference(hit.entry))
+    return "\n".join(lines)
 
 
 def _extract_text_from_agent_result(result: dict) -> str:
@@ -379,40 +391,12 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
         created = int(time.time())
         last_user_msg = _last_user_message_text(messages)
 
-        cached = lookup_cached_answer(last_user_msg)
-        if cached is not None:
-            text = _format_agent_response(cached.to_markdown(), source_was_consulted=True)
-            if not stream:
-                return JSONResponse(
-                    {
-                        "id": completion_id,
-                        "object": "chat.completion",
-                        "created": created,
-                        "model": model,
-                        "choices": [{"index": 0, "message": {"role": "assistant", "content": text}, "finish_reason": "stop"}],
-                        "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
-                        "chat_csa": {"cache": _cache_metadata(cached)},
-                    }
-                )
-
-            async def cached_event_stream() -> AsyncIterator[str]:
-                yield f"data: {json.dumps({'id': completion_id,'object':'chat.completion.chunk','created':created,'model':model,'choices':[{'index':0,'delta':{'role':'assistant'},'finish_reason':None}]})}\n\n"
-                payload = {
-                    "id": completion_id,
-                    "object": "chat.completion.chunk",
-                    "created": created,
-                    "model": model,
-                    "choices": [{"index": 0, "delta": {"content": text}, "finish_reason": None}],
-                    "chat_csa": {"cache": _cache_metadata(cached)},
-                }
-                yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
-                yield f"data: {json.dumps({'id': completion_id,'object':'chat.completion.chunk','created':created,'model':model,'choices':[{'index':0,'delta':{},'finish_reason':'stop'}]})}\n\n"
-                yield "data: [DONE]\n\n"
-
-            return StreamingResponse(cached_event_stream(), media_type="text/event-stream")
-
-        # Recarrega prompt + agente a cada request (barato; mantém hot-reload)
-        system_prompt = build_system_prompt(Path(config_dir).resolve())
+        # Recarrega prompt + agente a cada request (barato; mantém hot-reload).
+        # FAQ curada: injeta entradas relevantes como referência no prompt —
+        # a resposta é formulada pelo agente no turno, sem short-circuit.
+        system_prompt = build_system_prompt(
+            Path(config_dir).resolve(), extra=_faq_reference_block(last_user_msg)
+        )
         agent, _, _, _ = build_agent(config_dir=config_dir)
 
         lc_messages = _openai_messages_to_lc(messages, system_prompt)
@@ -513,35 +497,12 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
             messages.append(ChatMessage(role=m.get("role", "user"), content=m.get("content", "")))
 
         last_user_msg = _last_user_message_text(messages)
-        cached = lookup_cached_answer(last_user_msg)
-        if cached is not None:
-            text = _format_agent_response(cached.to_markdown(), source_was_consulted=True)
-            if not stream:
-                return JSONResponse(
-                    {
-                        "model": model,
-                        "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                        "message": {"role": "assistant", "content": text},
-                        "done": True,
-                        "chat_csa_cache": _cache_metadata(cached),
-                    }
-                )
 
-            async def cached_ollama_stream() -> AsyncIterator[str]:
-                yield json.dumps(
-                    {
-                        "model": model,
-                        "message": {"role": "assistant", "content": text},
-                        "done": False,
-                        "chat_csa_cache": _cache_metadata(cached),
-                    },
-                    ensure_ascii=False,
-                ) + "\n"
-                yield json.dumps({"model": model, "message": {"role": "assistant", "content": ""}, "done": True}) + "\n"
-
-            return StreamingResponse(cached_ollama_stream(), media_type="application/x-ndjson")
-
-        system_prompt = build_system_prompt(Path(config_dir).resolve())
+        # FAQ curada: injeta entradas relevantes como referência no prompt —
+        # a resposta é formulada pelo agente no turno, sem short-circuit.
+        system_prompt = build_system_prompt(
+            Path(config_dir).resolve(), extra=_faq_reference_block(last_user_msg)
+        )
         agent, _, _, _ = build_agent(config_dir=config_dir)
         lc_messages = _openai_messages_to_lc(messages, system_prompt)
 

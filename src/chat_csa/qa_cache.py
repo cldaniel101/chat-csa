@@ -1,8 +1,11 @@
-"""Cache local de perguntas e respostas em Markdown.
+"""FAQ curada em Markdown, usada como referência para o agente.
 
-O cache lê arquivos Markdown versionados e responde apenas entradas marcadas
-como estáticas. Conteúdos dinâmicos continuam no fluxo normal do agente, para
-que datas, chamadas e retificações sejam conferidas nas fontes oficiais.
+O módulo lê arquivos Markdown versionados (FAQ) e recupera as entradas mais
+parecidas com a pergunta do usuário. As entradas não são respostas diretas:
+elas são injetadas no prompt do agente como referência curada, e a resposta é
+formulada pelo agente no turno — adaptada ao contexto da conversa e com
+citação das fontes. Entradas marcadas como `dynamic` avisam que a informação
+pode mudar e devem ser conferidas nas fontes oficiais.
 """
 
 from __future__ import annotations
@@ -114,26 +117,66 @@ def get_cache_paths() -> list[Path]:
     return list(DEFAULT_QA_CACHE_PATHS)
 
 
-def lookup_cached_answer(question: str, paths: list[Path] | None = None) -> QACacheHit | None:
-    """Procura uma resposta estática suficientemente parecida com a pergunta."""
+def lookup_cached_matches(
+    question: str, paths: list[Path] | None = None, top_k: int = 3
+) -> list[QACacheHit]:
+    """Recupera as entradas FAQ mais parecidas com a pergunta, para usar como contexto.
+
+    Não filtra por política de cache: entradas `dynamic` entram marcadas para
+    conferência nas fontes oficiais. O resultado alimenta o prompt do agente —
+    a resposta final é formulada pelo LLM no turno, não copiada do Markdown.
+    """
     if os.getenv("CHAT_CSA_QA_CACHE_ENABLED", "1").lower() in {"0", "false", "no", "off"}:
-        return None
+        return []
 
     query = question.strip()
     if not query:
-        return None
+        return []
 
-    best: QACacheHit | None = None
-    for entry in load_cache_entries(paths):
-        score, matched = _score_entry(query, entry)
-        if best is None or score > best.score:
-            best = QACacheHit(entry=entry, score=score, matched_question=matched)
+    hits = [
+        QACacheHit(entry=entry, score=score, matched_question=matched)
+        for entry in load_cache_entries(paths)
+        for score, matched in [_score_entry(query, entry)]
+    ]
+    hits.sort(key=lambda hit: hit.score, reverse=True)
+    threshold = _min_match_score()
+    return [hit for hit in hits if hit.score >= threshold][:top_k]
 
-    if best is None or best.score < _min_match_score():
-        return None
-    if best.entry.cache_policy != "static":
-        return None
-    return best
+
+def lookup_cached_answer(question: str, paths: list[Path] | None = None) -> QACacheHit | None:
+    """Procura uma entrada estática suficientemente parecida com a pergunta.
+
+    Mantido para compatibilidade com testes anteriores; o servidor usa
+    `lookup_cached_matches` para injetar contexto no agente.
+    """
+    for hit in lookup_cached_matches(question, paths=paths, top_k=1):
+        if hit.entry.cache_policy == "static":
+            return hit
+    return None
+
+
+def format_faq_reference(entry: QACacheEntry) -> str:
+    """Formata uma entrada como bloco de referência curada para o prompt do agente.
+
+    O agente adapta o conteúdo ao contexto da conversa e cita a fonte. Entradas
+    `dynamic` ganham aviso de que a informação pode ter mudado.
+    """
+    policy_note = (
+        ""
+        if entry.cache_policy == "static"
+        else " (pode ter mudado — confira nas fontes oficiais antes de afirmar datas, prazos ou situação atual)"
+    )
+    verified = f" (verificado em {entry.last_verified})" if entry.last_verified else ""
+    answer = entry.answer.strip()
+    if not answer.endswith((".", "!", "?", ":", ";")):
+        answer += "."
+    source = entry.source_label or "FAQ curada"
+    url = entry.source_url or "fonte Markdown local"
+    return (
+        f"### {entry.entry_id}{verified} — {entry.question}{policy_note}\n\n"
+        f"{answer}\n\n"
+        f"Fonte: {source} — {url}"
+    )
 
 
 def load_cache_entries(paths: list[Path] | None = None) -> list[QACacheEntry]:
