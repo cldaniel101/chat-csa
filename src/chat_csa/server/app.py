@@ -40,6 +40,7 @@ from ..agent.factory import build_agent
 from ..agent.prompt import build_system_prompt
 from ..qa_cache import QACacheHit, lookup_cached_answer
 from . import auth as auth_store
+from .admin import build_admin_panel
 from .models import ChatMessage, ModelCard, ModelsResponse
 
 load_dotenv()
@@ -641,6 +642,13 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
     async def admin_delete(uid: str, authorization: str | None = Header(default=None)):
         _require_admin(authorization)
         return auth_store.delete_user(uid)
+
+    # Painel FastHTML do ingester (decisão da discussão ingester-fasthtml-admin):
+    # o admin só existe no servidor do ingester; o consumer permanece API pura.
+    # Montado após as rotas JSON /admin/users para não sobrescrevê-las (o match
+    # exato de rota tem precedência sobre o prefixo do mount).
+    if config_dir.name.startswith(".ingester"):
+        app.mount("/admin", build_admin_panel(), name="admin")
 
     return app
 

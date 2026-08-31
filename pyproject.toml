@@ -23,6 +23,7 @@ dependencies = [
     "langgraph>=0.2",
     "typer>=0.12",
     "rich>=13.8",
+    "python-fasthtml>=0.14.12",
 ]
 
 [project.optional-dependencies]

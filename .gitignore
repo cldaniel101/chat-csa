@@ -54,3 +54,5 @@ csa_reverse/
 
 cards*.json
 cards*.md
+# Chave de sessão do FastHTML (gerada em runtime)
+.sesskey
