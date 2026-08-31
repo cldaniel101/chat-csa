@@ -10,6 +10,15 @@
   width: 100%;
 }
 
+/* Fundo mock: captura full-page do portal da CSA ocupa toda a largura
+   e rola naturalmente, simulando a página real sob o widget do chat. */
+.csa-page-backdrop {
+  display: block;
+  width: 100%;
+  height: auto;
+  user-select: none;
+}
+
 .btn {
   background: var(--accent);
   color: var(--c-on-accent);
