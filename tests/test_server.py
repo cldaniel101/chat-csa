@@ -110,6 +110,7 @@ def test_chat_completions_injects_cached_faq_as_context(tmp_path, monkeypatch):
     # Sem short-circuit: resposta vem do fluxo normal do agente, nunca verbatim do Markdown
     body = r.json()
     assert "chat_csa" not in body
+    assert "fake-ok: agent is working" in body["choices"][0]["message"]["content"]
     assert "ENEM 2024 pode ser utilizado" not in body["choices"][0]["message"]["content"]
 
 

@@ -146,98 +146,10 @@ def _extract_text_from_agent_result(result: dict) -> str:
     return str(content)
 
 
-SENSITIVE_KEYWORDS = {
-    "classificação",
-    "classificacao",
-    "concorrência",
-    "concorrencia",
-    "convocação",
-    "convocacao",
-    "corte",
-    "curso",
-    "documento",
-    "documentos",
-    "edital",
-    "enem",
-    "espera",
-    "lista",
-    "matrícula",
-    "matricula",
-    "máxima",
-    "maxima",
-    "mínima",
-    "minima",
-    "modalidade",
-    "nota",
-    "notas",
-    "prazo",
-    "resultado",
-    "vagas",
-    "cronograma",
-}
-
-def _is_sensitive(text: str) -> bool:
-    lower = text.lower()
-    return any(k in lower for k in SENSITIVE_KEYWORDS)
-
-def _extract_read_urls(messages: list) -> set[str]:
-    called_urls = set()
-    successful_urls = set()
-    failed_urls = set()
-    saw_fetch_result = False
-
-    for m in messages:
-        if isinstance(m, dict):
-            tool_calls = m.get("tool_calls", [])
-            content = m.get("content", "")
-        else:
-            tool_calls = getattr(m, "tool_calls", [])
-            content = getattr(m, "content", "")
-
-        for tc in tool_calls or []:
-            if tc.get("name") == "web_csa_fetch":
-                url = tc.get("args", {}).get("url")
-                if url:
-                    called_urls.add(url.strip())
-
-        if not isinstance(content, str) or not content.lstrip().startswith("{"):
-            continue
-
-        try:
-            payload = json.loads(content)
-        except json.JSONDecodeError:
-            continue
-
-        if not isinstance(payload, dict) or not payload.get("url"):
-            continue
-
-        saw_fetch_result = True
-        url = str(payload["url"]).strip()
-        if payload.get("error"):
-            failed_urls.add(url)
-            requested_url = payload.get("resolved_from_url")
-            if requested_url:
-                failed_urls.add(str(requested_url).strip())
-        else:
-            successful_urls.add(url)
-
-    if successful_urls:
-        return successful_urls
-    if saw_fetch_result:
-        return called_urls - failed_urls
-    return called_urls
-
-
-_CITED_URL_RE = re.compile(r"https?://[^\s)]+")
 _LEADING_RESPONSE_LABEL_RE = re.compile(
     r"^\s*(?:#{1,6}\s*)?(?:\*\*|__)?resposta\s*:(?:\*\*|__)?\s*",
     re.IGNORECASE,
 )
-_SOURCES_SECTION_RE = re.compile(
-    r"\n\s*(?:#{1,6}\s*)?(?:\*\*|__)?fontes?\s*:(?:\*\*|__)?[\s\S]*$",
-    re.IGNORECASE,
-)
-_INLINE_CITATION_RE = re.compile(r"\s*\[\d+\]")
 _OFFICIAL_NOTICE_RE = re.compile(
     r"^\s*Em caso de divergência, prevalece o edital oficial\.?\s*$",
     re.IGNORECASE | re.MULTILINE,
@@ -300,38 +212,32 @@ def _has_source_lookup(messages: list) -> bool:
 
 
 def _format_agent_response(response_text: str, *, source_was_consulted: bool) -> str:
-    """Remove rótulos artificiais e citações sem uma fonte efetivamente consultada."""
-    formatted = _LEADING_RESPONSE_LABEL_RE.sub("", response_text, count=1).strip()
-    if source_was_consulted:
-        return formatted
+    """Higieniza o formato da resposta sem bloquear (guia > bloqueio).
 
-    formatted = _SOURCES_SECTION_RE.sub("", formatted)
-    formatted = _OFFICIAL_NOTICE_RE.sub("", formatted)
-    formatted = _INLINE_CITATION_RE.sub("", formatted)
+    Remove rótulos artificiais e a nota de divergência órfã quando nenhuma
+    fonte foi consultada. Nunca apaga a seção Fontes nem as citações: o
+    agente é guiado pelo prompt a citar corretamente, não punido depois.
+    """
+    formatted = _LEADING_RESPONSE_LABEL_RE.sub("", response_text, count=1).strip()
+    if not source_was_consulted:
+        formatted = _OFFICIAL_NOTICE_RE.sub("", formatted)
     return formatted.strip()
 
 
-def validate_agent_response(question: str, response_text: str, read_urls: set[str]) -> str | None:
-    """Valida a resposta. Retorna uma mensagem de erro controlada se falhar, ou None se passar."""
-    sensitive = _is_sensitive(question)
-    has_fontes = "\nfontes:" in response_text.lower() or "\nfonte:" in response_text.lower()
-    
-    if sensitive and not has_fontes:
-        return "Não consegui confirmar essa informação em uma fonte oficial válida neste momento. Tente novamente em instantes ou consulte o portal da CSA/UEFS: https://csa.uefs.br/."
-    
-    # Extrai as URLs citadas
-    cited_urls = set(_CITED_URL_RE.findall(response_text))
-    cleaned_cited = {u.rstrip(").,;'\"") for u in cited_urls}
-    
-    for url in cleaned_cited:
-        if "csa.uefs.br" in url:
-            base_url = url.split("#")[0]
-            if not any(base_url in r.split("#")[0] for r in read_urls):
-                # Hotfix protótipo: só bloqueia se for pergunta sensível; caso contrário permite (knowledge/ será refeito depois)
-                if sensitive:
-                    return "Não consegui validar uma das fontes citadas pelo agente. Para evitar informação incorreta, refaça a pergunta ou consulte o portal da CSA/UEFS: https://csa.uefs.br/."
-    
-    return None
+_RESPONSE_GUIDE_BLOCK = """## Guia de citações (obrigatório)
+
+- Termine a resposta com uma seção `Fontes:` sempre que usar qualquer fonte: FAQ curada, arquivos de knowledge/ ou páginas do portal.
+- Formato de cada fonte: `[1] Nome da fonte — URL`; para FAQ curada injetada use `[1] FAQ curada — cache FAQ-XXX`.
+- Cite a fonte inline com `[N]` logo após a informação que veio dela.
+- Fontes válidas: a FAQ curada injetada neste prompt, arquivos lidos com `read` e páginas abertas com `web_csa_fetch` no turno.
+- Não invente URLs: se não abriu a página no turno, cite a FAQ curada ou o arquivo knowledge/ que usou.
+"""
+
+
+def _prompt_extra(faq_block: str) -> str:
+    """Junta o bloco de FAQ recuperada com o guia de citações para o system prompt."""
+    blocks = [b for b in (faq_block, _RESPONSE_GUIDE_BLOCK.strip()) if b]
+    return "\n\n".join(blocks)
 
 
 def create_app(config_dir: str | Path | None = None) -> FastAPI:
@@ -394,27 +300,23 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
         # Recarrega prompt + agente a cada request (barato; mantém hot-reload).
         # FAQ curada: injeta entradas relevantes como referência no prompt —
         # a resposta é formulada pelo agente no turno, sem short-circuit.
+        faq_block = _faq_reference_block(last_user_msg)
         system_prompt = build_system_prompt(
-            Path(config_dir).resolve(), extra=_faq_reference_block(last_user_msg)
+            Path(config_dir).resolve(), extra=_prompt_extra(faq_block)
         )
         agent, _, _, _ = build_agent(config_dir=config_dir)
 
         lc_messages = _openai_messages_to_lc(messages, system_prompt)
 
-        force_buffer = _is_sensitive(last_user_msg) or _is_conversational(last_user_msg)
+        force_buffer = _is_conversational(last_user_msg)
 
         if not stream or force_buffer:
             result = await agent.ainvoke({"messages": lc_messages})
             result_messages = result.get("messages", [])
             text = _format_agent_response(
                 _extract_text_from_agent_result(result),
-                source_was_consulted=_has_source_lookup(result_messages),
+                source_was_consulted=_has_source_lookup(result_messages) or bool(faq_block),
             )
-            
-            read_urls = _extract_read_urls(result_messages)
-            err = validate_agent_response(last_user_msg, text, read_urls)
-            if err:
-                text = err
 
             if not stream:
                 return JSONResponse(
@@ -500,26 +402,22 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
 
         # FAQ curada: injeta entradas relevantes como referência no prompt —
         # a resposta é formulada pelo agente no turno, sem short-circuit.
+        faq_block = _faq_reference_block(last_user_msg)
         system_prompt = build_system_prompt(
-            Path(config_dir).resolve(), extra=_faq_reference_block(last_user_msg)
+            Path(config_dir).resolve(), extra=_prompt_extra(faq_block)
         )
         agent, _, _, _ = build_agent(config_dir=config_dir)
         lc_messages = _openai_messages_to_lc(messages, system_prompt)
 
-        force_buffer = _is_sensitive(last_user_msg) or _is_conversational(last_user_msg)
+        force_buffer = _is_conversational(last_user_msg)
 
         if not stream or force_buffer:
             result = await agent.ainvoke({"messages": lc_messages})
             result_messages = result.get("messages", [])
             text = _format_agent_response(
                 _extract_text_from_agent_result(result),
-                source_was_consulted=_has_source_lookup(result_messages),
+                source_was_consulted=_has_source_lookup(result_messages) or bool(faq_block),
             )
-            
-            read_urls = _extract_read_urls(result_messages)
-            err = validate_agent_response(last_user_msg, text, read_urls)
-            if err:
-                text = err
 
             if not stream:
                 return JSONResponse(
