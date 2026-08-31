@@ -307,13 +307,13 @@ curl http://localhost:8001/api/chat \
 
 Single agent (override per-run):
 ```bash
-LLM_PROVIDER=ollama LLM_MODEL=llama3.2 uv run chat-csa serve --config-dir .consumer --port 8002
+LLM_PROVIDER=ollama LLM_MODEL=gemma4:31b-cloud uv run chat-csa serve --config-dir .consumer --port 8002
 LLM_PROVIDER=openai OPENAI_API_KEY=sk-... OPENAI_MODEL=gpt-4o-mini uv run chat-csa serve --config-dir .consumer --port 8002
 ```
 
 Ollama local model (default):
 ```bash
-ollama pull llama3.2
+ollama pull gemma4:31b-cloud
 ollama serve  # default http://localhost:11434
 # then make run-both reads OLLAMA_BASE_URL from .env
 ```
