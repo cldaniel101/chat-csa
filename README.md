@@ -402,6 +402,40 @@ make frontend-build    # production build -> frontend/dist (served by nginx in d
 
 See `knowledge/index.md` for the OKF bundle structure.
 
+## 🚀 Deploy (Vercel + GitHub Actions)
+
+O deploy é automatizado via **GitHub Actions + Vercel CLI** (sem GitHub App), com dois projetos separados na Vercel:
+
+| Projeto | Diretório | URL |
+|---|---|---|
+| **chat-csa-api** (backend FastAPI + painel FastHTML) | raiz do repo (`vercel.json`, `api/index.py`) | `https://chat-csa-api.vercel.app` |
+| **chat-csa-web** (frontend React/Vite) | `frontend/` (`frontend/vercel.json`) | *definido no painel da Vercel* |
+
+### Fluxo do CI (`.github/workflows/deploy.yml`)
+
+- `push` em **main** → deploy de produção nos dois projetos;
+- `push` em **development** ou **pull request** → deploy de preview (URLs únicas por deploy).
+- O job `checks` (lint + build) roda antes e bloqueia o deploy.
+- Cada projeto usa um **token project-scoped** próprio, armazenado como secret do GitHub:
+  `VERCEL_TOKEN_API`, `VERCEL_TOKEN_FRONTEND` (mais `VERCEL_ORG_ID_*` e `VERCEL_PROJECT_ID_*`).
+
+### Variáveis de ambiente (`.github/workflows/env-sync.yml`)
+
+O backend consome `LLM_PROVIDER`, `LLM_MODEL`, `OLLAMA_MODEL`, `OLLAMA_BASE_URL` e `OLLAMA_API_KEY`.
+Elas vivem como secrets do GitHub; para sincronizá-las nos ambientes da Vercel (production/preview/development),
+rode manualmente **Actions → “Sync Vercel env”** — o workflow reutiliza `scripts/sync-vercel-env.sh`
+(allowlist + override de `OLLAMA_BASE_URL=https://ollama.com` em produção).
+
+### Deploy manual (alternativa)
+
+```bash
+make deploy-env        # sincroniza envs do backend (produção)
+make deploy-api        # deploy do backend
+make deploy-frontend   # deploy do frontend
+```
+
+> Pré-requisito local: `npx vercel link` uma vez em cada diretório (raiz e `frontend/`).
+
 ## 🚧 Status
 
 **Em desenvolvimento.**

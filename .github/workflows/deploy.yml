@@ -1,0 +1,112 @@
+# Deploy automático para a Vercel via GitHub Actions + Vercel CLI (sem GitHub App).
+#
+# Estratégia:
+#   - push em `main`         -> deploy de produção (--prod) nos dois projetos
+#   - push em `development`  -> deploy de preview nos dois projetos
+#   - pull request (mesmo repo) -> deploy de preview nos dois projetos
+#
+# Dois projetos separados, cada um com seu token project-scoped:
+#   - API (raiz do repo, vercel.json)  -> chat-csa-api  (função @vercel/python)
+#   - Frontend (frontend/, vercel.json) -> chat-csa-web (SPA Vite + React)
+#
+# Secrets do repositório (GitHub):
+#   VERCEL_TOKEN_API / VERCEL_TOKEN_FRONTEND  -> tokens project-scoped da Vercel
+#   VERCEL_ORG_ID_API / VERCEL_ORG_ID_FRONTEND -> time da Vercel (mesmo valor)
+#   VERCEL_PROJECT_ID_API / _FRONTEND          -> id de cada projeto
+name: Deploy
+
+on:
+  push:
+    branches: [main, development]
+  pull_request:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Lint e build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Instala dependências do frontend
+        working-directory: frontend
+        run: npm ci
+
+      - name: Lint do frontend (oxlint)
+        working-directory: frontend
+        run: npx oxlint src
+
+      - name: Build de produção (tsc + vite)
+        working-directory: frontend
+        run: npm run build
+
+      - name: Lint do backend (ruff)
+        run: pip install ruff && ruff check src
+
+  deploy:
+    name: Deploy ${{ matrix.name }}
+    needs: checks
+    # PRs de fork não recebem secrets do repo — por isso o deploy de PR é
+    # restrito a PRs vindas do próprio repositório.
+    if: |
+      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) ||
+      github.ref == 'refs/heads/main' ||
+      github.ref == 'refs/heads/development'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: api
+            workdir: .
+            token_secret: VERCEL_TOKEN_API
+            org_secret: VERCEL_ORG_ID_API
+            project_secret: VERCEL_PROJECT_ID_API
+          - name: frontend
+            workdir: frontend
+            token_secret: VERCEL_TOKEN_FRONTEND
+            org_secret: VERCEL_ORG_ID_FRONTEND
+            project_secret: VERCEL_PROJECT_ID_FRONTEND
+    steps:
+      - uses: actions/checkout@v4
+
+      # Vincula o projeto via VERCEL_ORG_ID/VERCEL_PROJECT_ID (não-interativo).
+      # Cria .vercel/project.json no working-directory (gitignored).
+      - name: Vincula o projeto
+        working-directory: ${{ matrix.workdir }}
+        env:
+          VERCEL_ORG_ID: ${{ secrets[matrix.org_secret] }}
+          VERCEL_PROJECT_ID: ${{ secrets[matrix.project_secret] }}
+        run: npx vercel@59 link --yes --token "${{ secrets[matrix.token_secret] }}"
+
+      # Build remoto: a Vercel roda o build no próprio lado (Python/Node),
+      # então não usamos --prebuilt nem precisamos instalar toolchains aqui.
+      - name: Deploy de produção
+        if: github.ref == 'refs/heads/main'
+        working-directory: ${{ matrix.workdir }}
+        env:
+          VERCEL_ORG_ID: ${{ secrets[matrix.org_secret] }}
+          VERCEL_PROJECT_ID: ${{ secrets[matrix.project_secret] }}
+        timeout-minutes: 30
+        run: npx vercel@59 deploy --prod --yes --token "${{ secrets[matrix.token_secret] }}"
+
+      - name: Deploy de preview
+        if: github.ref != 'refs/heads/main'
+        working-directory: ${{ matrix.workdir }}
+        env:
+          VERCEL_ORG_ID: ${{ secrets[matrix.org_secret] }}
+          VERCEL_PROJECT_ID: ${{ secrets[matrix.project_secret] }}
+        timeout-minutes: 30
+        run: npx vercel@59 deploy --yes --token "${{ secrets[matrix.token_secret] }}"
