@@ -19,7 +19,7 @@ import {
 } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { chatCompletion, getConsumerUrl } from "../../api/client";
+import { chatCompletionStream, getConsumerUrl, type AgentToolStep } from "../../api/client";
 import { ChatHeader, type ChatHealth } from "./ChatHeader";
 import { ChatStatus } from "./ChatStatus";
 import { ChatSuggestions } from "./ChatSuggestions";
@@ -31,6 +31,12 @@ type ChatMessage = {
   content: string;
   createdAt: Date;
   isError?: boolean;
+  activity?: AgentActivity;
+};
+
+type AgentActivity = {
+  reasoning: string;
+  steps: AgentToolStep[];
 };
 
 type CSAChatWidgetProps = Record<string, never>;
@@ -199,10 +205,129 @@ function MarkdownMessage({ content }: { content: string }) {
   );
 }
 
+// ── Atividade do agente: reasoning + passos de ferramenta ────────────────────
+const TOOL_DESCRIPTION: Record<string, { icon: string; label: string }> = {
+  read: { icon: "📖", label: "Lendo documento" },
+  write: { icon: "✏️", label: "Escrevendo arquivo" },
+  edit: { icon: "✏️", label: "Editando arquivo" },
+  bash: { icon: "💻", label: "Executando comando" },
+  web_csa_fetch: { icon: "🌐", label: "Acessando página do portal" },
+  web_csa_search: { icon: "🔍", label: "Buscando no portal" },
+};
+
+function toolDetail(step: {
+  name: string;
+  args?: Record<string, unknown>;
+}): string {
+  const args = step.args ?? {};
+  switch (step.name) {
+    case "read":
+      return typeof args.path === "string" ? args.path : "";
+    case "web_csa_fetch":
+      return typeof args.url === "string" ? args.url : "";
+    case "web_csa_search":
+      return typeof args.query === "string" ? args.query : "";
+    default:
+      return JSON.stringify(args);
+  }
+}
+
+function describeStep(step: AgentToolStep): string {
+  const { icon, label } = TOOL_DESCRIPTION[step.name] ?? {
+    icon: "🛠️",
+    label: step.name,
+  };
+  const detail = toolDetail(step);
+  return detail ? `${icon} ${label} — ${detail}` : `${icon} ${label}`;
+}
+
+function currentStepStatus(steps: AgentToolStep[], reasoning: string): string {
+  const openIds = new Set(
+    steps.filter((step) => step.type === "tool_start").map((step) => step.id),
+  );
+  for (const step of steps) {
+    if (step.type === "tool_end") openIds.delete(step.id);
+  }
+  const running = steps
+    .filter((step) => step.type === "tool_start" && openIds.has(step.id))
+    .at(-1);
+  if (running) return `${describeStep(running)}…`;
+  if (steps.length > 0) return describeStep(steps[steps.length - 1]);
+  if (reasoning) return "💭 Pensando…";
+  return "Buscando uma resposta…";
+}
+
+function groupToolSteps(steps: AgentToolStep[]) {
+  const groups: {
+    id: string;
+    name: string;
+    args?: Record<string, unknown>;
+    error: boolean;
+  }[] = [];
+  const byId = new Map<string, (typeof groups)[number]>();
+  for (const step of steps) {
+    if (step.type === "tool_start") {
+      const group = { id: step.id, name: step.name, args: step.args, error: false };
+      byId.set(step.id, group);
+      groups.push(group);
+    } else {
+      const group = byId.get(step.id);
+      if (group) group.error = Boolean(step.error);
+    }
+  }
+  return groups;
+}
+
+function ActivityBlock({ activity }: { activity: AgentActivity }) {
+  const reasoning = activity.reasoning.trim();
+  const steps = groupToolSteps(activity.steps);
+
+  if (!reasoning && steps.length === 0) {
+    return null;
+  }
+
+  return (
+    <details className="csa-chat-activity">
+      <summary>💭 Atividade do agente</summary>
+      {reasoning && (
+        <div className="csa-chat-activity-body">
+          <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+            {reasoning}
+          </ReactMarkdown>
+        </div>
+      )}
+      {steps.length > 0 && (
+        <ol className="csa-chat-activity-steps">
+          {steps.map((step) => {
+            const { icon, label } = TOOL_DESCRIPTION[step.name] ?? {
+              icon: "🛠️",
+              label: step.name,
+            };
+            const detail = toolDetail(step);
+            return (
+              <li key={step.id}>
+                {icon} <strong>{label}</strong>
+                {detail ? ` — ${detail}` : ""}{" "}
+                {step.error ? "⚠️ falhou" : "✓"}
+              </li>
+            );
+          })}
+        </ol>
+      )}
+    </details>
+  );
+}
+
 export function CSAChatWidget(_props: CSAChatWidgetProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  // Mensagem "ao vivo" durante o streaming: conteúdo parcial + status do passo atual.
+  const [live, setLive] = useState<{ content: string } | null>(null);
+  const [liveSteps, setLiveSteps] = useState<AgentToolStep[]>([]);
+  const [liveReasoning, setLiveReasoning] = useState("");
+  const reasoningRef = useRef("");
+  const stepsRef = useRef<AgentToolStep[]>([]);
   const [health, setHealth] = useState<ChatHealth>("checking");
   const [open, setOpen] = useState(false);
   const messagesRef = useRef<HTMLDivElement>(null);
@@ -224,18 +349,31 @@ export function CSAChatWidget(_props: CSAChatWidgetProps) {
     return () => controller.abort();
   }, []);
 
+  // nova mensagem (user ou assistant finalizada): sempre leva pro fim
   useEffect(() => {
     if (!open) return;
-
+    const el = messagesRef.current;
+    if (!el) return;
     const frame = window.requestAnimationFrame(() => {
-      messagesRef.current?.scrollTo({
-        top: messagesRef.current.scrollHeight,
-        behavior: "smooth",
-      });
+      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
     });
-
     return () => window.cancelAnimationFrame(frame);
-  }, [messages, loading, open]);
+  }, [messages, open]);
+
+  // durante o streaming: segue o tamanho da mensagem só se o usuário já
+  // estiver perto do fim — um scroll pra cima pausa o acompanhamento
+  useEffect(() => {
+    if (!open || !live) return;
+    const el = messagesRef.current;
+    if (!el) return;
+    const frame = window.requestAnimationFrame(() => {
+      const isNearBottom =
+        el.scrollHeight - el.scrollTop - el.clientHeight < 180;
+      if (!isNearBottom) return;
+      el.scrollTo({ top: el.scrollHeight, behavior: "auto" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [live, open]);
 
   const sendMessage = useCallback(
     async (text: string) => {
@@ -252,10 +390,30 @@ export function CSAChatWidget(_props: CSAChatWidgetProps) {
 
       setMessages(nextMessages);
       setLoading(true);
+      reasoningRef.current = "";
+      stepsRef.current = [];
+      setLiveReasoning("");
+      setLiveSteps([]);
+      setLive({ content: "" });
 
       try {
-        const reply = await chatCompletion(
+        const reply = await chatCompletionStream(
           nextMessages.map(({ role, content }) => ({ role, content })),
+          {
+            onReasoning: (delta) => {
+              reasoningRef.current += delta;
+              setLiveReasoning(reasoningRef.current);
+            },
+            onToolCall: (step) => {
+              stepsRef.current = [...stepsRef.current, step];
+              setLiveSteps(stepsRef.current);
+            },
+            onContent: (delta) => {
+              setLive((current) =>
+                current ? { content: current.content + delta } : current,
+              );
+            },
+          },
         );
 
         setMessages([
@@ -265,6 +423,10 @@ export function CSAChatWidget(_props: CSAChatWidgetProps) {
             role: "assistant",
             content: reply || "Não foi possível obter uma resposta.",
             createdAt: new Date(),
+            activity: {
+              reasoning: reasoningRef.current,
+              steps: stepsRef.current,
+            },
           },
         ]);
       } catch (error: unknown) {
@@ -282,6 +444,7 @@ export function CSAChatWidget(_props: CSAChatWidgetProps) {
           },
         ]);
       } finally {
+        setLive(null);
         setLoading(false);
       }
     },
@@ -403,14 +566,81 @@ export function CSAChatWidget(_props: CSAChatWidgetProps) {
                 role={message.isError ? "alert" : undefined}
               >
                 {message.role === "assistant" ? (
-                  <MarkdownMessage content={message.content} />
+                  <>
+                    {message.activity && <ActivityBlock activity={message.activity} />}
+                    <MarkdownMessage content={message.content} />
+                  </>
                 ) : (
                   message.content
                 )}
               </article>
             ))}
 
-            {loading && <ChatStatus />}
+            {loading && !live && <ChatStatus />}
+
+            {live && (
+              <article
+                className="csa-chat-message csa-chat-message--assistant csa-chat-live"
+                aria-label="Assistente CSA respondendo"
+              >
+                {/* Durante o streaming o <details> fica aberto para o reasoning/tool calls
+                    não ocuparem o espaço da resposta final — no final vira o ActivityBlock
+                    colapsado da mensagem. Estilo markdown, não card. */}
+                <details className="csa-chat-activity" open>
+                  <summary>💭 Atividade do agente</summary>
+                  {liveReasoning ? (
+                    <div className="csa-chat-activity-body">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                        {liveReasoning}
+                      </ReactMarkdown>
+                    </div>
+                  ) : liveSteps.length === 0 ? (
+                    <div className="csa-chat-activity-body csa-chat-activity--muted">
+                      <span className="csa-chat-typing" aria-hidden="true">
+                        <span />
+                        <span />
+                        <span />
+                      </span>{" "}
+                      {currentStepStatus(liveSteps, liveReasoning)}
+                    </div>
+                  ) : null}
+                  {liveSteps.length > 0 && (
+                    <ol className="csa-chat-activity-steps">
+                      {groupToolSteps(liveSteps).map((step) => {
+                        const { icon, label } = TOOL_DESCRIPTION[step.name] ?? {
+                          icon: "🛠️",
+                          label: step.name,
+                        };
+                        const detail = toolDetail(step);
+                        return (
+                          <li key={step.id}>
+                            {icon} <strong>{label}</strong>
+                            {detail ? ` — ${detail}` : ""}{" "}
+                            {step.error ? "⚠️ falhou" : "✓"}
+                          </li>
+                        );
+                      })}
+                    </ol>
+                  )}
+                </details>
+                {live.content !== "" ? (
+                  <div className="csa-chat-live-answer">
+                    <MarkdownMessage content={live.content} />
+                  </div>
+                ) : (
+                  <div className="csa-chat-status">
+                    <span className="csa-chat-typing" aria-hidden="true">
+                      <span />
+                      <span />
+                      <span />
+                    </span>
+                    <span role="status" aria-live="polite">
+                      Gerando resposta…
+                    </span>
+                  </div>
+                )}
+              </article>
+            )}
           </div>
 
           <form className="csa-chat-composer" onSubmit={handleSubmit}>
