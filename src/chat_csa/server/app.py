@@ -146,6 +146,112 @@ def _extract_text_from_agent_result(result: dict) -> str:
     return str(content)
 
 
+def _openai_chunk(completion_id: str, created: int, model: str, delta: dict, finish_reason=None) -> str:
+    """Monta um chunk SSE no formato OpenAI; delta pode carregar campos
+    extras (reasoning/tool_call) que clientes externos ignoram."""
+    payload = {
+        "id": completion_id,
+        "object": "chat.completion.chunk",
+        "created": created,
+        "model": model,
+        "choices": [{"index": 0, "delta": delta, "finish_reason": finish_reason}],
+    }
+    return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
+def _reasoning_from_message(message) -> str:
+    """Extrai reasoning (thinking) de uma mensagem ou chunk do LangChain.
+
+    O langchain-ollama mapeia o campo `thinking` do Ollama para
+    additional_kwargs['reasoning_content'] (invoke e stream).
+    """
+    if isinstance(message, dict):
+        additional = message.get("additional_kwargs", {}) or {}
+    else:
+        additional = getattr(message, "additional_kwargs", {}) or {}
+    reasoning = additional.get("reasoning_content") or additional.get("reasoning") or ""
+    if isinstance(reasoning, list):
+        parts = []
+        for part in reasoning:
+            if isinstance(part, dict) and "text" in part:
+                parts.append(part["text"])
+            else:
+                parts.append(str(part))
+        return "".join(parts)
+    return str(reasoning)
+
+
+def _tool_call_parts(tool_call) -> tuple[str, str, dict]:
+    """Normaliza uma tool call (dict ou objeto) para (id, name, args)."""
+    if isinstance(tool_call, dict):
+        tid = tool_call.get("id") or ""
+        name = tool_call.get("name") or tool_call.get("function", {}).get("name") or ""
+        raw_args = tool_call.get("args")
+        if raw_args is None:
+            raw_args = tool_call.get("function", {}).get("arguments", {})
+    else:
+        tid = getattr(tool_call, "id", "") or ""
+        name = getattr(tool_call, "name", "") or ""
+        raw_args = getattr(tool_call, "args", {})
+    if isinstance(raw_args, str):
+        try:
+            raw_args = json.loads(raw_args)
+        except json.JSONDecodeError:
+            raw_args = {"raw": raw_args}
+    if not isinstance(raw_args, dict):
+        raw_args = {"value": str(raw_args)}
+    return tid, name, raw_args
+
+
+def _tool_result_is_error(content) -> bool:
+    """Heurística simples: resultado de ferramenta começou com erro."""
+    text = str(content).lstrip().lower()
+    return text.startswith("error") or '"error"' in text[:500]
+
+
+def _tool_events_from_messages(messages: list) -> list[dict]:
+    """Converte a lista de mensagens do agente em eventos de ferramenta
+    ordenados: {type: tool_start, id, name, args} seguido de
+    {type: tool_end, id, name, error} por chamada."""
+    events: list[dict] = []
+    open_calls: dict[str, dict] = {}
+    for message in messages:
+        if isinstance(message, dict):
+            tool_calls = message.get("tool_calls") or []
+            msg_type = message.get("type") or message.get("role")
+            tool_call_id = message.get("tool_call_id")
+            content = message.get("content", "")
+        else:
+            tool_calls = getattr(message, "tool_calls", None) or []
+            msg_type = getattr(message, "type", None)
+            tool_call_id = getattr(message, "tool_call_id", None)
+            content = getattr(message, "content", "")
+        for tool_call in tool_calls:
+            tid, name, args = _tool_call_parts(tool_call)
+            if not name:
+                continue
+            event = {"type": "tool_start", "id": tid, "name": name, "args": args}
+            events.append(event)
+            open_calls[tid] = event
+        if msg_type == "tool" and tool_call_id in open_calls:
+            start = open_calls.pop(tool_call_id)
+            events.append(
+                {
+                    "type": "tool_end",
+                    "id": tool_call_id,
+                    "name": start["name"],
+                    "error": _tool_result_is_error(content),
+                }
+            )
+    return events
+
+
+def _trace_from_messages(messages: list) -> tuple[str, list[dict]]:
+    """Caminho bufferizado: (reasoning completo, eventos de ferramenta)."""
+    reasoning_parts = [r for r in (_reasoning_from_message(m) for m in messages) if r]
+    return "\n".join(reasoning_parts), _tool_events_from_messages(messages)
+
+
 _LEADING_RESPONSE_LABEL_RE = re.compile(
     r"^\s*(?:#{1,6}\s*)?(?:\*\*|__)?resposta\s*:(?:\*\*|__)?\s*",
     re.IGNORECASE,
@@ -317,6 +423,9 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
                 _extract_text_from_agent_result(result),
                 source_was_consulted=_has_source_lookup(result_messages) or bool(faq_block),
             )
+            # Rastro da atividade do agente (caminho bufferizado): reasoning
+            # completo + eventos de ferramenta, reemitidos no JSON/SSE.
+            reasoning_text, tool_events = _trace_from_messages(result_messages)
 
             if not stream:
                 return JSONResponse(
@@ -325,57 +434,87 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
                         "object": "chat.completion",
                         "created": created,
                         "model": model,
-                        "choices": [{"index": 0, "message": {"role": "assistant", "content": text}, "finish_reason": "stop"}],
+                        "choices": [
+                            {
+                                "index": 0,
+                                "message": {
+                                    "role": "assistant",
+                                    "content": text,
+                                    # Campos extras (fora do spec OpenAI):
+                                    # consumidos pelo frontend do Chat CSA.
+                                    "reasoning": reasoning_text,
+                                    "tool_steps": tool_events,
+                                },
+                                "finish_reason": "stop",
+                            }
+                        ],
                         "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
                     }
                 )
-            
-            # Streaming simulado após buffer (para consultas críticas)
+
+            # Streaming simulado após buffer (para consultas críticas): emite
+            # o rastro completo de uma vez, no mesmo formato do stream real.
             async def fake_event_stream() -> AsyncIterator[str]:
-                yield f"data: {json.dumps({'id': completion_id,'object':'chat.completion.chunk','created':created,'model':model,'choices':[{'index':0,'delta':{'role':'assistant'},'finish_reason':None}]})}\n\n"
-                payload = {
-                    "id": completion_id,
-                    "object": "chat.completion.chunk",
-                    "created": created,
-                    "model": model,
-                    "choices": [{"index": 0, "delta": {"content": text}, "finish_reason": None}],
-                }
-                yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
-                yield f"data: {json.dumps({'id': completion_id,'object':'chat.completion.chunk','created':created,'model':model,'choices':[{'index':0,'delta':{},'finish_reason':'stop'}]})}\n\n"
+                yield _openai_chunk(completion_id, created, model, {"role": "assistant"})
+                if reasoning_text:
+                    yield _openai_chunk(completion_id, created, model, {"reasoning": reasoning_text})
+                for event in tool_events:
+                    yield _openai_chunk(completion_id, created, model, {"tool_call": event})
+                yield _openai_chunk(completion_id, created, model, {"content": text})
+                yield _openai_chunk(completion_id, created, model, {}, finish_reason="stop")
                 yield "data: [DONE]\n\n"
-                
+
             return StreamingResponse(fake_event_stream(), media_type="text/event-stream")
 
-        # Streaming real (apenas para consultas não-críticas, pois validação exige texto final completo)
+        # Streaming real: emite thinking (delta.reasoning), passos de ferramenta
+        # (delta.tool_call) e tokens da resposta (delta.content) ao vivo.
         async def event_stream() -> AsyncIterator[str]:
-            yield f"data: {json.dumps({'id': completion_id,'object':'chat.completion.chunk','created':created,'model':model,'choices':[{'index':0,'delta':{'role':'assistant'},'finish_reason':None}]})}\n\n"
+            yield _openai_chunk(completion_id, created, model, {"role": "assistant"})
+            streamed_messages: list = []
+            seen_events = 0
             try:
-                async for chunk in agent.astream({"messages": lc_messages}, stream_mode="messages"):
-                    msg_chunk = chunk[0] if isinstance(chunk, tuple) else chunk
-                    text = getattr(msg_chunk, "content", "")
-                    if isinstance(text, list):
-                        flat = ""
-                        for part in text:
-                            if isinstance(part, dict) and "text" in part:
-                                flat += part["text"]
-                            elif isinstance(part, str):
-                                flat += part
-                        text = flat
-                    text = str(text) if text else ""
-                    if not text:
+                async for mode, data in agent.astream(
+                    {"messages": lc_messages}, stream_mode=["updates", "messages"]
+                ):
+                    if mode == "messages":
+                        msg_chunk = data[0] if isinstance(data, tuple) else data
+                        # Chunks do grafo com metadados: resultados de ferramentas
+                        # streamados (langgraph_node == "tools") não são resposta
+                        # final — só reemite conteúdo gerado pelo modelo.
+                        meta = data[1] if isinstance(data, tuple) and len(data) > 1 else {}
+                        if meta.get("langgraph_node") == "tools":
+                            continue
+                        reasoning = _reasoning_from_message(msg_chunk)
+                        if reasoning:
+                            yield _openai_chunk(completion_id, created, model, {"reasoning": reasoning})
+                        text = getattr(msg_chunk, "content", "")
+                        if isinstance(text, list):
+                            flat = ""
+                            for part in text:
+                                if isinstance(part, dict) and "text" in part:
+                                    flat += part["text"]
+                                elif isinstance(part, str):
+                                    flat += part
+                            text = flat
+                        text = str(text) if text else ""
+                        if not text:
+                            continue
+                        yield _openai_chunk(completion_id, created, model, {"content": text})
                         continue
-                    payload = {
-                        "id": completion_id,
-                        "object": "chat.completion.chunk",
-                        "created": created,
-                        "model": model,
-                        "choices": [{"index": 0, "delta": {"content": text}, "finish_reason": None}],
-                    }
-                    yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+                    # mode == "updates": mensagens novas por passo do agente
+                    if isinstance(data, dict):
+                        for payload in data.values():
+                            msgs = payload.get("messages", []) if isinstance(payload, dict) else []
+                            streamed_messages.extend(msgs)
+                    events = _tool_events_from_messages(streamed_messages)
+                    for event in events[seen_events:]:
+                        yield _openai_chunk(completion_id, created, model, {"tool_call": event})
+                    seen_events = len(events)
             except Exception as e:
                 err = {"error": {"message": str(e), "type": "server_error"}}
                 yield f"data: {json.dumps(err)}\n\n"
-            yield f"data: {json.dumps({'id': completion_id,'object':'chat.completion.chunk','created':created,'model':model,'choices':[{'index':0,'delta':{},'finish_reason':'stop'}]})}\n\n"
+            yield _openai_chunk(completion_id, created, model, {}, finish_reason="stop")
             yield "data: [DONE]\n\n"
 
         return StreamingResponse(event_stream(), media_type="text/event-stream")
@@ -418,40 +557,84 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
                 _extract_text_from_agent_result(result),
                 source_was_consulted=_has_source_lookup(result_messages) or bool(faq_block),
             )
+            # Rastro da atividade do agente (caminho bufferizado).
+            reasoning_text, tool_events = _trace_from_messages(result_messages)
 
             if not stream:
                 return JSONResponse(
                     {
                         "model": model,
                         "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                        "message": {"role": "assistant", "content": text},
+                        "message": {
+                            "role": "assistant",
+                            "content": text,
+                            # Campos extras: consumidos pelo frontend do Chat CSA.
+                            "reasoning": reasoning_text,
+                            "tool_steps": tool_events,
+                        },
                         "done": True,
                     }
                 )
-            
-            # Streaming falso para Ollama
+
+            # Streaming falso para Ollama: emite reasoning/steps antes do texto.
             async def fake_ollama_stream() -> AsyncIterator[str]:
+                if reasoning_text:
+                    yield json.dumps(
+                        {"model": model, "message": {"role": "assistant", "reasoning": reasoning_text, "content": ""}, "done": False}
+                    ) + "\n"
+                for event in tool_events:
+                    yield json.dumps(
+                        {"model": model, "message": {"role": "assistant", "tool_call": event, "content": ""}, "done": False}
+                    ) + "\n"
                 yield json.dumps({"model": model, "message": {"role": "assistant", "content": text}, "done": False}) + "\n"
                 yield json.dumps({"model": model, "message": {"role": "assistant", "content": ""}, "done": True}) + "\n"
 
             return StreamingResponse(fake_ollama_stream(), media_type="application/x-ndjson")
 
         async def ollama_stream() -> AsyncIterator[str]:
-            async for chunk in agent.astream({"messages": lc_messages}, stream_mode="messages"):
-                msg_chunk = chunk[0] if isinstance(chunk, tuple) else chunk
-                text = getattr(msg_chunk, "content", "")
-                if isinstance(text, list):
-                    flat = ""
-                    for part in text:
-                        if isinstance(part, dict) and "text" in part:
-                            flat += part["text"]
-                        elif isinstance(part, str):
-                            flat += part
-                    text = flat
-                text = str(text) if text else ""
-                if not text:
+            streamed_messages: list = []
+            seen_events = 0
+            async for mode, data in agent.astream(
+                {"messages": lc_messages}, stream_mode=["updates", "messages"]
+            ):
+                if mode == "messages":
+                    msg_chunk = data[0] if isinstance(data, tuple) else data
+                    # Ignora resultados de ferramenta streamados pelo grafo
+                    # (langgraph_node == "tools") — não são a resposta final.
+                    meta = data[1] if isinstance(data, tuple) and len(data) > 1 else {}
+                    if meta.get("langgraph_node") == "tools":
+                        continue
+                    reasoning = _reasoning_from_message(msg_chunk)
+                    if reasoning:
+                        yield json.dumps(
+                            {"model": model, "message": {"role": "assistant", "reasoning": reasoning, "content": ""}, "done": False}
+                        ) + "\n"
+                    text = getattr(msg_chunk, "content", "")
+                    if isinstance(text, list):
+                        flat = ""
+                        for part in text:
+                            if isinstance(part, dict) and "text" in part:
+                                flat += part["text"]
+                            elif isinstance(part, str):
+                                flat += part
+                        text = flat
+                    text = str(text) if text else ""
+                    if not text:
+                        continue
+                    yield json.dumps({"model": model, "message": {"role": "assistant", "content": text}, "done": False}) + "\n"
                     continue
-                yield json.dumps({"model": model, "message": {"role": "assistant", "content": text}, "done": False}) + "\n"
+
+                # mode == "updates": passos de ferramenta (nome + args + resultado)
+                if isinstance(data, dict):
+                    for payload in data.values():
+                        msgs = payload.get("messages", []) if isinstance(payload, dict) else []
+                        streamed_messages.extend(msgs)
+                events = _tool_events_from_messages(streamed_messages)
+                for event in events[seen_events:]:
+                    yield json.dumps(
+                        {"model": model, "message": {"role": "assistant", "tool_call": event, "content": ""}, "done": False}
+                    ) + "\n"
+                seen_events = len(events)
             yield json.dumps({"model": model, "message": {"role": "assistant", "content": ""}, "done": True}) + "\n"
 
         return StreamingResponse(ollama_stream(), media_type="application/x-ndjson")
