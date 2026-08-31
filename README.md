@@ -360,6 +360,17 @@ docker compose up   # ingester :${INGESTER_PORT:-8001} + consumer :${CONSUMER_PO
 
 > **Why two vars?** `AGENT_CONFIG_DIR` is per-process (one agent = one dir + one port). `.env.example` therefore ships **both** `INGESTER_CONFIG_DIR` + `CONSUMER_CONFIG_DIR` (and `INGESTER_PORT`/`CONSUMER_PORT`) plus a fallback `AGENT_CONFIG_DIR`/`PORT` for single-agent mode. `Makefile` and `docker-compose.yml` read the `INGESTER_*`/`CONSUMER_*` set; the server itself still honors `AGENT_CONFIG_DIR` per instance.
 
+### Painel do ingester (FastHTML /admin)
+
+O ingester tem painel próprio servido pelo próprio backend — sem passar pelo frontend React (decisão registrada na discussão `ingester-fasthtml-admin`).
+
+- **Rota**: `GET /admin` no servidor do ingester (`AGENT_CONFIG_DIR=.ingester`, porta `:8001` em dev). O mount só existe no config do ingester; o consumer permanece API pura (404 em `/admin`).
+- **Login**: `POST /admin/login` valida contra o `auth_store` em memória (seed: `admin / sudo123`) e abre sessão por cookie HttpOnly (`csa_admin_token`, SameSite=Lax, path=/admin). `POST /admin/logout` encerra.
+- **Chat**: painel autenticado conversa com o agente ingester via SSE contra `POST /v1/chat/completions` (mesmo origin, sem token manual). Histórico fica no cliente; servidor stateless por request.
+- **Escopo mínimo**: login + chat apenas. O CRUD de usuários segue como JSON API (`/admin/users`, Bearer).
+- **Deploy https (ex.: Vercel)**: definir `ADMIN_COOKIE_SECURE=1` para o cookie de sessão ser marcado Secure.
+- **Caveat serverless**: o `auth_store` é em memória — em cold starts/instâncias múltiplas do Vercel, sessões e usuários resetam (comportamento pré-existente de `/auth/login` e `/admin/users`).
+
 ### React Chat (frontend/)
 
 Vite + React chat widget **exclusivo do consumer** — botão flutuante que conversa com o agente consumer via endpoint OpenAI-compatible.
