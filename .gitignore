@@ -22,7 +22,6 @@ Thumbs.db
 
 # Data / indexes
 data/raw/
-data/bm25.db
 data/*.db
 
 # IDE
@@ -55,3 +54,5 @@ csa_reverse/
 
 cards*.json
 cards*.md
+# Chave de sessão do FastHTML (gerada em runtime)
+.sesskey

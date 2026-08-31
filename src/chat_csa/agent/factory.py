@@ -43,10 +43,22 @@ def get_llm(
                 "async_client_kwargs": {"headers": headers},
             }
 
+        # Reasoning/thinking: ligado por padrão (gemma4:31b-cloud suporta e
+        # expõe o raciocínio via additional_kwargs["reasoning_content"]).
+        # Desliga com OLLAMA_REASONING=0|false|no|off — modelos sem suporte
+        # seguem o fallback da UI (só tool steps).
+        reasoning = os.getenv("OLLAMA_REASONING", "1").strip().lower() not in (
+            "0",
+            "false",
+            "no",
+            "off",
+        )
+
         return ChatOllama(
-            model=model or os.getenv("OLLAMA_MODEL", "llama3.2"),
+            model=model or os.getenv("OLLAMA_MODEL", "gemma4:31b-cloud"),
             temperature=temperature,
             base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
+            reasoning=reasoning,
             **extra,
         )
     elif provider == "fake":

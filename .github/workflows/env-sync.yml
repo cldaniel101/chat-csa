@@ -1,0 +1,53 @@
+# Sincroniza as variáveis de ambiente do backend na Vercel a partir dos
+# secrets do GitHub, reutilizando scripts/sync-vercel-env.sh.
+#
+# Execução manual: aba Actions -> "Sync Vercel env" -> Run workflow
+# (escolha o ambiente: production | preview | development).
+#
+# Secrets usados (GitHub):
+#   LLM_PROVIDER, LLM_MODEL, OLLAMA_MODEL, OLLAMA_BASE_URL, OLLAMA_API_KEY
+#   VERCEL_TOKEN_API, VERCEL_ORG_ID_API, VERCEL_PROJECT_ID_API
+name: Sync Vercel env
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Ambiente alvo (production | preview | development)
+        required: false
+        default: production
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instala o Vercel CLI
+        run: npm i -g vercel@59
+
+      - name: Monta .env a partir dos secrets e sincroniza
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN_API }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID_API }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_API }}
+          LLM_PROVIDER: ${{ secrets.LLM_PROVIDER }}
+          LLM_MODEL: ${{ secrets.LLM_MODEL }}
+          OLLAMA_MODEL: ${{ secrets.OLLAMA_MODEL }}
+          OLLAMA_BASE_URL: ${{ secrets.OLLAMA_BASE_URL }}
+          OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
+        run: |
+          # Monta o .env apenas com os secrets definidos (o script pula ausentes)
+          : > .env
+          for key in LLM_PROVIDER LLM_MODEL OLLAMA_MODEL OLLAMA_BASE_URL OLLAMA_API_KEY; do
+            if [ -n "${!key:-}" ]; then
+              printf '%s=%s\n' "$key" "${!key}" >> .env
+            else
+              echo "aviso: secret ${key} ausente — pulando"
+            fi
+          done
+          test -s .env
+          ./scripts/sync-vercel-env.sh "${{ inputs.environment }}"

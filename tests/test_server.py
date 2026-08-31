@@ -7,6 +7,31 @@ from fastapi.testclient import TestClient
 from chat_csa.server.app import create_app
 
 
+def _write_static_cache(path):
+    path.write_text(
+        """---
+title: "FAQ de teste"
+resource: "https://csa.uefs.br/index.php/sisu261/inicial"
+last_verified: "2026-08-30"
+---
+
+## FAQ-001 — Posso usar o ENEM 2024?
+
+**Categoria:** inscrição
+**Cache:** static
+
+**Perguntas equivalentes:**
+- Vale ENEM 2024?
+
+**Resposta:**
+Sim. O ENEM 2024 pode ser utilizado no SiSU/UEFS 2026.
+
+**Fonte:** Edital 01/2026, item 1.1.
+""",
+        encoding="utf-8",
+    )
+
+
 def test_health():
     app = create_app(".ingester")
     c = TestClient(app)
@@ -24,16 +49,19 @@ def test_models():
 
 
 def test_chat_completions_non_stream():
-    app = create_app(".ingester")
+    app = create_app(".consumer")
     c = TestClient(app)
     r = c.post(
         "/v1/chat/completions",
-        json={"model": "chat-csa", "messages": [{"role": "user", "content": "hello"}]},
+        json={"model": "chat-csa", "messages": [{"role": "user", "content": "Opa"}]},
     )
     assert r.status_code == 200
     body = r.json()
     assert body["object"] == "chat.completion"
     assert len(body["choices"]) == 1
+    content = body["choices"][0]["message"]["content"]
+    assert not content.startswith("Resposta:")
+    assert "Fontes:" not in content
 
 
 def test_chat_completions_stream():
@@ -43,6 +71,61 @@ def test_chat_completions_stream():
         "/v1/chat/completions",
         json={"model": "chat-csa", "messages": [{"role": "user", "content": "hello"}], "stream": True},
     )
+    assert r.status_code == 200
+    assert "text/event-stream" in r.headers["content-type"]
+    assert "[DONE]" in r.text
+
+
+def test_chat_completions_injects_cached_faq_as_context(tmp_path, monkeypatch):
+    cache_file = tmp_path / "faq.md"
+    _write_static_cache(cache_file)
+    monkeypatch.setenv("CHAT_CSA_QA_CACHE_PATHS", str(cache_file))
+
+    import sys
+
+    # chat_csa/server/__init__.py reexporta `app` (FastAPI), então o atributo
+    # do pacote sombreia o submódulo; sys.modules garante o módulo real.
+    server_app = sys.modules["chat_csa.server.app"]
+
+    captured: dict = {}
+    real_build = server_app.build_system_prompt
+
+    def spy(root, extra=None):
+        captured["extra"] = extra
+        return real_build(root, extra=extra)
+
+    monkeypatch.setattr(server_app, "build_system_prompt", spy)
+
+    app = create_app(tmp_path / "config")
+    c = TestClient(app)
+    r = c.post(
+        "/v1/chat/completions",
+        json={"model": "chat-csa", "messages": [{"role": "user", "content": "Vale ENEM 2024?"}]},
+    )
+
+    assert r.status_code == 200
+    # FAQ curada entrou no prompt como referência (não como resposta direta)
+    assert "FAQ-001" in captured["extra"]
+    assert "ENEM 2024 pode ser utilizado" in captured["extra"]
+    # Sem short-circuit: resposta vem do fluxo normal do agente, nunca verbatim do Markdown
+    body = r.json()
+    assert "chat_csa" not in body
+    assert "fake-ok: agent is working" in body["choices"][0]["message"]["content"]
+    assert "ENEM 2024 pode ser utilizado" not in body["choices"][0]["message"]["content"]
+
+
+def test_chat_completions_stream_with_cached_faq_uses_normal_flow(tmp_path, monkeypatch):
+    cache_file = tmp_path / "faq.md"
+    _write_static_cache(cache_file)
+    monkeypatch.setenv("CHAT_CSA_QA_CACHE_PATHS", str(cache_file))
+
+    app = create_app(tmp_path / "config")
+    c = TestClient(app)
+    r = c.post(
+        "/v1/chat/completions",
+        json={"model": "chat-csa", "messages": [{"role": "user", "content": "Vale ENEM 2024?"}], "stream": True},
+    )
+
     assert r.status_code == 200
     assert "text/event-stream" in r.headers["content-type"]
     assert "[DONE]" in r.text

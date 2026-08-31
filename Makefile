@@ -1,4 +1,4 @@
-.PHONY: help install dev run run-ingester run-consumer prompt-ingester prompt-consumer lint format test docker-build docker-run clean frontend-install frontend-dev frontend-build
+.PHONY: help install dev run run-ingester run-consumer prompt-ingester prompt-consumer lint format test docker-build docker-run clean frontend-install frontend-dev frontend-build deploy-api deploy-frontend deploy-env
 
 # Usa uv se disponível; senão, cai para pip
 UV ?= uv
@@ -72,6 +72,16 @@ frontend-dev: ## Roda o dev server React (conecta automático ao ingester/consum
 
 frontend-build: ## Gera o bundle de produção do React
 	cd frontend && npm run build
+
+# Deploy manual na Vercel (alternativa ao CI — exige `vercel link` local uma vez por projeto)
+deploy-api: ## Deploy do backend na Vercel — produção
+	npx vercel deploy --prod --yes
+
+deploy-frontend: ## Deploy do frontend na Vercel — produção
+	cd frontend && npx vercel deploy --prod --yes
+
+deploy-env: ## Sincroniza variáveis de ambiente do backend na Vercel (produção)
+	./scripts/sync-vercel-env.sh production
 
 clean: ## Remove caches
 	rm -rf .venv __pycache__ .pytest_cache .ruff_cache dist build frontend/dist

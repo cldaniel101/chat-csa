@@ -81,13 +81,13 @@ O sistema **não substitui os editais, comunicados ou orientações oficiais da 
 
 ## 🧠 Arquitetura — Bundle OKF + recuperação determinística
 
-O projeto **não utiliza RAG** (embeddings vetoriais + geração aumentada por recuperação). Em vez disso, adota uma abordagem **determinística e auditável**, baseada em um bundle de conhecimento curado no formato **OKF — Open Knowledge Format** e em recuperação lexical (**BM25**), conforme detalhado em [`docs/proposta-okf-bm25.md`](docs/proposta-okf-bm25.md):
+O projeto **não utiliza RAG** (embeddings vetoriais + geração aumentada por recuperação). Em vez disso, adota uma abordagem **determinística e auditável**, baseada em um bundle de conhecimento curado no formato **OKF — Open Knowledge Format** e em recuperação determinística por consulta direta aos conceitos curados e ao portal da CSA quando necessário:
 
 ```text
 Fontes oficiais da CSA/UEFS (portal csa.uefs.br)
         ↓  (agente ingester — crawl, normalização, curadoria)
 Bundle de conhecimento OKF (conceitos versionados em Markdown)
-        ↓  (recuperação determinística — BM25 / consulta direta)
+        ↓  (recuperação determinística — consulta direta ao bundle e ao portal)
 Agente consumer — resposta extrativa com citações
         ↓
 Usuário (resposta verificável, com URL e timestamp)
@@ -100,7 +100,7 @@ Motivações principais dessa escolha:
 * **Terminologia literal**: consultas sobre SISU são lexicais ("comprovante de cota racial", "lista de espera") — correspondência lexical supera busca semântica;
 * **Custo e simplicidade**: sem banco vetorial nem API de embeddings — roda offline e barato.
 
-> **Pendência conhecida:** o suporte à busca BM25 ainda não está implementado no consumer — hoje ele responde consultando diretamente os conceitos do bundle e o portal via `web_csa_fetch`/`web_csa_search`. A integração BM25 está prevista na proposta (`docs/proposta-okf-bm25.md`).
+O consumer responde consultando diretamente os conceitos do bundle e o portal via `web_csa_fetch`/`web_csa_search`.
 
 ## 📋 Escopo inicial
 
@@ -251,7 +251,7 @@ This repo ships a **simple LangChain agent** with a filesystem skill system that
 
 | Agent | Config dir | Purpose |
 |-------|------------|---------|
-| **Ingester** | `.ingester/` | Crawl → normalize → curate CSA sources into OKF bundle + BM25 index |
+| **Ingester** | `.ingester/` | Crawl → normalize → curate CSA sources into OKF bundle |
 | **Consumer** | `.consumer/` | Answer questions via retrieval (extractive, cited) |
 
 Each dir is a standalone *AGENTS home*:
@@ -307,13 +307,13 @@ curl http://localhost:8001/api/chat \
 
 Single agent (override per-run):
 ```bash
-LLM_PROVIDER=ollama LLM_MODEL=llama3.2 uv run chat-csa serve --config-dir .consumer --port 8002
+LLM_PROVIDER=ollama LLM_MODEL=gemma4:31b-cloud uv run chat-csa serve --config-dir .consumer --port 8002
 LLM_PROVIDER=openai OPENAI_API_KEY=sk-... OPENAI_MODEL=gpt-4o-mini uv run chat-csa serve --config-dir .consumer --port 8002
 ```
 
 Ollama local model (default):
 ```bash
-ollama pull llama3.2
+ollama pull gemma4:31b-cloud
 ollama serve  # default http://localhost:11434
 # then make run-both reads OLLAMA_BASE_URL from .env
 ```
@@ -355,27 +355,36 @@ make docker-build
 docker compose up   # ingester :${INGESTER_PORT:-8001} + consumer :${CONSUMER_PORT:-8002} + frontend :${FRONTEND_PORT:-5173}
 # per-agent overrides also work:
 # INGESTER_LLM_PROVIDER=openai INGESTER_OPENAI_API_KEY=sk-... docker compose up
-# frontend respects VITE_INGESTER_URL / VITE_CONSUMER_URL at build time
+# frontend respects VITE_CONSUMER_URL at build time
 ```
 
 > **Why two vars?** `AGENT_CONFIG_DIR` is per-process (one agent = one dir + one port). `.env.example` therefore ships **both** `INGESTER_CONFIG_DIR` + `CONSUMER_CONFIG_DIR` (and `INGESTER_PORT`/`CONSUMER_PORT`) plus a fallback `AGENT_CONFIG_DIR`/`PORT` for single-agent mode. `Makefile` and `docker-compose.yml` read the `INGESTER_*`/`CONSUMER_*` set; the server itself still honors `AGENT_CONFIG_DIR` per instance.
 
+### Painel do ingester (FastHTML /admin)
+
+O ingester tem painel próprio servido pelo próprio backend — sem passar pelo frontend React (decisão registrada na discussão `ingester-fasthtml-admin`).
+
+- **Rota**: `GET /admin` no servidor do ingester (`AGENT_CONFIG_DIR=.ingester`, porta `:8001` em dev). O mount só existe no config do ingester; o consumer permanece API pura (404 em `/admin`).
+- **Login**: `POST /admin/login` valida contra o `auth_store` em memória (seed: `admin / sudo123`) e abre sessão por cookie HttpOnly (`csa_admin_token`, SameSite=Lax, path=/admin). `POST /admin/logout` encerra.
+- **Chat**: painel autenticado conversa com o agente ingester via SSE contra `POST /v1/chat/completions` (mesmo origin, sem token manual). Histórico fica no cliente; servidor stateless por request.
+- **Escopo mínimo**: login + chat apenas. O CRUD de usuários segue como JSON API (`/admin/users`, Bearer).
+- **Deploy https (ex.: Vercel)**: definir `ADMIN_COOKIE_SECURE=1` para o cookie de sessão ser marcado Secure.
+- **Caveat serverless**: o `auth_store` é em memória — em cold starts/instâncias múltiplas do Vercel, sessões e usuários resetam (comportamento pré-existente de `/auth/login` e `/admin/users`).
+
 ### React Chat (frontend/)
 
-Vite + React + React Router chat that talks to **both** agents via their OpenAI-compatible endpoints.
+Vite + React chat widget **exclusivo do consumer** — botão flutuante que conversa com o agente consumer via endpoint OpenAI-compatible.
 
 ```bash
-cp frontend/.env.example frontend/.env   # VITE_INGESTER_URL=http://localhost:8001 etc.
+cp frontend/.env.example frontend/.env   # VITE_CONSUMER_URL=http://localhost:8002
 make frontend-install
 make frontend-dev      # http://localhost:5173
 make frontend-build    # production build -> frontend/dist (served by nginx in docker)
 ```
 
-- **Agent switcher**: sidebar toggle between Consumer (public) and Ingester (protected).
 - **Consumer**: open chat, no login.
-- **Ingester**: requires login (`admin / sudo123`). Login hits `POST /auth/login` on the ingester API and stores a bearer token.
-- **Admin CRUD**: `/admin` page (protected) — list/add/edit/delete users via `GET/POST/PUT/DELETE /admin/users` on the ingester API. In-memory store, seeded with `admin/sudo123`.
-- Env: `VITE_INGESTER_URL` / `VITE_CONSUMER_URL` (defaults 8001/8002). With Docker Compose the frontend is at `http://localhost:5173` and proxies to both backends.
+- **Ingester**: painel próprio em FastHTML servido pelo backend (`/admin`), com tela de login e chat SSE — o frontend React não participa mais.
+- Env: `VITE_CONSUMER_URL` (default 8002). Com Docker Compose o frontend fica em `http://localhost:5173` e conversa com o consumer em `:8002`.
 
 ### Makefile DX
 
@@ -391,7 +400,41 @@ make frontend-build    # production build -> frontend/dist (served by nginx in d
 | `make lint` / `format` / `test` | ruff + pytest |
 | `make docker-build` / `docker-run*` / `docker-run-both` | container flow |
 
-See `docs/proposta-okf-bm25.md` for the OKF+BM25 architecture.
+See `knowledge/index.md` for the OKF bundle structure.
+
+## 🚀 Deploy (Vercel + GitHub Actions)
+
+O deploy é automatizado via **GitHub Actions + Vercel CLI** (sem GitHub App), com dois projetos separados na Vercel:
+
+| Projeto | Diretório | URL |
+|---|---|---|
+| **chat-csa-api** (backend FastAPI + painel FastHTML) | raiz do repo (`vercel.json`, `api/index.py`) | `https://chat-csa-api.vercel.app` |
+| **chat-csa-web** (frontend React/Vite) | `frontend/` (`frontend/vercel.json`) | *definido no painel da Vercel* |
+
+### Fluxo do CI (`.github/workflows/deploy.yml`)
+
+- `push` em **main** → deploy de produção nos dois projetos;
+- `push` em **development** ou **pull request** → deploy de preview (URLs únicas por deploy).
+- O job `checks` (lint + build) roda antes e bloqueia o deploy.
+- Cada projeto usa um **token project-scoped** próprio, armazenado como secret do GitHub:
+  `VERCEL_TOKEN_API`, `VERCEL_TOKEN_FRONTEND` (mais `VERCEL_ORG_ID_*` e `VERCEL_PROJECT_ID_*`).
+
+### Variáveis de ambiente (`.github/workflows/env-sync.yml`)
+
+O backend consome `LLM_PROVIDER`, `LLM_MODEL`, `OLLAMA_MODEL`, `OLLAMA_BASE_URL` e `OLLAMA_API_KEY`.
+Elas vivem como secrets do GitHub; para sincronizá-las nos ambientes da Vercel (production/preview/development),
+rode manualmente **Actions → “Sync Vercel env”** — o workflow reutiliza `scripts/sync-vercel-env.sh`
+(allowlist + override de `OLLAMA_BASE_URL=https://ollama.com` em produção).
+
+### Deploy manual (alternativa)
+
+```bash
+make deploy-env        # sincroniza envs do backend (produção)
+make deploy-api        # deploy do backend
+make deploy-frontend   # deploy do frontend
+```
+
+> Pré-requisito local: `npx vercel link` uma vez em cada diretório (raiz e `frontend/`).
 
 ## 🚧 Status
 

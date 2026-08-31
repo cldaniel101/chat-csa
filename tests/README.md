@@ -93,7 +93,7 @@ tests/
 
 ---
 
-### `test_csa_portal.py` — Portal CSA (15 testes)
+### `test_csa_portal.py` — Portal CSA (18 testes)
 
 #### Testes originais do portal
 
@@ -102,6 +102,9 @@ tests/
 | `test_allowlist_blocks_foreign_url` | URL fora de `csa.uefs.br` levanta `ValueError` |
 | `test_fetch_html_converts_and_caches` | HTML é convertido para texto limpo; segunda chamada usa cache |
 | `test_search_filters_menu` | `web_csa_search` filtra por `query` e `categoria`; `since` filtra atualizações |
+| `test_search_falls_back_to_current_sisu_for_course_queries` | Busca por curso/notas retorna os pontos de entrada atuais do SiSU quando não há match literal |
+| `test_fetch_resolves_legacy_sisu_url` | URL legada `/sisu/inicial` é resolvida para o slug vigente do SiSU |
+| `test_fetch_marks_portal_not_found_html_as_error` | HTML de “página não encontrada” do portal é tratado como erro, mesmo com HTTP 200 |
 | `test_search_fails_loud_on_schema_change` | Mudança de schema do portal gera erro explícito (sem silêncio) |
 | `test_tools_for_config` | Ingester recebe ferramentas completas; consumer apenas leitura |
 | `test_consumer_is_readonly_with_csa_tools` | Consumer não recebe `bash`, `write` nem `edit` |
@@ -129,7 +132,7 @@ Usa **respostas simuladas** (strings) e **monkeypatch** no portal — sem LLM re
 
 | Cenário | Teste(s) | O que verifica |
 |---------|----------|----------------|
-| **1** | `test_cenario1_uma_afirmacao_uma_fonte` | Resposta com 1 afirmação tem seções `Resposta:`/`Fontes:` e 1 linha de fonte válida |
+| **1** | `test_cenario1_uma_afirmacao_uma_fonte` | Resposta direta com 1 afirmação tem seção `Fontes:` e 1 linha de fonte válida |
 | **2** | `test_cenario2_multiplas_afirmacoes_fontes_distintas` | 2 afirmações com referências `[1]` e `[2]` apontando para URLs distintas |
 | **3** | `test_cenario3_rotulo_sem_trecho_invalido` | Detecta ausência de trecho substantivo na resposta inaceitável; resposta aceitável tem trecho entre aspas |
 | **4** | `test_cenario4_fonte_oficial_com_trecho` | Fonte de edital oficial contém trecho verbatim entre aspas |
@@ -154,7 +157,6 @@ Os testes de qualidade de citação verificam que o agente produza respostas
 no seguinte formato:
 
 ```
-Resposta:
 "<trecho verbatim da fonte que sustenta a afirmação>" [N]
 
 Fontes:

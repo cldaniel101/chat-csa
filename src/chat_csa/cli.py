@@ -2,7 +2,7 @@
 
 Uso:
   chat-csa --config-dir .ingester --port 8001
-  chat-csa --config-dir .consumer --port 8002 --provider ollama --model llama3.2
+  chat-csa --config-dir .consumer --port 8002 --provider ollama --model gemma4:31b-cloud
   chat-csa --help
 """
 

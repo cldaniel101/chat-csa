@@ -10,10 +10,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@assistant-ui/react": "^0.15.17",
+    "lucide-react": "^1.37.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
+    "react-icons": "^5.7.0",
     "react-markdown": "^10.1.0",
-    "react-router-dom": "^7.18.2",
     "remark-gfm": "^4.0.1"
   },
   "devDependencies": {

@@ -127,6 +127,88 @@ def test_search_filters_menu(monkeypatch):
     assert len(upd) == 1 and upd[0]["title"] == "Resultado final"
 
 
+def test_search_falls_back_to_current_sisu_for_course_queries(monkeypatch):
+    menu_payload = {
+        "submenu_itens": [
+            {
+                "texto_submenuitem": "SiSU-UEFS 2026",
+                "cabecalho_submenu": "SiSU",
+                "link": "sisu261",
+            }
+        ]
+    }
+    selecoes_payload = {"selecoes_categorias": [], "selecoes": [], "atualizacoes": []}
+
+    def fake_get_json(url, refresh=False):
+        return menu_payload if "getMenu" in url else selecoes_payload
+
+    monkeypatch.setattr(portal, "_get_json", fake_get_json)
+
+    out = portal.search_portal(query="Engenharia de Computação notas mínima máxima", limit=10)
+
+    assert out["count"] == 3
+    urls = [item["url"] for item in out["results"]]
+    assert "https://csa.uefs.br/index.php/sisu261/inicial" in urls
+    assert "https://csa.uefs.br/index.php/sisu261/downloads" in urls
+    assert "https://csa.uefs.br/index.php/sisu261/edital" in urls
+
+
+def test_fetch_resolves_legacy_sisu_url(tmp_path, monkeypatch):
+    monkeypatch.setattr(portal, "CACHE_DIR", tmp_path / "cache")
+    menu_payload = {
+        "submenu_itens": [
+            {
+                "texto_submenuitem": "SiSU-UEFS 2026",
+                "cabecalho_submenu": "SiSU",
+                "link": "sisu261",
+            }
+        ]
+    }
+    requested_urls = []
+
+    class FakeResp:
+        status_code = 200
+        headers = {"Content-Type": "text/html; charset=UTF-8"}
+        text = "<html><body><h1>SiSU/UEFS 2026</h1><p>Página válida.</p></body></html>"
+
+    monkeypatch.setattr(portal, "_get_json", lambda url, refresh=False: menu_payload)
+
+    def fake_request(client, url):
+        requested_urls.append(url)
+        return FakeResp()
+
+    monkeypatch.setattr(portal, "_request_with_backoff", fake_request)
+
+    out = portal.fetch_page("https://csa.uefs.br/index.php/sisu/inicial")
+
+    assert requested_urls == ["https://csa.uefs.br/index.php/sisu261/inicial"]
+    assert out["url"] == "https://csa.uefs.br/index.php/sisu261/inicial"
+    assert out["resolved_from_url"] == "https://csa.uefs.br/index.php/sisu/inicial"
+    assert "error" not in out
+
+
+def test_fetch_marks_portal_not_found_html_as_error(tmp_path, monkeypatch):
+    monkeypatch.setattr(portal, "CACHE_DIR", tmp_path / "cache")
+
+    class FakeResp:
+        status_code = 200
+        headers = {"Content-Type": "text/html; charset=UTF-8"}
+        text = (
+            "<html><body><h1>Erro - A página não foi encontrada.</h1>"
+            "<p>A página que você requisitou não foi encontrada no nosso sistema.</p>"
+            "</body></html>"
+        )
+
+    monkeypatch.setattr(portal, "_request_with_backoff", lambda client, url: FakeResp())
+
+    out = portal.fetch_page("https://csa.uefs.br/index.php/sisu261/resultados", refresh=True)
+
+    assert out["error"] == "Página não encontrada no portal CSA/UEFS"
+    assert out["source_type"] == "html"
+    assert "https://csa.uefs.br/index.php/sisu261/inicial" in out["suggested_urls"]
+    assert "https://csa.uefs.br/index.php/sisu261/downloads" in out["suggested_urls"]
+
+
 def test_search_fails_loud_on_schema_change(monkeypatch):
     class FakeResp:
         status_code = 200
