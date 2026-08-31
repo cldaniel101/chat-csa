@@ -82,15 +82,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Vincula o projeto via VERCEL_ORG_ID/VERCEL_PROJECT_ID (não-interativo).
-      # Cria .vercel/project.json no working-directory (gitignored).
-      - name: Vincula o projeto
-        working-directory: ${{ matrix.workdir }}
-        env:
-          VERCEL_ORG_ID: ${{ secrets[matrix.org_secret] }}
-          VERCEL_PROJECT_ID: ${{ secrets[matrix.project_secret] }}
-        run: npx vercel@59 link --yes --token "${{ secrets[matrix.token_secret] }}"
-
+      # O link direto (.vercel/project.json) não é usado: tokens project-scoped
+      # não podem buscar os settings do projeto (erro "Could not retrieve
+      # Project Settings"). O VERCEL_ORG_ID/VERCEL_PROJECT_ID acima já
+      # identificam o projeto para o CLI — padrão documentado para CI.
+      #
       # Build remoto: a Vercel roda o build no próprio lado (Python/Node),
       # então não usamos --prebuilt nem precisamos instalar toolchains aqui.
       - name: Deploy de produção
