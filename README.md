@@ -386,6 +386,21 @@ make frontend-build    # production build -> frontend/dist (served by nginx in d
 - **Ingester**: painel próprio em FastHTML servido pelo backend (`/admin`), com tela de login e chat SSE — o frontend React não participa mais.
 - Env: `VITE_CONSUMER_URL` (default 8002). Com Docker Compose o frontend fica em `http://localhost:5173` e conversa com o consumer em `:8002`.
 
+### Snippet de integração
+
+Para incorporar o Chat CSA em páginas externas, use o script público do frontend:
+
+```html
+<script
+  src="https://chat-csa-web.vercel.app/embed.js"
+  data-chat-url="https://chat-csa-web.vercel.app"
+  data-consumer-url="https://chat-csa-api.vercel.app"
+  defer
+></script>
+```
+
+Veja opções de configuração e exemplo local em [`docs/integracao-widget.md`](docs/integracao-widget.md).
+
 ### Makefile DX
 
 | Target | What it does |

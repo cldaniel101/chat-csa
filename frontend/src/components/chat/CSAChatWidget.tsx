@@ -39,7 +39,9 @@ type AgentActivity = {
   steps: AgentToolStep[];
 };
 
-type CSAChatWidgetProps = Record<string, never>;
+type CSAChatWidgetProps = {
+  embedded?: boolean;
+};
 
 type SourceEntry = {
   id: string;
@@ -318,7 +320,7 @@ function ActivityBlock({ activity }: { activity: AgentActivity }) {
   );
 }
 
-export function CSAChatWidget(_props: CSAChatWidgetProps) {
+export function CSAChatWidget({ embedded = false }: CSAChatWidgetProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -332,6 +334,19 @@ export function CSAChatWidget(_props: CSAChatWidgetProps) {
   const [open, setOpen] = useState(false);
   const messagesRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (!embedded || window.parent === window) return;
+
+    window.parent.postMessage(
+      {
+        source: "chat-csa",
+        type: "csa-chat:state",
+        open,
+      },
+      "*",
+    );
+  }, [embedded, open]);
 
   useEffect(() => {
     const controller = new AbortController();
