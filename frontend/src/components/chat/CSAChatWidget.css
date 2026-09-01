@@ -579,78 +579,14 @@
   }
 }
 
-/* ── Atividade do agente: <details> estilo markdown (GitHub) ─────────────── */
-.csa-chat-activity {
+.csa-chat-agent-status {
+  display: flex;
+  align-items: center;
+  gap: 7px;
   margin: 0 0 8px;
-  font-size: 12px;
-  line-height: 1.45;
-  color: #57606a;
-}
-
-.csa-chat-activity summary {
-  cursor: pointer;
-  color: #57606a;
-  font-weight: 600;
-  user-select: none;
-  list-style: none;
-}
-
-.csa-chat-activity summary::-webkit-details-marker {
-  display: none;
-}
-
-.csa-chat-activity summary::before {
-  content: "▶";
-  display: inline-block;
-  margin-right: 6px;
-  font-size: 9px;
-  transition: transform 120ms ease;
-  vertical-align: middle;
-}
-
-.csa-chat-activity[open] summary::before {
-  transform: rotate(90deg);
-}
-
-.csa-chat-activity summary:hover {
-  color: var(--csa-magenta);
-}
-
-.csa-chat-activity-body {
-  margin: 6px 0 0 14px;
-  padding-left: 10px;
-  border-left: 2px solid rgb(238 89 131 / 18%);
-  overflow-wrap: anywhere;
-  color: #4a4a4a;
-}
-
-.csa-chat-activity-body p {
-  margin: 0 0 6px;
-}
-
-.csa-chat-activity-body p:last-child {
-  margin-bottom: 0;
-}
-
-.csa-chat-activity-steps {
-  margin: 6px 0 0 14px;
-  padding: 0 0 0 18px;
-  border-left: 2px solid rgb(238 89 131 / 18%);
-  color: #4a4a4a;
-}
-
-.csa-chat-activity-steps li {
-  margin: 3px 0;
-}
-
-.csa-chat-activity--muted {
-  font-style: italic;
-  opacity: 0.85;
-}
-
-/* Mensagem ao vivo: details já vem aberto durante o streaming */
-.csa-chat-live .csa-chat-activity {
-  margin-bottom: 10px;
+  color: #6f6470;
+  font-size: 11.5px;
+  line-height: 1.3;
 }
 
 .csa-chat-live-answer {

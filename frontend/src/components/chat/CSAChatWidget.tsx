@@ -31,12 +31,6 @@ type ChatMessage = {
   content: string;
   createdAt: Date;
   isError?: boolean;
-  activity?: AgentActivity;
-};
-
-type AgentActivity = {
-  reasoning: string;
-  steps: AgentToolStep[];
 };
 
 type CSAChatWidgetProps = {
@@ -207,43 +201,38 @@ function MarkdownMessage({ content }: { content: string }) {
   );
 }
 
-// ── Atividade do agente: reasoning + passos de ferramenta ────────────────────
-const TOOL_DESCRIPTION: Record<string, { icon: string; label: string }> = {
-  read: { icon: "📖", label: "Lendo documento" },
-  write: { icon: "✏️", label: "Escrevendo arquivo" },
-  edit: { icon: "✏️", label: "Editando arquivo" },
-  bash: { icon: "💻", label: "Executando comando" },
-  web_csa_fetch: { icon: "🌐", label: "Acessando página do portal" },
-  web_csa_search: { icon: "🔍", label: "Buscando no portal" },
-};
-
-function toolDetail(step: {
-  name: string;
-  args?: Record<string, unknown>;
-}): string {
+function isPdfStep(step: AgentToolStep): boolean {
   const args = step.args ?? {};
+  const url = typeof args.url === "string" ? args.url : "";
+  const path = typeof args.path === "string" ? args.path : "";
+  return url.toLowerCase().includes(".pdf") || path.toLowerCase().endsWith(".pdf");
+}
+
+function describeStatusStep(step: AgentToolStep): string {
+  if (isPdfStep(step)) return "Acessando PDF";
+
   switch (step.name) {
-    case "read":
-      return typeof args.path === "string" ? args.path : "";
-    case "web_csa_fetch":
-      return typeof args.url === "string" ? args.url : "";
     case "web_csa_search":
-      return typeof args.query === "string" ? args.query : "";
+      return "Buscando resposta";
+    case "web_csa_fetch":
+      return "Acessando portal";
+    case "read":
+      return "Consultando documentos";
+    case "write":
+    case "edit":
+      return "Atualizando informações";
+    case "bash":
+      return "Processando";
     default:
-      return JSON.stringify(args);
+      return "Buscando resposta";
   }
 }
 
-function describeStep(step: AgentToolStep): string {
-  const { icon, label } = TOOL_DESCRIPTION[step.name] ?? {
-    icon: "🛠️",
-    label: step.name,
-  };
-  const detail = toolDetail(step);
-  return detail ? `${icon} ${label} — ${detail}` : `${icon} ${label}`;
-}
-
-function currentStepStatus(steps: AgentToolStep[], reasoning: string): string {
+function currentStepStatus(
+  steps: AgentToolStep[],
+  reasoning: string,
+  content: string,
+): string {
   const openIds = new Set(
     steps.filter((step) => step.type === "tool_start").map((step) => step.id),
   );
@@ -253,70 +242,34 @@ function currentStepStatus(steps: AgentToolStep[], reasoning: string): string {
   const running = steps
     .filter((step) => step.type === "tool_start" && openIds.has(step.id))
     .at(-1);
-  if (running) return `${describeStep(running)}…`;
-  if (steps.length > 0) return describeStep(steps[steps.length - 1]);
-  if (reasoning) return "💭 Pensando…";
-  return "Buscando uma resposta…";
+  const latestStarted = steps.filter((step) => step.type === "tool_start").at(-1);
+  if (running) return describeStatusStep(running);
+  if (!content && latestStarted) return describeStatusStep(latestStarted);
+  if (content) return "Gerando resposta";
+  if (reasoning || steps.length > 0) return "Organizando informações";
+  return "Buscando resposta";
 }
 
-function groupToolSteps(steps: AgentToolStep[]) {
-  const groups: {
-    id: string;
-    name: string;
-    args?: Record<string, unknown>;
-    error: boolean;
-  }[] = [];
-  const byId = new Map<string, (typeof groups)[number]>();
-  for (const step of steps) {
-    if (step.type === "tool_start") {
-      const group = { id: step.id, name: step.name, args: step.args, error: false };
-      byId.set(step.id, group);
-      groups.push(group);
-    } else {
-      const group = byId.get(step.id);
-      if (group) group.error = Boolean(step.error);
-    }
-  }
-  return groups;
-}
-
-function ActivityBlock({ activity }: { activity: AgentActivity }) {
-  const reasoning = activity.reasoning.trim();
-  const steps = groupToolSteps(activity.steps);
-
-  if (!reasoning && steps.length === 0) {
-    return null;
-  }
-
+function AgentStatusLine({
+  steps,
+  reasoning,
+  content,
+}: {
+  steps: AgentToolStep[];
+  reasoning: string;
+  content: string;
+}) {
   return (
-    <details className="csa-chat-activity">
-      <summary>💭 Atividade do agente</summary>
-      {reasoning && (
-        <div className="csa-chat-activity-body">
-          <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-            {reasoning}
-          </ReactMarkdown>
-        </div>
-      )}
-      {steps.length > 0 && (
-        <ol className="csa-chat-activity-steps">
-          {steps.map((step) => {
-            const { icon, label } = TOOL_DESCRIPTION[step.name] ?? {
-              icon: "🛠️",
-              label: step.name,
-            };
-            const detail = toolDetail(step);
-            return (
-              <li key={step.id}>
-                {icon} <strong>{label}</strong>
-                {detail ? ` — ${detail}` : ""}{" "}
-                {step.error ? "⚠️ falhou" : "✓"}
-              </li>
-            );
-          })}
-        </ol>
-      )}
-    </details>
+    <div className="csa-chat-agent-status">
+      <span className="csa-chat-typing" aria-hidden="true">
+        <span />
+        <span />
+        <span />
+      </span>
+      <span role="status" aria-live="polite">
+        {currentStepStatus(steps, reasoning, content)}
+      </span>
+    </div>
   );
 }
 
@@ -438,10 +391,6 @@ export function CSAChatWidget({ embedded = false }: CSAChatWidgetProps) {
             role: "assistant",
             content: reply || "Não foi possível obter uma resposta.",
             createdAt: new Date(),
-            activity: {
-              reasoning: reasoningRef.current,
-              steps: stepsRef.current,
-            },
           },
         ]);
       } catch (error: unknown) {
@@ -581,10 +530,7 @@ export function CSAChatWidget({ embedded = false }: CSAChatWidgetProps) {
                 role={message.isError ? "alert" : undefined}
               >
                 {message.role === "assistant" ? (
-                  <>
-                    {message.activity && <ActivityBlock activity={message.activity} />}
-                    <MarkdownMessage content={message.content} />
-                  </>
+                  <MarkdownMessage content={message.content} />
                 ) : (
                   message.content
                 )}
@@ -598,62 +544,16 @@ export function CSAChatWidget({ embedded = false }: CSAChatWidgetProps) {
                 className="csa-chat-message csa-chat-message--assistant csa-chat-live"
                 aria-label="Assistente CSA respondendo"
               >
-                {/* Durante o streaming o <details> fica aberto para o reasoning/tool calls
-                    não ocuparem o espaço da resposta final — no final vira o ActivityBlock
-                    colapsado da mensagem. Estilo markdown, não card. */}
-                <details className="csa-chat-activity" open>
-                  <summary>💭 Atividade do agente</summary>
-                  {liveReasoning ? (
-                    <div className="csa-chat-activity-body">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                        {liveReasoning}
-                      </ReactMarkdown>
-                    </div>
-                  ) : liveSteps.length === 0 ? (
-                    <div className="csa-chat-activity-body csa-chat-activity--muted">
-                      <span className="csa-chat-typing" aria-hidden="true">
-                        <span />
-                        <span />
-                        <span />
-                      </span>{" "}
-                      {currentStepStatus(liveSteps, liveReasoning)}
-                    </div>
-                  ) : null}
-                  {liveSteps.length > 0 && (
-                    <ol className="csa-chat-activity-steps">
-                      {groupToolSteps(liveSteps).map((step) => {
-                        const { icon, label } = TOOL_DESCRIPTION[step.name] ?? {
-                          icon: "🛠️",
-                          label: step.name,
-                        };
-                        const detail = toolDetail(step);
-                        return (
-                          <li key={step.id}>
-                            {icon} <strong>{label}</strong>
-                            {detail ? ` — ${detail}` : ""}{" "}
-                            {step.error ? "⚠️ falhou" : "✓"}
-                          </li>
-                        );
-                      })}
-                    </ol>
-                  )}
-                </details>
+                <AgentStatusLine
+                  steps={liveSteps}
+                  reasoning={liveReasoning}
+                  content={live.content}
+                />
                 {live.content !== "" ? (
                   <div className="csa-chat-live-answer">
                     <MarkdownMessage content={live.content} />
                   </div>
-                ) : (
-                  <div className="csa-chat-status">
-                    <span className="csa-chat-typing" aria-hidden="true">
-                      <span />
-                      <span />
-                      <span />
-                    </span>
-                    <span role="status" aria-live="polite">
-                      Gerando resposta…
-                    </span>
-                  </div>
-                )}
+                ) : null}
               </article>
             )}
           </div>
