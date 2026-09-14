@@ -332,11 +332,12 @@ def _format_agent_response(response_text: str, *, source_was_consulted: bool) ->
 
 _RESPONSE_GUIDE_BLOCK = """## Guia de citações (obrigatório)
 
-- Termine a resposta com uma seção `Fontes:` sempre que usar qualquer fonte: FAQ curada, arquivos de knowledge/ ou páginas do portal.
+- Termine a resposta com uma seção `Fontes:` sempre que usar qualquer fonte: FAQ curada, bundle de conhecimento (`knowledge/`) ou páginas do portal.
 - Formato de cada fonte: `[1] Nome da fonte — URL`; para FAQ curada injetada use `[1] FAQ curada — cache FAQ-XXX`.
 - Cite a fonte inline com `[N]` logo após a informação que veio dela.
-- Fontes válidas: a FAQ curada injetada neste prompt, arquivos lidos com `read` e páginas abertas com `web_csa_fetch` no turno.
-- Não invente URLs: se não abriu a página no turno, cite a FAQ curada ou o arquivo knowledge/ que usou.
+- **Nunca cite caminho de arquivo** (`knowledge/…md`, `docs/…md`) em `Fontes:` nem no corpo da resposta. Evidência vinda de arquivo do bundle é citada pela URL do frontmatter: `resource:` (bundle curado) ou `url:` (`knowledge/raw/`).
+- Fontes válidas: a FAQ curada injetada neste prompt, arquivos do bundle (citando a URL do frontmatter) e páginas abertas com `web_csa_fetch` no turno.
+- Sem URL pública para a evidência? Não invente URLs e não use o caminho do arquivo como substituto: diga que a informação vem da base curada interna do Chat CSA e mantenha a afirmação sem link.
 """
 
 

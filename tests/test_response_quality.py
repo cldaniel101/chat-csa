@@ -58,6 +58,15 @@ def test_response_guide_block_ensina_template_de_citacao():
     assert "Não invente URLs" in _RESPONSE_GUIDE_BLOCK
 
 
+def test_response_guide_block_proibe_caminho_de_arquivo():
+    """A resposta nunca deve citar `knowledge/…md` no lugar da URL da fonte."""
+    assert "Nunca cite caminho de arquivo" in _RESPONSE_GUIDE_BLOCK
+    assert "resource:" in _RESPONSE_GUIDE_BLOCK
+    # Redações antigas que autorizavam citar o arquivo como fonte
+    assert "arquivos lidos com `read`" not in _RESPONSE_GUIDE_BLOCK
+    assert "arquivo knowledge/ que usou" not in _RESPONSE_GUIDE_BLOCK
+
+
 def test_has_source_lookup_exige_fonte_aberta():
     search_only = [
         AIMessage(
