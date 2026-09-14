@@ -11,8 +11,25 @@ function defaultConsumerUrl(): string {
   return `${protocol}//${window.location.hostname}:8002`;
 }
 
+function runtimeConsumerUrl(): string | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  const paramUrl = params.get("consumerUrl")?.trim();
+  if (paramUrl) {
+    return paramUrl;
+  }
+
+  const configuredWindow = window as Window & {
+    __CSA_CHAT_CONSUMER_URL__?: string;
+  };
+  return configuredWindow.__CSA_CHAT_CONSUMER_URL__?.trim() || null;
+}
+
 export function getConsumerUrl(): string {
-  return import.meta.env.VITE_CONSUMER_URL || defaultConsumerUrl();
+  return runtimeConsumerUrl() || import.meta.env.VITE_CONSUMER_URL || defaultConsumerUrl();
 }
 
 function networkErrorMessage(base: string): string {

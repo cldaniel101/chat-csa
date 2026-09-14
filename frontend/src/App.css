@@ -5,9 +5,23 @@
   background: var(--bg);
 }
 
+.app--embedded {
+  background: transparent;
+}
+
 .main {
   min-height: 100dvh;
   width: 100%;
+}
+
+html.csa-embed-mode,
+html.csa-embed-mode body,
+html.csa-embed-mode #root {
+  background: transparent;
+}
+
+html.csa-embed-mode body {
+  overflow: hidden;
 }
 
 /* Fundo mock: captura full-page do portal da CSA ocupa toda a largura

@@ -1,69 +1,94 @@
 /*
- * Tokens do design system do widget CSA.
+ * Tokens do design system CSA/UEFS Modern & SiSU (docs/DESIGN.md).
  */
-@import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&family=Lato:wght@400;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Kumbh+Sans:wght@400;500;600;700&family=Nunito+Sans:wght@400;600;700&family=Open+Sans:wght@400;500;600&display=swap');
 
 :root {
-  /* Identidade principal CSA */
-  --csa-pink: #ee5983;
-  --csa-magenta: #a11284;
-  --csa-pink-surface: #efcfe4;
-  --csa-page-background: #f5f5f5cc;
-  --csa-white: #ffffff;
-  --csa-text: #191919;
-  --csa-yellow: #ffd15c;
+  /* Paleta oficial SiSU / CSA extraída em docs/DESIGN.md */
+  --c-primary: #a11284;
+  --c-primary-light: #ee5983;
+  --c-primary-dark: #7c0d66;
+  --c-gradient-sisu: linear-gradient(160deg, #ee5983 0%, #a11284 100%);
+  --c-gradient-sisu-hover: linear-gradient(160deg, #f06a92 0%, #b31694 100%);
+  --c-gradient-menu: linear-gradient(90deg, rgba(154, 23, 155, 1) 0%, rgba(252, 70, 107, 1) 100%);
 
-  /* Cores */
-  --c-primary: var(--csa-magenta);
-  --c-primary-hover: var(--csa-pink);
-  --c-secondary: var(--csa-pink);
-  --c-tertiary: var(--csa-yellow);
-  --c-neutral: var(--csa-page-background);
-  --c-surface: var(--csa-white);
-  --c-on-surface: var(--csa-text);
-  --c-on-primary: var(--csa-white);
-  --c-on-accent: var(--csa-white);
-  --c-muted: #6f6f6f;
-  --c-border: #dddcdc;
-  --c-border-strong: #d8bed1;
-  --c-success: var(--csa-yellow);
-  --c-warning: var(--csa-yellow);
-  --c-error: #b31717;
-  --c-link: var(--csa-magenta);
+  --c-secondary: #eb6156;
+  --c-tertiary: #0093e9;
+  --c-accent-teal: #80d0c7;
+
+  --c-surface: #ffffff;
+  --c-surface-subtle: #fbf6fa;
+  --c-neutral: #f4f7f6;
+  --c-on-surface: #282626;
+  --c-on-primary: #ffffff;
+  --c-muted: #7e7e7e;
+
+  --c-border: #e5dbe3;
+  --c-border-subtle: #ede4ec;
+  --c-border-strong: #c9b6c5;
+
+  --c-warning: #ffd15c;
+  --c-warning-dark: #e5b942;
+  --c-success: #2fbf71;
+  --c-success-light: #84fab0;
+  --c-error: #e32d52;
+
+  --c-link: #a11284;
+  --c-link-hover: #ee5983;
+  --c-link-alt: #0093e9;
+
+  /* Aliases compatíveis */
+  --csa-magenta: var(--c-primary);
+  --csa-pink: var(--c-primary-light);
+  --csa-pink-surface: var(--c-surface-subtle);
+  --csa-white: var(--c-surface);
+  --csa-text: var(--c-on-surface);
+  --csa-muted: var(--c-muted);
+  --csa-border: var(--c-border);
+  --csa-border-strong: var(--c-border-strong);
+  --csa-bg: var(--c-neutral);
+  --csa-yellow: var(--c-warning);
 
   /* Tipografia */
-  --font-body: 'Open Sans', Georgia, Verdana, Helvetica, sans-serif;
-  --font-alt: 'Lato', 'Open Sans', sans-serif;
+  --font-heading: 'Kumbh Sans', system-ui, -apple-system, sans-serif;
+  --font-body: 'Nunito Sans', 'Open Sans', system-ui, sans-serif;
+  --font-alt: 'Kumbh Sans', sans-serif;
 
   /* Formas */
-  --radius-sm: 3px;
-  --radius-md: 4px;
-  --radius-lg: 6px;
+  --radius-none: 0px;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-panel: 14px;
   --radius-full: 9999px;
 
-  /* Espacamento */
+  /* Espaçamento */
   --sp-xs: 4px;
   --sp-sm: 8px;
-  --sp-md: 16px;
-  --sp-lg: 20px;
-  --sp-xl: 30px;
+  --sp-md: 12px;
+  --sp-lg: 16px;
+  --sp-xl: 24px;
 
-  /* Elevacao */
-  --shadow-soft: 0 0 4px #e1dfd8;
-  --shadow-focus: 0 0 0 3px rgb(238 89 131 / 22%);
+  /* Elevação e sombras */
+  --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.05);
+  --shadow-soft: 0 4px 12px rgba(0, 0, 0, 0.06);
+  --shadow-panel: 0 14px 38px rgba(161, 18, 132, 0.18), 0 4px 12px rgba(0, 0, 0, 0.08);
+  --shadow-launcher: 0 8px 24px rgba(161, 18, 132, 0.32);
+  --shadow-focus: 0 0 0 3px rgba(238, 89, 131, 0.35);
 
-  /* Aliases usados pelos componentes */
-  --bg: var(--csa-page-background);
+  /* Aliases funcionais */
+  --bg: var(--c-neutral);
   --surface: var(--c-surface);
-  --surface-2: #f8f8f6;
+  --surface-2: var(--c-surface-subtle);
   --border: var(--c-border);
+  --border-strong: var(--c-border-strong);
   --text: var(--c-on-surface);
   --muted: var(--c-muted);
-  --accent: var(--csa-magenta);
-  --accent-hover: var(--csa-pink);
-  --accent-soft: rgb(238 89 131 / 12%);
+  --accent: var(--c-primary);
+  --accent-hover: var(--c-primary-light);
+  --accent-soft: rgba(238, 89, 131, 0.12);
   --success: var(--c-success);
-  --radius: var(--radius-lg);
+  --radius: var(--radius-md);
   --sans: var(--font-body);
 }
 
@@ -93,7 +118,7 @@ a {
 }
 
 a:hover {
-  color: var(--accent-hover);
+  color: var(--c-link-hover);
 }
 
 button,
@@ -109,7 +134,7 @@ select {
 }
 
 *::-webkit-scrollbar-thumb {
-  background: #d8bed1;
+  background: var(--c-border-strong);
   border-radius: var(--radius-full);
 }
 
