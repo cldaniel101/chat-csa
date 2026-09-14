@@ -122,3 +122,40 @@ def test_lookup_dynamic_markdown_cache_does_not_short_circuit(tmp_path, monkeypa
     hit = lookup_cached_answer("Já saiu a próxima chamada?")
 
     assert hit is None
+
+
+def test_format_without_source_url_omits_source_line(tmp_path, monkeypatch):
+    """Sem resource no frontmatter, a citação não vaza caminho de arquivo."""
+    faq = tmp_path / "faq-sem-resource.md"
+    faq.write_text(
+        """---
+title: "FAQ sem resource"
+---
+
+# FAQ sem resource
+
+## FAQ-900 — Pergunta sem fonte oficial?
+
+**Categoria:** geral
+**Cache:** static
+
+**Resposta:**
+Resposta sem URL oficial cadastrada.
+""",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CHAT_CSA_QA_CACHE_PATHS", str(faq))
+
+    hits = lookup_cached_matches("pergunta sem fonte oficial?")
+    entry = hits[0].entry
+    block = format_faq_reference(entry)
+
+    assert "Fonte:" not in block
+    assert "fonte Markdown local" not in block
+    assert str(faq) not in block
+    assert ".md" not in block
+
+    markdown = hits[0].to_markdown()
+    assert "Fontes:" not in markdown
+    assert "fonte Markdown local" not in markdown
+    assert str(faq) not in markdown
