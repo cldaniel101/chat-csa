@@ -315,7 +315,15 @@ def _panel_page(user: dict) -> tuple:
 def build_admin_panel() -> FastHTML:
     """Monta o app FastHTML do painel admin (montado em /admin no app principal)."""
 
-    panel = FastHTML()
+    # A Vercel monta a função em /var/task (somente leitura), então o FastHTML
+    # não pode gravar o `.sesskey` no diretório de trabalho — isso quebrava o
+    # import e derrubava todas as rotas (FUNCTION_INVOCATION_FAILED). Usamos um
+    # caminho gravável e, quando existir, uma chave estável vinda do ambiente
+    # (sem ela a chave muda a cada cold start e a sessão do /admin cai).
+    panel = FastHTML(
+        secret_key=os.getenv("CHAT_CSA_ADMIN_SECRET_KEY") or None,
+        key_fname=os.getenv("CHAT_CSA_ADMIN_KEY_FILE", "/tmp/.sesskey"),
+    )
 
     @panel.get("/")
     async def index(request: Request):
