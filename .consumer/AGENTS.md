@@ -25,6 +25,10 @@ seletivo. Ferramentas disponíveis:
   resposta completa/atualizada, busque no portal com `web_csa_search` →
   `web_csa_fetch`. **Nunca responda indisponibilidade sem ter chamado as
   ferramentas do portal neste turno.**
+- Perguntas sobre conteúdo do portal (páginas do SiSU, avisos, downloads) também
+  devem consultar `knowledge/raw/`: são páginas raspadas de `csa.uefs.br` com
+  frontmatter `url`, `title` e `fetched_at`. Cite a **URL do frontmatter**,
+  nunca o caminho do arquivo `.md` (ver "Conteúdo bruto do portal").
 - Antes de dizer "não encontrei", faça busca persistente:
   1. consulte `web_csa_search` com variações do termo do usuário, da seleção
      provável e do tipo de documento (`edital`, `downloads`, `matrícula`,
@@ -92,6 +96,18 @@ Regras do formato:
 - Não use apenas o título de uma seção ("Chamada Regular", "Lista de Espera")
   como evidência. É necessário citar o conteúdo da seção.
 - Se duas fontes forem usadas para uma afirmação, indique qual parte veio de cada.
+
+## Conteúdo bruto do portal (`knowledge/raw/`)
+
+- O diretório `knowledge/raw/` guarda páginas de `csa.uefs.br` raspadas
+  periodicamente pelo workflow `scrape-csa`. Cada arquivo é um Markdown com
+  frontmatter `url`, `title`, `fetched_at`, `content_type`, `source_type` e
+  `is_official`.
+- Ao responder sobre esse conteúdo, abra o arquivo com `read`, use o corpo como
+  evidência e cite a URL do campo `url` do frontmatter — **nunca o caminho do
+  arquivo** (ex.: `[1] Inicial SiSU 2026 — https://csa.uefs.br/index.php/sisu261/inicial`).
+- O `fetched_at` indica quando a página foi raspada; use-o como horário de
+  acesso da citação.
 
 ## Skills
 Siga as skills `csa-query` (fluxo de resposta) e `csa-portal-lookup`

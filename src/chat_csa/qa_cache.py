@@ -101,7 +101,11 @@ class QACacheHit:
 
         verified = f"; verificado {self.entry.last_verified}" if self.entry.last_verified else ""
         source = self.entry.source_label or "FAQ curada"
-        url = self.entry.source_url or "fonte Markdown local"
+        url = self.entry.source_url or ""
+        # Sem URL oficial: não expõe caminho de arquivo local nem deixa a
+        # seção "Fontes:" órfã (o marcador [1] também desaparece).
+        if not url:
+            return answer
         return (
             f"{answer} [1]\n\n"
             "Fontes:\n"
@@ -171,12 +175,12 @@ def format_faq_reference(entry: QACacheEntry) -> str:
     if not answer.endswith((".", "!", "?", ":", ";")):
         answer += "."
     source = entry.source_label or "FAQ curada"
-    url = entry.source_url or "fonte Markdown local"
-    return (
-        f"### {entry.entry_id}{verified} — {entry.question}{policy_note}\n\n"
-        f"{answer}\n\n"
-        f"Fonte: {source} — {url}"
-    )
+    url = entry.source_url or ""
+    block = f"### {entry.entry_id}{verified} — {entry.question}{policy_note}\n\n{answer}"
+    # Só cita a fonte quando há uma URL real; nunca vaza o caminho do Markdown.
+    if url:
+        block += f"\n\nFonte: {source} — {url}"
+    return block
 
 
 def load_cache_entries(paths: list[Path] | None = None) -> list[QACacheEntry]:
