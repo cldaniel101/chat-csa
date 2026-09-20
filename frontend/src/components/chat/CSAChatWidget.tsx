@@ -6,7 +6,7 @@ import {
 } from "@assistant-ui/react";
 import type { AppendMessage } from "@assistant-ui/react";
 import { BsStars } from "react-icons/bs";
-import { ChevronDown, Send } from "lucide-react";
+import { AlertTriangle, ChevronDown, Send } from "lucide-react";
 import {
   Children,
   useCallback,
@@ -198,6 +198,18 @@ function MarkdownMessage({ content }: { content: string }) {
       )}
       {sources && <SourcesBlock content={sources} />}
     </>
+  );
+}
+
+function AssistantResponseNotice() {
+  return (
+    <p className="csa-chat-response-notice">
+      <AlertTriangle size={14} aria-hidden="true" />
+      <span>
+        O chatbot pode cometer erros e apresentar informações incorretas.
+        Consulte sempre as fontes oficiais antes de tomar decisões.
+      </span>
+    </p>
   );
 }
 
@@ -530,7 +542,10 @@ export function CSAChatWidget({ embedded = false }: CSAChatWidgetProps) {
                 role={message.isError ? "alert" : undefined}
               >
                 {message.role === "assistant" ? (
-                  <MarkdownMessage content={message.content} />
+                  <>
+                    <MarkdownMessage content={message.content} />
+                    {!message.isError && <AssistantResponseNotice />}
+                  </>
                 ) : (
                   message.content
                 )}
@@ -552,6 +567,7 @@ export function CSAChatWidget({ embedded = false }: CSAChatWidgetProps) {
                 {live.content !== "" ? (
                   <div className="csa-chat-live-answer">
                     <MarkdownMessage content={live.content} />
+                    <AssistantResponseNotice />
                   </div>
                 ) : null}
               </article>
