@@ -500,8 +500,25 @@ def fetch_page(url: str, refresh: bool = False, extract_text: bool = False) -> d
                 )
             return _mark_resolved(_build_result(url, content_type, body, cached=True), requested_url)
 
-    with httpx.Client(timeout=30) as client:
-        resp = _request_with_backoff(client, url)
+    try:
+        with httpx.Client(timeout=30) as client:
+            resp = _request_with_backoff(client, url)
+    except httpx.TransportError as e:
+        # Falha de transporte (ConnectTimeout, ConnectError, ReadTimeout...):
+        # devolve erro tipado em vez de propagar. Sem isto, uma origem sem rota
+        # derruba o job inteiro em vez de contar como "1 página falhou".
+        return _mark_resolved(
+            {
+                "url": url,
+                "error": f"{type(e).__name__}: {e}",
+                "error_type": type(e).__name__,
+                "transport_error": True,
+                "fetched_at": _now_iso(),
+                "is_official": _is_official_url(url),
+                "source_type": "html",
+            },
+            requested_url,
+        )
 
     if resp.status_code != 200:
         result = {
@@ -720,7 +737,18 @@ def search_portal(
             full = link if link.startswith("http") else f"{BASE_URL}/index.php/{link}"
             results.append({"source": "menu", "id": "", "title": item.get("texto_submenuitem", ""), "url": full})
     except Exception as e:
-        results.append({"source": "menu", "error": str(e), "title": "", "url": MENU_URL})
+        # Sem `url` de propósito: registro de erro não é descoberta. Enquanto o
+        # erro carregava `url`, o scripts/scrape_portal.py contava o erro como
+        # URL encontrada e o resumo do job mentia ("descobertas: 2" sem
+        # nenhuma conectividade).
+        results.append(
+            {
+                "source": "menu",
+                "error": str(e),
+                "error_type": type(e).__name__,
+                "title": "",
+            }
+        )
 
     # Catálogo de seleções + atualizações
     try:
@@ -765,7 +793,14 @@ def search_portal(
                 "updated_at": when,
             })
     except Exception as e:
-        results.append({"source": "selecoes", "error": str(e), "title": "", "url": SELECOES_URL})
+        results.append(
+            {
+                "source": "selecoes",
+                "error": str(e),
+                "error_type": type(e).__name__,
+                "title": "",
+            }
+        )
 
     if not results and _looks_like_process_query(query, categoria):
         results.extend(_latest_sisu_fallback_results(refresh=refresh))

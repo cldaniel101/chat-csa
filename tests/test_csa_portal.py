@@ -445,3 +445,46 @@ def test_is_official_url_heuristic():
     assert portal._is_official_url("https://csa.uefs.br/index.php/sisu261/matricula") is True
     assert portal._is_official_url("https://csa.uefs.br/index.php/sisu261/inicial") is False
     assert portal._is_official_url("https://csa.uefs.br/index.php/sisu261/listaespera") is False
+
+
+# ---------------------------------------------------------------------------
+# Robustez do scrape (T1): falha de rede não pode derrubar o job, e registro
+# de erro não pode se passar por descoberta.
+# ---------------------------------------------------------------------------
+
+
+def test_fetch_returns_typed_error_on_transport_failure(tmp_path, monkeypatch):
+    """ConnectTimeout deve virar erro tipado, não exceção que mata o job."""
+    import httpx
+
+    monkeypatch.setattr(portal, "CACHE_DIR", tmp_path / "cache")
+
+    def explode(client, url):
+        raise httpx.ConnectTimeout("timed out")
+
+    monkeypatch.setattr(portal, "_request_with_backoff", explode)
+
+    out = portal.fetch_page("https://csa.uefs.br/index.php/sisu261/inicial", refresh=True)
+
+    assert out["transport_error"] is True
+    assert out["error_type"] == "ConnectTimeout"
+    assert out["url"] == "https://csa.uefs.br/index.php/sisu261/inicial"
+    assert "timed out" in out["error"]
+
+
+def test_search_error_record_is_not_a_discovery(tmp_path, monkeypatch):
+    """Registro de erro não pode carregar `url` — o scrape contava como achado."""
+    monkeypatch.setattr(portal, "CACHE_DIR", tmp_path / "cache")
+
+    def explodir(url, refresh=False):
+        raise OSError("origem inalcançável")
+
+    monkeypatch.setattr(portal, "_get_json", explodir)
+
+    out = portal.search_portal(query="sisu", limit=10)
+
+    erros = [r for r in out["results"] if "error" in r]
+    assert erros, "falha de rede precisa virar erro explícito"
+    for registro in erros:
+        assert "url" not in registro, "erro não é descoberta: não pode ter url"
+        assert registro["error_type"] == "OSError"
