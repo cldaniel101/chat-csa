@@ -17,6 +17,15 @@ página, nunca o caminho do arquivo Markdown.
 Uso:
     python scripts/scrape_portal.py [--out-dir knowledge/raw]
                                     [--limit 50] [--no-refresh] [--dry-run]
+                                    [--summary-json caminho.json]
+
+Robustez (exigência do T1):
+- falha de rede em uma URL conta como erro e o job segue (não derruba tudo);
+- N falhas de transporte seguidas abortam cedo, para não gastar o timeout do
+  job URL por URL quando a origem inteira está inalcançável;
+- o fim da execução sempre imprime o resumo e, com --summary-json, o grava em
+  JSON para o workflow montar o job summary e decidir o alerta;
+- exit code 0 com pelo menos uma página; 2 quando nenhuma página entrou.
 """
 
 from __future__ import annotations
@@ -138,8 +147,14 @@ def scrape(
     limit: int = 50,
     refresh: bool = True,
     dry_run: bool = False,
+    max_consecutive_transport_errors: int = 3,
 ) -> dict:
-    """Executa o scrape completo e devolve um resumo numérico."""
+    """Executa o scrape completo e devolve um resumo numérico.
+
+    Nunca levanta por falha de rede: cada URL que falha conta como erro e o job
+    segue. Se a origem inteira estiver inalcançável — N falhas de transporte
+    seguidas — aborta cedo, em vez de gastar o timeout do job URL por URL.
+    """
     out_dir.mkdir(parents=True, exist_ok=True)
 
     fixed = _fixed_urls(refresh=refresh)
@@ -159,14 +174,36 @@ def scrape(
     pages = 0
     written = 0
     errors = 0
+    skipped = 0
+    error_types: dict[str, int] = {}
+    consecutive_transport_errors = 0
+    aborted_reason = ""
 
     for url in urls:
         result = fetch_page(url, refresh=refresh, extract_text=True)
+
+        if result.get("transport_error"):
+            errors += 1
+            consecutive_transport_errors += 1
+            error_type = str(result.get("error_type") or "TransportError")
+            error_types[error_type] = error_types.get(error_type, 0) + 1
+            print(f"[aviso] falha de rede em {url}: {result.get('error')}")
+            if consecutive_transport_errors >= max_consecutive_transport_errors:
+                aborted_reason = (
+                    f"{consecutive_transport_errors} falhas de transporte seguidas "
+                    f"({error_type}): origem inalcançável"
+                )
+                print(f"[abortar] {aborted_reason}")
+                break
+            continue
+
+        consecutive_transport_errors = 0
 
         if result.get("error"):
             if "não encontrada" in str(result["error"]):
                 # Rota lógica que não existe neste ciclo do portal: pular sem
                 # tratar como falha (ex.: /edital quando só há o PDF em downloads).
+                skipped += 1
                 print(f"[pular] página inexistente no portal: {url}")
             else:
                 print(f"[aviso] falha ao buscar {url}: {result['error']}")
@@ -191,11 +228,22 @@ def scrape(
         else:
             print(f"[=] {slugify(url)}.md inalterado")
 
-    summary = {"pages": pages, "written": written, "errors": errors}
+    summary = {
+        "urls": len(urls),
+        "pages": pages,
+        "written": written,
+        "errors": errors,
+        "skipped": skipped,
+        "error_types": error_types,
+        "aborted_reason": aborted_reason,
+    }
+    # O fim do job SEMPRE registra quantas páginas entraram e quantas falharam.
     print(
         f"\nResumo: {pages} páginas raspadas, {written} arquivos escritos, "
-        f"{errors} erros"
+        f"{errors} erros, {skipped} rotas inexistentes"
     )
+    if aborted_reason:
+        print(f"Abortado: {aborted_reason}")
     return summary
 
 
@@ -223,14 +271,40 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Não grava arquivos; apenas lista o que seria feito.",
     )
+    parser.add_argument(
+        "--summary-json",
+        type=Path,
+        default=None,
+        help="Escreve o resumo da execução (JSON) neste caminho.",
+    )
+    parser.add_argument(
+        "--max-consecutive-transport-errors",
+        default=3,
+        type=int,
+        help="Aborta após N falhas de transporte seguidas (padrão: 3).",
+    )
     args = parser.parse_args(argv)
 
-    scrape(
+    summary = scrape(
         out_dir=args.out_dir,
         limit=args.limit,
         refresh=not args.no_refresh,
         dry_run=args.dry_run,
+        max_consecutive_transport_errors=args.max_consecutive_transport_errors,
     )
+
+    if args.summary_json:
+        args.summary_json.write_text(
+            json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+
+    # Falha parcial não derruba o job; falha total sim, e de forma visível.
+    if summary["pages"] == 0:
+        print(
+            "::error::Nenhuma página entrou em knowledge/raw/ nesta execução "
+            f"({summary['errors']} erros, {len(summary['error_types'])} tipo(s) de falha)."
+        )
+        return 2
     return 0
 
 
