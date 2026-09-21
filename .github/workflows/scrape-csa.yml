@@ -9,6 +9,18 @@
 #
 # O `schedule` roda na branch padrão do repositório (main); o disparo manual
 # (workflow_dispatch) permite escolher qualquer branch/ref para teste.
+#
+# ── ONDE ESTE JOB PODE RODAR (medido em 21/09/2026) ──────────────────────────
+# O portal csa.uefs.br responde 200 em ~0,1 s a partir de rede brasileira, mas
+# NÃO abre TCP na 443 a partir de egress de nuvem: runner do GitHub (Azure) e
+# função na Vercel (AWS iad1) dão ConnectTimeout. É bloqueio L4, não WAF — o
+# 403 do WAF é por User-Agent e o UA do projeto já passa.
+# Evidência: docs/plan/task/t1-cicd-scrape/PLAN.md e evidencia/.
+#
+# Por isso o job precisa de um runner que alcance o portal. Defina a variable
+# do repositório SCRAPE_RUNNER com o label desse runner (ex.: `self-hosted`).
+# Sem a variable o job roda em ubuntu-latest e FALHA DE FORMA VISÍVEL: relata o
+# bloqueio no resumo e abre issue — nunca morre em silêncio.
 name: Scrape portal CSA
 
 on:
@@ -16,9 +28,11 @@ on:
     - cron: "0 9,21 * * *"
   workflow_dispatch:
 
-# Necessário para o job empurrar o commit de volta ao repositório.
+# `contents: write` para empurrar o commit; `issues: write` para o alerta de
+# falha total abrir/atualizar a issue.
 permissions:
   contents: write
+  issues: write
 
 # Evita duas execuções concorrentes empurrando ao mesmo tempo.
 concurrency:
@@ -28,8 +42,9 @@ concurrency:
 jobs:
   scrape:
     name: Scrape e commit
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # Ver o bloco "ONDE ESTE JOB PODE RODAR" no topo.
+    runs-on: ${{ vars.SCRAPE_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -43,10 +58,39 @@ jobs:
       - name: Instala as dependências do projeto
         run: uv sync --frozen
 
+      # O exit code do script é a decisão: 0 com pelo menos uma página, 2 quando
+      # nenhuma entrou. Guardamos em output e reemitimos no fim do step para o
+      # job ficar vermelho só no caso de falha total.
       - name: Raspa o portal para knowledge/raw/
-        run: uv run python scripts/scrape_portal.py
+        id: scrape
+        run: |
+          set +e
+          uv run python scripts/scrape_portal.py --summary-json scrape-summary.json
+          code=$?
+          set -e
+          echo "exit_code=${code}" >> "$GITHUB_OUTPUT"
+          exit "${code}"
+
+      - name: Resumo da execução
+        if: always()
+        run: |
+          {
+            echo "### Scrape do portal CSA — resumo"
+            echo
+            if [ -f scrape-summary.json ]; then
+              echo '```json'
+              cat scrape-summary.json
+              echo '```'
+            else
+              echo "O scrape não chegou a produzir \`scrape-summary.json\`."
+            fi
+            echo
+            echo "- runner: \`${{ runner.name }}\` (\`${{ runner.os }}\`)"
+            echo "- exit code do scrape: \`${{ steps.scrape.outputs.exit_code }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Commita e empurra as mudanças de knowledge/raw/
+        if: steps.scrape.outputs.exit_code == '0'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -60,3 +104,46 @@ jobs:
 
           git commit -m "chore(knowledge): scrape portal $(date -u +%Y-%m-%d)"
           git push origin "HEAD:${GITHUB_REF_NAME}"
+
+      # Falha total (nenhuma página entrou): alerta visível. Abre uma issue na
+      # primeira vez e comenta na mesma issue nas seguintes, para não gerar
+      # spam a cada execução agendada enquanto o bloqueio durar.
+      - name: Alerta de falha total
+        if: always() && steps.scrape.outputs.exit_code != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          LABEL="scrape-bloqueado"
+          gh label create "$LABEL" --color B60205 \
+            --description "Falha total no scrape do portal CSA" 2>/dev/null || true
+
+          EXISTENTE="$(gh issue list --label "$LABEL" --state open \
+            --json number --jq '.[0].number' 2>/dev/null || true)"
+
+          {
+            echo "O scrape do portal CSA não trouxe nenhuma página."
+            echo
+            echo "- execução: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo "- runner: \`${{ runner.name }}\` (\`${{ runner.os }}\`)"
+            echo "- exit code: \`${{ steps.scrape.outputs.exit_code }}\`"
+            echo
+            echo 'Resumo da execução:'
+            echo
+            echo '```json'
+            cat scrape-summary.json 2>/dev/null || echo "sem scrape-summary.json"
+            echo '```'
+            echo
+            echo "Lembrete: o portal responde a partir de rede brasileira e recusa"
+            echo "egress de nuvem (TCP 443 não abre). Se este job rodou em runner"
+            echo "hospedado pelo GitHub, a causa provável é essa — ver"
+            echo "docs/plan/task/t1-cicd-scrape/PLAN.md."
+          } > /tmp/alerta.md
+
+          if [ -n "$EXISTENTE" ]; then
+            gh issue comment "$EXISTENTE" --body-file /tmp/alerta.md
+          else
+            gh issue create \
+              --title "Scrape do portal CSA sem nenhuma página" \
+              --label "$LABEL" \
+              --body-file /tmp/alerta.md
+          fi
