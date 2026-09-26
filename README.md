@@ -230,20 +230,22 @@ Prof. João B. Rocha
   
 ## 📚 Documentação
 
-Durante o desenvolvimento, este repositório também poderá concentrar registros relacionados a:
+Registros autorais vivem em [`docs/DESIGN.md`](docs/DESIGN.md) (design system), [`docs/adr/`](docs/adr/) (decisões) e [`docs/faq/`](docs/faq/) (FAQ curada). Os guias gerados por tema ficam em `docs/`:
 
-```text
-docs/
-├── requisitos/
-├── reunioes/
-├── pesquisas/
-├── testes/
-├── feedbacks/
-├── arquitetura/
-└── relatorios/
-```
+| Documento | Cobre |
+|---|---|
+| [`docs/desenvolvimento.md`](docs/desenvolvimento.md) | Setup local, Makefile, frontend e Docker |
+| [`docs/estrutura.md`](docs/estrutura.md) | Mapa de diretórios do repositório |
+| [`docs/api.md`](docs/api.md) | Rotas OpenAI/Ollama, auth e painel `/admin` |
+| [`docs/configuracao.md`](docs/configuracao.md) | Variáveis de ambiente e configuração |
+| [`docs/arquitetura.md`](docs/arquitetura.md) | Bundle OKF, os dois agentes e o fluxo de uma resposta |
+| [`docs/testes.md`](docs/testes.md) | Suíte offline e contrato de citação |
+| [`docs/deploy.md`](docs/deploy.md) | Vercel, GitHub Actions e scrape periódico |
+| [`docs/padroes.md`](docs/padroes.md) | Padrões de código (fábrica, tools, cache de QA) |
+| [`docs/design-system.md`](docs/design-system.md) | Tokens e uso do design system CSA |
+| [`docs/seguranca.md`](docs/seguranca.md) | Auth, CORS, sandbox e riscos conhecidos |
 
-Esse registro permitirá acompanhar não apenas o código desenvolvido, mas também as decisões, experimentos, resultados e evolução do projeto.
+O manifesto da geração (fontes lidas por tema e questões em aberto) fica em [`docs/.docs-manifest.md`](docs/.docs-manifest.md).
 
 ## 🤖 Agents — LangChain + Skills (`.ingester` / `.consumer`)
 
@@ -365,7 +367,7 @@ docker compose up   # ingester :${INGESTER_PORT:-8001} + consumer :${CONSUMER_PO
 O ingester tem painel próprio servido pelo próprio backend — sem passar pelo frontend React (decisão registrada na discussão `ingester-fasthtml-admin`).
 
 - **Rota**: `GET /admin` no servidor do ingester (`AGENT_CONFIG_DIR=.ingester`, porta `:8001` em dev). O mount só existe no config do ingester; o consumer permanece API pura (404 em `/admin`).
-- **Login**: `POST /admin/login` valida contra o `auth_store` em memória (seed: `admin / sudo123`) e abre sessão por cookie HttpOnly (`csa_admin_token`, SameSite=Lax, path=/admin). `POST /admin/logout` encerra.
+- **Login**: `POST /admin/login` valida contra o `auth_store` em memória (credencial-semente definida em `src/chat_csa/server/auth.py`; o valor não é reproduzido aqui) e abre sessão por cookie HttpOnly (`csa_admin_token`, SameSite=Lax, path=/admin). `POST /admin/logout` encerra.
 - **Chat**: painel autenticado conversa com o agente ingester via SSE contra `POST /v1/chat/completions` (mesmo origin, sem token manual). Histórico fica no cliente; servidor stateless por request.
 - **Escopo mínimo**: login + chat apenas. O CRUD de usuários segue como JSON API (`/admin/users`, Bearer).
 - **Deploy https (ex.: Vercel)**: definir `ADMIN_COOKIE_SECURE=1` para o cookie de sessão ser marcado Secure.
