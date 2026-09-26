@@ -230,7 +230,7 @@ Prof. João B. Rocha
   
 ## 📚 Documentação
 
-Registros autorais vivem em [`docs/DESIGN.md`](docs/DESIGN.md) (design system), [`docs/adr/`](docs/adr/) (decisões) e [`docs/faq/`](docs/faq/) (FAQ curada). Os guias gerados por tema ficam em `docs/`:
+Registros autorais vivem em [`docs/DESIGN.md`](docs/DESIGN.md) (design system), [`docs/adr/`](docs/adr/) (decisões) e [`docs/faq/`](docs/faq/) (FAQ curada). Os guias por tema ficam em `docs/`:
 
 | Documento | Cobre |
 |---|---|
@@ -244,8 +244,6 @@ Registros autorais vivem em [`docs/DESIGN.md`](docs/DESIGN.md) (design system), 
 | [`docs/padroes.md`](docs/padroes.md) | Padrões de código (fábrica, tools, cache de QA) |
 | [`docs/design-system.md`](docs/design-system.md) | Tokens e uso do design system CSA |
 | [`docs/seguranca.md`](docs/seguranca.md) | Auth, CORS, sandbox e riscos conhecidos |
-
-O manifesto da geração (fontes lidas por tema e questões em aberto) fica em [`docs/.docs-manifest.md`](docs/.docs-manifest.md).
 
 ## 🤖 Agents — LangChain + Skills (`.ingester` / `.consumer`)
 

@@ -19,7 +19,7 @@ chat-csa/
 ├── scripts/             # scrape do portal e sincronização de env da Vercel
 ├── tests/               # suíte offline (pytest)
 ├── examples/            # clientes de exemplo (curl, OpenAI SDK, Ollama)
-├── docs/                # documentação (autoral + estes artefatos)
+├── docs/                # documentação do projeto
 ├── frontend/            # SPA React/Vite do consumer + embed.js
 ├── .github/workflows/   # deploy, sync de env e scrape periódico
 ├── Makefile             # atalhos de DX

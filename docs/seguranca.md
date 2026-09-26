@@ -40,7 +40,7 @@ Nenhum valor de chave, token ou credencial é reproduzido nesta documentação; 
 
 | Risco | Onde | Sugestão |
 |---|---|---|
-| Credencial-semente de demonstração definida no código e reproduzida no `README.md` | `server/auth.py`, `README.md` | remover a reprodução do README (feito nesta publicação) e permitir override/seed por ambiente |
+| Credencial-semente de demonstração definida em código | `server/auth.py` | permitir override/seed por ambiente e exigir troca no primeiro uso |
 | Senhas em texto plano, tokens sem expiração, store volátil | `server/auth.py` | hash + store persistente antes de qualquer uso real |
 | `CORS *` com credenciais e sem rate limit | `server/app.py` | restringir origens e adicionar limite por IP no proxy/gateway |
 | `bash` sem sandbox e caminhos absolutos não bloqueados | `agent/tools.py` | endurecer `_resolve`/desabilitar `bash` onde não for necessário |
