@@ -67,6 +67,17 @@ def test_response_guide_block_proibe_caminho_de_arquivo():
     assert "arquivo knowledge/ que usou" not in _RESPONSE_GUIDE_BLOCK
 
 
+def test_has_source_lookup_reconhece_kb_read():
+    messages = [
+        AIMessage(
+            content="",
+            tool_calls=[{"name": "kb_read", "args": {"path": "perguntas-frequentes/faq.md"}, "id": "t1"}],
+        )
+    ]
+
+    assert _has_source_lookup(messages) is True
+
+
 def test_has_source_lookup_exige_fonte_aberta():
     search_only = [
         AIMessage(

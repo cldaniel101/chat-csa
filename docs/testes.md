@@ -28,14 +28,15 @@ O `tests/README.md` traz o guia de execução detalhado e mostra a saída espera
 
 | Arquivo | Foco | Exemplos de caso |
 |---|---|---|
-| `tests/test_tools.py` | ferramentas básicas do agente | ciclo `write`→`read`→`edit`, execução de `bash`, composição do prompt a partir de `AGENTS.md` + skills |
+| `tests/test_tools.py` | ferramentas do consumer | `kb_list`/`kb_read` no backend local; renderização de texto, csv→tabela, pdf e binário; composição do prompt |
+| `tests/test_kb.py` | cliente da base | `write` atômico com backend github falso (`httpx.MockTransport`), filtro de prefixo/raiz, 404 claro, cache invalidado e `/kb/upload` ponta a ponta |
+| `tests/test_admin.py` | auth admin | `/admin/users` exige Bearer, CRUD preservado e `/admin` (painel) removido |
 | `tests/test_server.py` | API FastAPI | `/health`, `/v1/models`, completions non-stream e stream (SSE com `[DONE]`), injeção da FAQ curada no prompt, shim `/api/chat` |
 | `tests/test_csa_portal.py` | cliente do portal | allowlist bloqueia domínio externo, cache de fetch, busca com filtros, fallback para o SiSU vigente, links markdown, extração de PDF e status `completed`/`partial`/`failed` |
-| `tests/test_qa_cache.py` | recuperação da FAQ | parsing de Markdown (frontmatter + entradas), ranking por similaridade, entradas `dynamic` não dão short-circuit, formatação sem URL omite a linha de fonte |
-| `tests/test_response_quality.py` | formatação da resposta | rótulo `Resposta:` removido, nota de divergência órfã removida, seção `Fontes:` preservada, `_has_source_lookup` exige fonte realmente aberta |
+| `tests/test_qa_cache.py` | recuperação da FAQ | parsing de Markdown (frontmatter + entradas) lido da base remota (backend local), ranking por similaridade, entradas `dynamic` não dão short-circuit, formatação sem URL omite a linha de fonte |
+| `tests/test_response_quality.py` | formatação da resposta | rótulo `Resposta:` removido, nota de divergência órfã removida, seção `Fontes:` preservada, `_has_source_lookup` exige fonte realmente aberta (`kb_read` ou `web_csa_fetch`) |
 | `tests/test_citation_quality.py` | qualidade de citação | 15 cenários obrigatórios (fonte única, múltiplas fontes, trecho verbatim, precedência do edital, avisos de ano, PDFs, ausência de fontes, URL inválida, Markdown válido para o frontend) |
 | `tests/test_scrape_portal.py` | utilitários de scraping | `slugify` seguro/estável, deduplicação, frontmatter idempotente em `knowledge/raw/` |
-| `tests/test_admin.py` | regressão do painel admin | o painel não grava `.sesskey` no cwd (na Vercel `/var/task` é somente leitura); chave do ambiente evita arquivo |
 
 ## O contrato de citação sob teste
 
@@ -62,7 +63,7 @@ O job `checks` do `.github/workflows/deploy.yml` roda **lint e build**, não a s
 
 ## Fontes
 
-- `tests/README.md` e os 8 arquivos de `tests/`
+- `tests/README.md` e os 10 arquivos de `tests/`
 - `pyproject.toml` (`[tool.pytest.ini_options]`, `[tool.ruff]`)
 - `src/chat_csa/agent/factory.py` (provedor `fake`)
 - `.github/workflows/deploy.yml`

@@ -1,3 +1,5 @@
+"""FAQ curada: parsing e ranking, lida da base remota (backend local nos testes)."""
+
 from pathlib import Path
 
 from chat_csa.qa_cache import (
@@ -7,10 +9,7 @@ from chat_csa.qa_cache import (
     lookup_cached_matches,
 )
 
-
-def _write_faq(path: Path) -> None:
-    path.write_text(
-        """---
+_FAQ_BODY = """---
 title: "FAQ de teste"
 resource: "https://csa.uefs.br/index.php/sisu261/inicial"
 last_verified: "2026-08-30"
@@ -46,26 +45,31 @@ No SiSU/UEFS 2026 podem ser utilizadas as notas do ENEM de 2023, 2024 ou 2025.
 A data deve ser conferida na página oficial da CSA.
 
 **Fonte:** Página oficial SiSU/UEFS 2026.
-""",
-        encoding="utf-8",
-    )
+"""
 
 
-def test_load_cache_entries_from_markdown(tmp_path):
-    faq = tmp_path / "faq.md"
-    _write_faq(faq)
+def _write_faq(kb_root: Path, name: str = "faq.md", content: str = _FAQ_BODY) -> Path:
+    """Grava uma FAQ no prefixo padrão da base local (perguntas-frequentes/)."""
+    target = kb_root / "perguntas-frequentes"
+    target.mkdir(parents=True, exist_ok=True)
+    path = target / name
+    path.write_text(content, encoding="utf-8")
+    return path
 
-    entries = load_cache_entries([faq])
+
+def test_load_cache_entries_from_base(kb_local):
+    _write_faq(kb_local)
+
+    entries = load_cache_entries()
 
     assert [entry.entry_id for entry in entries] == ["FAQ-001", "FAQ-002"]
     assert entries[0].cache_policy == "static"
     assert entries[0].alternatives == ("Vale ENEM 2024?", "Posso usar o ENEM 2025?")
+    assert entries[0].path == Path("perguntas-frequentes/faq.md")
 
 
-def test_lookup_cached_matches_returns_top_relevant_entries(tmp_path, monkeypatch):
-    faq = tmp_path / "faq.md"
-    _write_faq(faq)
-    monkeypatch.setenv("CHAT_CSA_QA_CACHE_PATHS", str(faq))
+def test_lookup_cached_matches_returns_top_relevant_entries(kb_local):
+    _write_faq(kb_local)
 
     hits = lookup_cached_matches("Vale ENEM 2024?")
 
@@ -73,21 +77,17 @@ def test_lookup_cached_matches_returns_top_relevant_entries(tmp_path, monkeypatc
     assert hits[0].matched_question == "Vale ENEM 2024?"
 
 
-def test_lookup_cached_matches_includes_dynamic_entries(tmp_path, monkeypatch):
+def test_lookup_cached_matches_includes_dynamic_entries(kb_local):
     # dynamic não short-circuita mais: entra como referência para conferência
-    faq = tmp_path / "faq.md"
-    _write_faq(faq)
-    monkeypatch.setenv("CHAT_CSA_QA_CACHE_PATHS", str(faq))
+    _write_faq(kb_local)
 
     hits = lookup_cached_matches("Já saiu a próxima chamada?")
 
     assert [hit.entry.entry_id for hit in hits] == ["FAQ-002"]
 
 
-def test_format_faq_reference_marks_dynamic_entries(tmp_path, monkeypatch):
-    faq = tmp_path / "faq.md"
-    _write_faq(faq)
-    monkeypatch.setenv("CHAT_CSA_QA_CACHE_PATHS", str(faq))
+def test_format_faq_reference_marks_dynamic_entries(kb_local):
+    _write_faq(kb_local)
 
     static = lookup_cached_matches("Vale ENEM 2024?")[0]
     dynamic = lookup_cached_matches("Já saiu a próxima chamada?")[0]
@@ -101,10 +101,8 @@ def test_format_faq_reference_marks_dynamic_entries(tmp_path, monkeypatch):
     assert "confira nas fontes oficiais" in dynamic_block
 
 
-def test_lookup_static_markdown_cache_hit(tmp_path, monkeypatch):
-    faq = tmp_path / "faq.md"
-    _write_faq(faq)
-    monkeypatch.setenv("CHAT_CSA_QA_CACHE_PATHS", str(faq))
+def test_lookup_static_markdown_cache_hit(kb_local):
+    _write_faq(kb_local)
 
     hit = lookup_cached_answer("vale enem 2024?")
 
@@ -114,21 +112,20 @@ def test_lookup_static_markdown_cache_hit(tmp_path, monkeypatch):
     assert "Fontes:" in hit.to_markdown()
 
 
-def test_lookup_dynamic_markdown_cache_does_not_short_circuit(tmp_path, monkeypatch):
-    faq = tmp_path / "faq.md"
-    _write_faq(faq)
-    monkeypatch.setenv("CHAT_CSA_QA_CACHE_PATHS", str(faq))
+def test_lookup_dynamic_markdown_cache_does_not_short_circuit(kb_local):
+    _write_faq(kb_local)
 
     hit = lookup_cached_answer("Já saiu a próxima chamada?")
 
     assert hit is None
 
 
-def test_format_without_source_url_omits_source_line(tmp_path, monkeypatch):
+def test_format_without_source_url_omits_source_line(kb_local):
     """Sem resource no frontmatter, a citação não vaza caminho de arquivo."""
-    faq = tmp_path / "faq-sem-resource.md"
-    faq.write_text(
-        """---
+    _write_faq(
+        kb_local,
+        name="faq-sem-resource.md",
+        content="""---
 title: "FAQ sem resource"
 ---
 
@@ -142,9 +139,7 @@ title: "FAQ sem resource"
 **Resposta:**
 Resposta sem URL oficial cadastrada.
 """,
-        encoding="utf-8",
     )
-    monkeypatch.setenv("CHAT_CSA_QA_CACHE_PATHS", str(faq))
 
     hits = lookup_cached_matches("pergunta sem fonte oficial?")
     entry = hits[0].entry
@@ -152,10 +147,10 @@ Resposta sem URL oficial cadastrada.
 
     assert "Fonte:" not in block
     assert "fonte Markdown local" not in block
-    assert str(faq) not in block
+    assert "perguntas-frequentes/faq-sem-resource.md" not in block
     assert ".md" not in block
 
     markdown = hits[0].to_markdown()
     assert "Fontes:" not in markdown
     assert "fonte Markdown local" not in markdown
-    assert str(faq) not in markdown
+    assert "perguntas-frequentes/faq-sem-resource.md" not in markdown

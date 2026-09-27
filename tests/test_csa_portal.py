@@ -227,24 +227,23 @@ def test_tools_for_config(monkeypatch, tmp_path):
     from chat_csa.agent.factory import tools_for_config
     from chat_csa.agent.tools import ALL_TOOLS
 
-    monkeypatch.delenv("CHAT_CSA_EXTRA_TOOLS", raising=False)
-    ing = tools_for_config(tmp_path / ".ingester")
-    con = tools_for_config(tmp_path / ".consumer")
-    assert [t.name for t in ing] == ["read", "write", "edit", "bash", "web_csa_fetch", "web_csa_search"]
-    # consumer é somente leitura: read + tools CSA
-    assert sorted(t.name for t in con) == ["read", "web_csa_fetch", "web_csa_search"]
+    monkeypatch.delenv("CHAT_CSA_PORTAL_TOOLS", raising=False)
+    assert [t.name for t in tools_for_config(tmp_path / ".consumer")] == ["kb_list", "kb_read"] == [
+        t.name for t in ALL_TOOLS
+    ]
 
-    monkeypatch.setenv("CHAT_CSA_EXTRA_TOOLS", "none")
-    assert [t.name for t in tools_for_config(tmp_path / ".ingester")] == [t.name for t in ALL_TOOLS]
+    monkeypatch.setenv("CHAT_CSA_PORTAL_TOOLS", "1")
+    names = [t.name for t in tools_for_config(tmp_path / ".consumer")]
+    assert names == ["kb_list", "kb_read", "web_csa_fetch", "web_csa_search"]
 
 
-def test_consumer_is_readonly_with_csa_tools(monkeypatch, tmp_path):
+def test_consumer_tools_are_readonly(monkeypatch, tmp_path):
     from chat_csa.agent.factory import tools_for_config
 
-    monkeypatch.delenv("CHAT_CSA_EXTRA_TOOLS", raising=False)
+    monkeypatch.delenv("CHAT_CSA_PORTAL_TOOLS", raising=False)
     names = [t.name for t in tools_for_config(tmp_path / ".consumer")]
-    assert "web_csa_fetch" in names and "web_csa_search" in names and "read" in names
-    assert not {"bash", "write", "edit"} & set(names)
+    assert {"kb_list", "kb_read"} <= set(names)
+    assert not {"read", "bash", "write", "edit"} & set(names)
 
 
 def test_fetch_pdf_extracts_text_with_python_fallback(tmp_path, monkeypatch):

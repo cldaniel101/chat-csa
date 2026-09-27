@@ -12,6 +12,8 @@ Rotas:
 
 from __future__ import annotations
 
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, File, Form, Header, Response, UploadFile
 from fastapi.responses import JSONResponse
 
@@ -28,7 +30,7 @@ from . import auth as auth_store
 router = APIRouter(prefix="/kb", tags=["kb"])
 
 
-def require_admin(authorization: str | None = Header(default=None)):
+def require_admin(authorization: Annotated[str | None, Header()] = None):
     """Dependência das rotas /kb/*: exige token admin válido (401 sem ele)."""
     return auth_store.require_auth(authorization)
 
@@ -48,7 +50,7 @@ def _error_response(exc: KBError) -> JSONResponse:
 
 
 @router.get("/list")
-async def kb_list_route(prefix: str = "", _user: dict = Depends(require_admin)):
+async def kb_list_route(prefix: str = "", _user: Annotated[dict, Depends(require_admin)] = None):
     """Caminhos disponíveis na base (relativos à raiz), filtrados pelo prefixo."""
     try:
         paths = get_kb().list(prefix)
@@ -58,7 +60,7 @@ async def kb_list_route(prefix: str = "", _user: dict = Depends(require_admin)):
 
 
 @router.get("/file")
-async def kb_file_route(path: str, _user: dict = Depends(require_admin)):
+async def kb_file_route(path: str, _user: Annotated[dict, Depends(require_admin)] = None):
     """Bytes do arquivo original com content-type adequado (sem conversão)."""
     try:
         file = get_kb().read(path)
@@ -69,9 +71,9 @@ async def kb_file_route(path: str, _user: dict = Depends(require_admin)):
 
 @router.post("/upload")
 async def kb_upload_route(
-    files: list[UploadFile] = File(...),
-    message: str = Form(""),
-    _user: dict = Depends(require_admin),
+    files: Annotated[list[UploadFile], File()],
+    _user: Annotated[dict, Depends(require_admin)] = None,
+    message: Annotated[str, Form()] = "",
 ):
     """Upload em lote: grava tudo num único commit atômico no branch da base.
 
