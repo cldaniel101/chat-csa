@@ -11,7 +11,9 @@
 #
 # Secrets do repositório (GitHub):
 #   VERCEL_TOKEN_API / VERCEL_TOKEN_FRONTEND  -> tokens project-scoped da Vercel
-#   VERCEL_ORG_ID_API / VERCEL_ORG_ID_FRONTEND -> time da Vercel (mesmo valor)
+#   VERCEL_ORG_ID_API / VERCEL_ORG_ID_FRONTEND -> id do escopo de cada projeto
+#     (a API vive no escopo pessoal do dono; o frontend, no escopo de time)
+#     Ver docs/deploy.md, seção "Escopo e propriedade".
 #   VERCEL_PROJECT_ID_API / _FRONTEND          -> id de cada projeto
 name: Deploy
 
@@ -82,10 +84,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # O link direto (.vercel/project.json) não é usado: tokens project-scoped
-      # não podem buscar os settings do projeto (erro "Could not retrieve
-      # Project Settings"). O VERCEL_ORG_ID/VERCEL_PROJECT_ID acima já
-      # identificam o projeto para o CLI — padrão documentado para CI.
+      # O .vercel/project.json versionado da API é um link antigo (escopo de
+      # time) para um projeto que hoje vive no escopo pessoal: o CLI resolve o
+      # link antes das variáveis e falha com "Project not found". Mesmo
+      # tratamento dado ao env-sync.
+      - name: Descarta o link .vercel versionado (escopo antigo)
+        if: matrix.name == 'api'
+        run: rm -rf .vercel
+
+      # Depois disso, o VERCEL_ORG_ID/VERCEL_PROJECT_ID acima identificam o
+      # projeto para o CLI — padrão documentado para CI com tokens
+      # project-scoped (não conseguem buscar settings pelo link).
       #
       # Build remoto: a Vercel roda o build no próprio lado (Python/Node),
       # então não usamos --prebuilt nem precisamos instalar toolchains aqui.
