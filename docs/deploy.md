@@ -54,7 +54,13 @@ Os tokens são **project-scoped** e o workflow não usa o link `.vercel/project.
 
 O frontend é um build estático: o Vite **embute** a URL da API em tempo de build (`import.meta.env.VITE_CONSUMER_URL`), e a variável de ambiente tem prioridade sobre o `.env`. O `.env.production` versionado aponta para a produção (`https://chat-csa-api.vercel.app`) — o correto para o deploy de `main`.
 
-Para o preview do site falar com o preview da API — e não com a produção — o projeto `chat-csa-web` tem a variável de ambiente **Preview** `VITE_CONSUMER_URL=https://chat-csa-api-development.vercel.app`, e o workflow aponta esse alias para o último deployment da API a cada push em `development` (`vercel alias set`). Sem essa ligação, o site de preview chama a produção e parece estar na versão antiga do backend.
+Para o preview do site falar com o preview da API — e não com a produção — o projeto `chat-csa-web` tem a variável de ambiente **Preview** `VITE_CONSUMER_URL=https://chat-csa-api-development.vercel.app`. Esse alias precisa apontar para o último deployment da API, e **hoje isso é manual**:
+
+```bash
+npx vercel alias set <deployment-da-api>.vercel.app chat-csa-api-development.vercel.app
+```
+
+Os tokens project-scoped do CI não conseguem criar alias (`User not found.`), por isso o workflow não move o alias. Sem essa ligação, o site de preview chama a produção e parece estar na versão antiga do backend.
 
 Em qualquer URL de preview, dá para apontar o site para uma API específica na hora: `?consumerUrl=https://<deployment-da-api>.vercel.app` (lido por `runtimeConsumerUrl()` em `frontend/src/api/client.ts`).
 

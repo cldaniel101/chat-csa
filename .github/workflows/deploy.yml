@@ -108,16 +108,9 @@ jobs:
           VERCEL_ORG_ID: ${{ secrets[matrix.org_secret] }}
           VERCEL_PROJECT_ID: ${{ secrets[matrix.project_secret] }}
         timeout-minutes: 30
-        run: |
-          set -euo pipefail
-          # O CLI imprime a URL do deployment na última linha.
-          deployment_url=$(npx vercel@59 deploy --yes --token "${{ secrets[matrix.token_secret] }}" | tail -n 1)
-          echo "deployment: $deployment_url"
-          # O frontend de preview é compilado com VITE_CONSUMER_URL apontando para
-          # este alias (env de Preview do projeto chat-csa-web), porque o build
-          # estático embute a URL da API. Manter o alias atualizado é o que liga
-          # o preview do site ao preview da API.
-          if [ "${{ matrix.name }}" = "api" ] && [ "${{ github.ref }}" = "refs/heads/development" ]; then
-            npx vercel@59 alias set "$deployment_url" chat-csa-api-development.vercel.app \
-              --token "${{ secrets[matrix.token_secret] }}"
-          fi
+        # O frontend de preview é compilado com VITE_CONSUMER_URL apontando para
+        # o alias chat-csa-api-development.vercel.app (env de Preview do projeto
+        # chat-csa-web), porque o build estático embute a URL da API. Hoje o
+        # alias é movido à mão: tokens project-scoped não criam alias ("User not
+        # found"). Ver docs/deploy.md, "Preview do site e da API".
+        run: npx vercel@59 deploy --yes --token "${{ secrets[matrix.token_secret] }}"
