@@ -22,12 +22,17 @@ if [ ! -f "$ENV_FILE" ]; then
 fi
 
 # Allowlist: variáveis que o backend consome em produção
-KEYS=(LLM_PROVIDER LLM_MODEL OLLAMA_MODEL OLLAMA_BASE_URL OLLAMA_API_KEY)
+KEYS=(LLM_PROVIDER LLM_MODEL OLLAMA_MODEL OLLAMA_BASE_URL OLLAMA_API_KEY \
+      KB_BACKEND KB_REPO KB_BRANCH KB_ROOT KB_TOKEN KB_WRITE_TOKEN KB_CACHE_TTL)
 
 # Overrides de produção (o .env local mantém localhost para dev)
 declare -A OVERRIDES=()
 if [ "$TARGET_ENV" = "production" ]; then
   OVERRIDES[OLLAMA_BASE_URL]="https://ollama.com"
+fi
+# No deploy a base é sempre remota — nunca vaza KB_BACKEND=local para a Vercel.
+if [ "$TARGET_ENV" != "development" ]; then
+  OVERRIDES[KB_BACKEND]="github"
 fi
 
 for key in "${KEYS[@]}"; do
