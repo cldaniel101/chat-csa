@@ -32,10 +32,8 @@ jobs:
 
       - name: Monta .env a partir dos secrets e sincroniza
         env:
-          # VERCEL_ORG_ID não é definido: o projeto está no escopo pessoal do
-          # token; o id de time antigo (team_*) quebra a resolução do CLI
-          # ("Could not retrieve Project Settings").
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN_API }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID_API }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_API }}
           LLM_PROVIDER: ${{ secrets.LLM_PROVIDER }}
           LLM_MODEL: ${{ secrets.LLM_MODEL }}
