@@ -21,7 +21,7 @@ Há um único agente (consumer) e um único app FastAPI, criado por `create_app`
 | DELETE | `/admin/users/{uid}` | `Authorization` (Bearer) | remove usuário (não permite remover o último) |
 | GET | `/kb/list?prefix=` | `Authorization` (Bearer admin) | caminhos disponíveis na base |
 | GET | `/kb/file?path=` | `Authorization` (Bearer admin) | bytes originais do arquivo, com content-type |
-| POST | `/kb/upload` | `Authorization` (Bearer admin) | upload em lote → um commit atômico no branch `data` |
+| POST | `/kb/upload` | `Authorization` (Bearer admin) | converte o lote em conceitos OKF → um commit atômico no branch `data` |
 
 O agente **não** passa por `/kb/*`: ele fala com o cliente `chat_csa.kb` em processo (`kb_list`/`kb_read`, token de leitura) e nunca recebe credencial de admin.
 
@@ -74,11 +74,15 @@ Devolve os caminhos disponíveis na base, relativos à raiz (`KB_ROOT`), opciona
 
 ### `GET /kb/file?path=`
 
-Devolve os **bytes originais** do arquivo com o content-type adequado. A conversão por tipo (csv → tabela, pdf → texto, binário → aviso) acontece na leitura do agente (`kb_read`), nunca aqui e nunca é gravada no branch.
+Devolve os **bytes originais** do arquivo com o content-type adequado. A conversão por tipo (csv → tabela, pdf → texto, binário → aviso) acontece na leitura do agente (`kb_read`), nunca aqui e nunca é gravada no branch. Conceitos enviados pelo `/kb/upload` novo não têm original na base — só o `.md` convertido.
 
 ### `POST /kb/upload`
 
-Multipart em lote: o caminho relativo de cada arquivo vem no **filename** da parte. Exige auth admin e grava tudo em **um único commit atômico** no branch da base (Git Data API) — nunca deixa lote parcial.
+Multipart em lote: o caminho declarado de cada arquivo vem no **filename** da parte e vira o conceito `<pasta>/<slug>.md` (o servidor normaliza caracteres e troca a extensão). Cada arquivo é **convertido dentro do request** — o original não é preservado — e conceitos + índices vão num **único commit atômico** no branch `data` (Git Data API); nunca existe lote parcial.
+
+Tipos convertidos: `pdf` (texto extraído por layout + imagens das páginas numa chamada multimodal, lote a lote), imagens, `csv`/`tsv` (tabela Markdown) e `md`/`txt`/`json` (texto direto). Demais tipos (docx/xlsx/html…) ficam para depois: o arquivo não é gravado e a resposta marca `converted: false`.
+
+O `sources` (opcional) é um JSON `{"caminho declarado": "URL da fonte"}`; com ele o conceito ganha `resource`/`url`/`source_page` e a seção `# Citations`; sem ele, nada de citação é inventado. Conceito existente no mesmo caminho é sobrescrito (o git guarda o histórico) e o bullet do índice é atualizado no mesmo commit; seção nova cria a pasta e o índice no mesmo commit.
 
 ```bash
 TOKEN=$(curl -s http://localhost:8002/auth/login \
@@ -88,24 +92,27 @@ TOKEN=$(curl -s http://localhost:8002/auth/login \
 curl -s http://localhost:8002/kb/upload \
   -H "Authorization: Bearer $TOKEN" \
   -F 'files=@./faq-cotas.md;filename=perguntas-frequentes/faq-cotas.md' \
-  -F 'files=@./cronograma.csv;filename=cronogramas/sisu-2026.csv' \
+  -F 'files=@./cronograma.pdf;filename=cronogramas/cronograma.pdf' \
+  -F 'sources={"cronogramas/cronograma.pdf": "https://csa.uefs.br/cronograma.pdf"}' \
   -F 'message=kb: primeiro lote do time'
 ```
 
-Resposta de sucesso (por arquivo + sha do commit):
+Resposta de sucesso (por arquivo + sha do commit; aditiva, **sem eco do Markdown**):
 
 ```json
 {
   "ok": true,
   "sha": "e062755...",
   "files": [
-    { "path": "perguntas-frequentes/faq-cotas.md", "ok": true, "size": 2662 },
-    { "path": "cronogramas/sisu-2026.csv", "ok": true, "size": 812 }
+    { "path": "perguntas-frequentes/faq-cotas.md", "ok": true, "size": 2662, "converted": true },
+    { "path": "cronogramas/cronograma.pdf", "ok": true, "size": 81234, "converted": true }
   ]
 }
 ```
 
-Em falha (ex.: token de escrita ausente, branch inexistente), a resposta traz `ok: false`, o erro e cada arquivo marcado como `ok: false`; nada é commitado. O teto de corpo da Vercel (~4.5 MB) limita o lote — lotes maiores devem ser fatiados pelo cliente (fora do escopo atual).
+Um arquivo que não converte **não aborta o lote**: ele não entra na base e a resposta traz `"converted": false` com o motivo em `error` (tipo sem conversão, falha do modelo, arquivo acima do orçamento). Caminho inválido ou duplicado vem com `"ok": false` e nenhum arquivo inválido entra no commit.
+
+Em falha de infraestrutura (ex.: token de escrita ausente, branch inexistente), a resposta traz `ok: false`, o erro e cada arquivo marcado como `ok: false`; nada é commitado. O teto de corpo da Vercel (~4.5 MB) limita o lote — lotes maiores devem ser fatiados pelo cliente.
 
 ## Exemplos de consumo
 
