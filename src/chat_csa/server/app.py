@@ -41,6 +41,7 @@ from ..agent.prompt import build_system_prompt
 from ..qa_cache import format_faq_reference, lookup_cached_matches
 from . import auth as auth_store
 from .admin import build_admin_panel
+from .kb_api import router as kb_router
 from .models import ChatMessage, ModelCard, ModelsResponse
 
 load_dotenv()
@@ -685,6 +686,11 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
     async def admin_delete(uid: str, authorization: str | None = Header(default=None)):
         _require_admin(authorization)
         return auth_store.delete_user(uid)
+
+    # ------------------------------------------------------------------
+    # Base de conhecimento remota — superfície admin /kb/* (auth obrigatória)
+    # ------------------------------------------------------------------
+    app.include_router(kb_router)
 
     # Painel FastHTML do ingester (decisão da discussão ingester-fasthtml-admin):
     # o admin só existe no servidor do ingester; o consumer permanece API pura.
