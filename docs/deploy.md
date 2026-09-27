@@ -50,6 +50,14 @@ Os tokens são **project-scoped** e o workflow não usa o link `.vercel/project.
 | `LLM_PROVIDER`, `LLM_MODEL`, `OLLAMA_MODEL`, `OLLAMA_BASE_URL`, `OLLAMA_API_KEY` | variáveis do backend sincronizadas para a Vercel |
 | `KB_BACKEND`, `KB_REPO`, `KB_BRANCH`, `KB_ROOT`, `KB_TOKEN`, `KB_WRITE_TOKEN`, `KB_CACHE_TTL` | base de conhecimento remota sincronizada para a Vercel |
 
+### Preview do site e da API
+
+O frontend é um build estático: o Vite **embute** a URL da API em tempo de build (`import.meta.env.VITE_CONSUMER_URL`), e a variável de ambiente tem prioridade sobre o `.env`. O `.env.production` versionado aponta para a produção (`https://chat-csa-api.vercel.app`) — o correto para o deploy de `main`.
+
+Para o preview do site falar com o preview da API — e não com a produção — o projeto `chat-csa-web` tem a variável de ambiente **Preview** `VITE_CONSUMER_URL=https://chat-csa-api-development.vercel.app`, e o workflow aponta esse alias para o último deployment da API a cada push em `development` (`vercel alias set`). Sem essa ligação, o site de preview chama a produção e parece estar na versão antiga do backend.
+
+Em qualquer URL de preview, dá para apontar o site para uma API específica na hora: `?consumerUrl=https://<deployment-da-api>.vercel.app` (lido por `runtimeConsumerUrl()` em `frontend/src/api/client.ts`).
+
 ## Sincronização de ambiente (`env-sync.yml`)
 
 Execução manual: **Actions → "Sync Vercel env" → Run workflow**, escolhendo `production`, `preview` ou `development`. O workflow instala o CLI, monta um `.env` temporário apenas com os secrets definidos (pulando ausentes) e chama `scripts/sync-vercel-env.sh <ambiente>`. Antes disso, descarta o `.vercel/project.json` versionado — link antigo de escopo de time que tokens project-scoped não conseguem usar; o projeto é identificado por `VERCEL_ORG_ID`/`VERCEL_PROJECT_ID`.
@@ -87,6 +95,7 @@ O `Dockerfile` da raiz gera uma imagem única do backend (porta 8000, `HEALTHCHE
 
 - `.github/workflows/deploy.yml`, `.github/workflows/env-sync.yml`, `.github/workflows/scrape-csa.yml`
 - `.vercel/project.json`, `frontend/.vercel/project.json`
+- `frontend/.env.production`, `frontend/src/api/client.ts`
 - `vercel.json`, `frontend/vercel.json`, `api/index.py`
 - `scripts/sync-vercel-env.sh`, `scripts/scrape_portal.py`
 - `Makefile` (alvos `deploy-*`), `Dockerfile`, `docker-compose.yml`
