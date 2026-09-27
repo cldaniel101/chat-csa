@@ -17,6 +17,22 @@ O `vercel.json` da raiz configura o build da função com `includeFiles: ["src/c
 
 A base de conhecimento **não** é embutida no deploy: ela é lida em runtime pela API do GitHub (branch `data`), configurada pelas variáveis `KB_*`. Sem `KB_REPO`/`KB_TOKEN` configurados, o chat responde sem base (não quebra).
 
+## Escopo e propriedade
+
+Os dois projetos vivem no **escopo de um time** — `dev-davmg`, id `team_a1g9RHULTlOEdkqTUhGZwhGF` —, não no escopo pessoal de quem os criou: o time é o dono e a conta pessoal é apenas um acesso. É isso que faz o deploy sobreviver à saída de uma pessoa, **desde que o time tenha mais de um owner**. A transferência de um projeto entre escopos é feita no painel da Vercel (Project → Settings → Transfer).
+
+Os secrets `VERCEL_ORG_ID_*` precisam conter o id desse time. Se um projeto for movido para um escopo pessoal (ou o secret apontar para um), o deploy falha com `Project not found` mesmo com token e project id válidos — foi exatamente o que aconteceu em 27/09/2026, quando o `VERCEL_ORG_ID_API` ficou com um id de escopo pessoal.
+
+O `.vercel/project.json` versionado (raiz e `frontend/`) existe para o **deploy manual local**; o CI identifica o projeto por `VERCEL_ORG_ID`/`VERCEL_PROJECT_ID` e ignora o link.
+
+### Se o acesso ao deploy for perdido
+
+1. Autenticar (`npx vercel login`) com uma conta que tenha acesso ao time.
+2. Localizar ou recriar os dois projetos — `chat-csa-api` na raiz e `chat-csa-web` em `frontend/` — com `npx vercel link` em cada diretório.
+3. Atualizar os secrets do repositório com os ids dos `project.json` recém-gerados: `VERCEL_ORG_ID_API`, `VERCEL_ORG_ID_FRONTEND`, `VERCEL_PROJECT_ID_API`, `VERCEL_PROJECT_ID_FRONTEND`, além de tokens project-scoped novos em `VERCEL_TOKEN_API`/`VERCEL_TOKEN_FRONTEND`.
+4. Rodar o workflow **Sync Vercel env** (`workflow_dispatch`) para reenviar as variáveis de runtime à Vercel.
+5. Confirmar com um push em `development` (preview) e, depois, em `main` (produção).
+
 ## Pipeline (`.github/workflows/deploy.yml`)
 
 Disparo: push em `main` ou `development`, e pull requests. A concorrência é por ref (`deploy-${{ github.ref }}`, cancel-in-progress), o workflow tem `contents: read` e roda dois jobs:
@@ -70,6 +86,7 @@ O `Dockerfile` da raiz gera uma imagem única do backend (porta 8000, `HEALTHCHE
 ## Fontes
 
 - `.github/workflows/deploy.yml`, `.github/workflows/env-sync.yml`, `.github/workflows/scrape-csa.yml`
+- `.vercel/project.json`, `frontend/.vercel/project.json`
 - `vercel.json`, `frontend/vercel.json`, `api/index.py`
 - `scripts/sync-vercel-env.sh`, `scripts/scrape_portal.py`
 - `Makefile` (alvos `deploy-*`), `Dockerfile`, `docker-compose.yml`
