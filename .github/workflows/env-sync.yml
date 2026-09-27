@@ -48,6 +48,11 @@ jobs:
           KB_WRITE_TOKEN: ${{ secrets.KB_WRITE_TOKEN }}
           KB_CACHE_TTL: ${{ secrets.KB_CACHE_TTL }}
         run: |
+          # O .vercel/project.json versionado é um link antigo (escopo de time);
+          # tokens project-scoped não conseguem buscar settings por ele. O CI
+          # identifica o projeto por VERCEL_ORG_ID/VERCEL_PROJECT_ID.
+          rm -rf .vercel
+
           # Monta o .env apenas com os secrets definidos (o script pula ausentes)
           : > .env
           for key in LLM_PROVIDER LLM_MODEL OLLAMA_MODEL OLLAMA_BASE_URL OLLAMA_API_KEY \
