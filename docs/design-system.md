@@ -31,7 +31,7 @@ O chat foi desenhado para "parecer parte do portal da CSA": em vez de cores gen�
 
 `frontend/src/index.css` traduz o DESIGN.md para CSS custom properties (`--c-primary`, `--c-gradient-sisu`, `--radius-panel`, `--shadow-panel`, …) e importa as três famílias do Google Fonts. O mesmo arquivo expõe **aliases funcionais** (`--bg`, `--surface`, `--border`, `--text`, `--accent`, `--radius`, `--sans`) que os componentes usam.
 
-`frontend/src/components/chat/CSAChatWidget.css` consome exclusivamente os tokens: o launcher usa `--c-gradient-sisu` + `--shadow-launcher` + `--radius-full`; o painel usa `--c-surface` + `--c-border` + `--radius-panel` + `--shadow-panel`; o composer e os chips usam `--radius-md` e o anel de foco `--shadow-focus`. O painel `/admin` do ingester herda um subconjunto dos mesmos valores no CSS embutido (`--csa-primary`, `--csa-accent`, `--csa-bg`), garantindo continuidade visual entre as duas superfícies.
+`frontend/src/components/chat/CSAChatWidget.css` consome exclusivamente os tokens: o launcher usa `--c-gradient-sisu` + `--shadow-launcher` + `--radius-full`; o painel usa `--c-surface` + `--c-border` + `--radius-panel` + `--shadow-panel`; o composer e os chips usam `--radius-md` e o anel de foco `--shadow-focus`.
 
 ## Componentes do widget
 
@@ -57,4 +57,3 @@ O chat foi desenhado para "parecer parte do portal da CSA": em vez de cores gen�
 - `frontend/src/App.css`
 - `frontend/src/components/chat/CSAChatWidget.css`, `ChatHeader.tsx`, `ChatStatus.tsx`, `ChatSuggestions.tsx`
 - `frontend/public/embed.js`
-- `src/chat_csa/server/admin.py` (CSS do painel)

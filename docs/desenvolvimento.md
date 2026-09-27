@@ -16,27 +16,24 @@ O projeto usa **uv** em vez de pip/venv porque o `pyproject.toml` já declara o 
 ## Passo a passo (backend)
 
 ```bash
-cp .env.example .env      # o .env.example já traz os DOIS agentes e os defaults compartilhados
+cp .env.example .env      # um único agente + KB_* da base remota
 uv sync --group dev       # equivalente a `make dev`
 
-make run-ingester         # ingester  em :8001
-make run-consumer         # consumer  em :8002
-make run-both             # os dois em paralelo (make -j2)
+make run-consumer         # consumer em :8002
 ```
 
-Os alvos leem `INGESTER_CONFIG_DIR`/`INGESTER_PORT` e `CONSUMER_CONFIG_DIR`/`CONSUMER_PORT` do ambiente (o `.env` é carregado pelo python-dotenv em runtime). Para conferir o system prompt composto sem subir servidor:
+O alvo lê `CONSUMER_CONFIG_DIR`/`CONSUMER_PORT` do ambiente (o `.env` é carregado pelo python-dotenv em runtime). Para conferir o system prompt composto sem subir servidor:
 
 ```bash
-make prompt-ingester
 make prompt-consumer
 # equivalente direto:
-uv run chat-csa print-prompt --config-dir .ingester
+uv run chat-csa print-prompt --config-dir .consumer
 ```
 
 Verificação rápida com a API no ar:
 
 ```bash
-curl http://localhost:8001/v1/chat/completions \
+curl http://localhost:8002/v1/chat/completions \
   -H 'Content-Type: application/json' \
   -d '{"model":"chat-csa","messages":[{"role":"user","content":"quais documentos para matrícula?"}]}'
 ```
@@ -52,16 +49,19 @@ O `.env.example` é a referência completa. As essenciais para rodar localmente:
 | `OLLAMA_BASE_URL` | endpoint do Ollama (local ou nuvem) | `http://localhost:11434` |
 | `OLLAMA_API_KEY` | token do Ollama Cloud (o Ollama local ignora) | vazio |
 | `OPENAI_API_KEY` / `OPENAI_MODEL` / `OPENAI_BASE_URL` | alternativa OpenAI-compatible | comentados |
-| `AGENT_CONFIG_DIR` | config dir do modo de agente único | `.ingester` |
-| `INGESTER_CONFIG_DIR` / `INGESTER_PORT` | dir e porta do ingester | `.ingester` / `8001` |
+| `AGENT_CONFIG_DIR` | config dir do agente | `.consumer` |
 | `CONSUMER_CONFIG_DIR` / `CONSUMER_PORT` | dir e porta do consumer | `.consumer` / `8002` |
-| `INGESTER_*` / `CONSUMER_*` (ex.: `INGESTER_LLM_PROVIDER`) | override por agente | comentados |
+| `CONSUMER_*` (ex.: `CONSUMER_LLM_PROVIDER`) | override do consumer | comentados |
+| `KB_BACKEND` | `github` (deploy) ou `local` (dev/testes sem rede) | `github` |
+| `KB_REPO` / `KB_BRANCH` | repositório e branch da base | `cldaniel101/chat-csa` / `data` |
+| `KB_TOKEN` / `KB_WRITE_TOKEN` | leitura / escrita da base | vazios |
+| `KB_LOCAL_PATH` | diretório da base no backend local | `knowledge` |
 
-Cada agente é um processo separado com seu próprio *AGENTS home* (`.ingester/` ou `.consumer/`); é por isso que a configuração existe em dois conjuntos e que `make run-both` precisa dos dois.
+A base remota é a fonte primária; em dev, `KB_BACKEND=local` + `KB_LOCAL_PATH=knowledge` (pasta gitignored) permitem trabalhar sem rede. O `.env.example` é a referência completa, incluindo `KB_CACHE_TTL` e `CHAT_CSA_PORTAL_TOOLS`.
 
 ## Frontend
 
-O frontend React atende somente o consumer; o painel do ingester é servido pelo próprio backend em `/admin` (veja [design-system.md](./design-system.md) e [api.md](./api.md)).
+O frontend React atende o consumer (o agente único). Veja [design-system.md](./design-system.md) e [api.md](./api.md).
 
 ```bash
 cp frontend/.env.example frontend/.env   # VITE_CONSUMER_URL=http://localhost:8002
@@ -83,7 +83,7 @@ make clean    # remove .venv, caches e frontend/dist
 
 ## Alternativa sem uv: Docker
 
-O `Dockerfile` da raiz instala o pacote com `pip install .` e já inclui `poppler-utils` (necessário para extrair texto de PDFs). O caminho sem uv é `make docker-build` + `make docker-run` (ingester), `make docker-run-consumer` ou `make docker-run-both` (compose). Detalhes de deploy em [deploy.md](./deploy.md).
+O `Dockerfile` da raiz instala o pacote com `pip install .` e já inclui `poppler-utils` (necessário para extrair texto de PDFs). O caminho sem uv é `make docker-build` + `make docker-run` (consumer) ou `make docker-run-both` (compose). Detalhes de deploy em [deploy.md](./deploy.md).
 
 ## Fontes
 

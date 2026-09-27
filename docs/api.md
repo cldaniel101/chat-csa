@@ -1,10 +1,10 @@
 # API HTTP
 
-Este documento descreve a API HTTP dos agentes: rotas compatíveis com OpenAI e com Ollama, o formato de streaming (incluindo os campos extras do Chat CSA) e as rotas de autenticação e administração do ingester. O público são integradores que vão consumir a API de outra aplicação.
+Este documento descreve a API HTTP do agente **consumer**: rotas compatíveis com OpenAI e com Ollama, o formato de streaming (incluindo os campos extras do Chat CSA) e a superfície admin `/kb/*` da base de conhecimento remota. O público são integradores que vão consumir a API de outra aplicação.
 
 ## Endpoints
 
-O mesmo app FastAPI é servido por qualquer agente; o que muda é o config dir e a porta (padrão: ingester em `:8001`, consumer em `:8002`). Todas as rotas nascem de `create_app` em `src/chat_csa/server/app.py`.
+Há um único agente (consumer) e um único app FastAPI, criado por `create_app` em `src/chat_csa/server/app.py`. Em dev, ele roda em `:8002`.
 
 | Método | Rota | Autenticação | Descrição |
 |---|---|---|---|
@@ -13,17 +13,17 @@ O mesmo app FastAPI é servido por qualquer agente; o que muda é o config dir e
 | GET | `/api/tags` | — | compat mínima com o `ollama list` |
 | POST | `/v1/chat/completions` | — | chat compatível com OpenAI (stream e non-stream) |
 | POST | `/api/chat` | — | shim compatível com Ollama (stream e non-stream) |
-| POST | `/auth/login` | — | login do ingester; devolve `access_token` |
+| POST | `/auth/login` | — | login admin; devolve `access_token` |
 | GET | `/auth/me` | `Authorization` (Bearer) | valida o token e devolve o usuário |
 | GET | `/admin/users` | `Authorization` (Bearer) | lista usuários (sem senha) |
 | POST | `/admin/users` | `Authorization` (Bearer) | cria usuário |
 | PUT | `/admin/users/{uid}` | `Authorization` (Bearer) | atualiza usuário |
 | DELETE | `/admin/users/{uid}` | `Authorization` (Bearer) | remove usuário (não permite remover o último) |
-| GET | `/admin` | cookie de sessão | painel FastHTML do ingester: login ou chat |
-| POST | `/admin/login` | — | valida credenciais e abre a sessão por cookie |
-| POST | `/admin/logout` | cookie de sessão | encerra a sessão |
+| GET | `/kb/list?prefix=` | `Authorization` (Bearer admin) | caminhos disponíveis na base |
+| GET | `/kb/file?path=` | `Authorization` (Bearer admin) | bytes originais do arquivo, com content-type |
+| POST | `/kb/upload` | `Authorization` (Bearer admin) | upload em lote → um commit atômico no branch `data` |
 
-O mount `/admin` só existe no processo cujo config dir começa com `.ingester`; no consumer a rota responde 404. O painel HTML é montado **depois** das rotas JSON `/admin/users`, então o CRUD continua acessível por Bearer.
+O agente **não** passa por `/kb/*`: ele fala com o cliente `chat_csa.kb` em processo (`kb_list`/`kb_read`, token de leitura) e nunca recebe credencial de admin.
 
 > Nota: o docstring do módulo cita um `POST /v1/completions` "não implementado — retorna 501". Não há rota registrada para esse caminho; uma chamada cai no 404 padrão do FastAPI. O endpoint existe apenas como intenção documentada.
 
@@ -40,7 +40,7 @@ Sem streaming (`"stream": false`), a resposta é um JSON no formato OpenAI com d
       "role": "assistant",
       "content": "...",
       "reasoning": "raciocínio do modelo (thinking)",
-      "tool_steps": [{ "type": "tool_start", "id": "...", "name": "web_csa_fetch", "args": {} }]
+      "tool_steps": [{ "type": "tool_start", "id": "...", "name": "kb_read", "args": {} }]
     }
   }]
 }
@@ -56,22 +56,69 @@ Mensagens sociais curtas ("oi", "obrigado") são detectadas por `_is_conversatio
 
 ## Autenticação e administração
 
-`POST /auth/login` recebe `{username, password}` e devolve `{access_token, token_type: "bearer", user}`. As rotas `/auth/me` e `/admin/users` aceitam `Authorization: Bearer <token>` ou o token puro (`verify_token`). O store é **em memória** (`src/chat_csa/server/auth.py`): reiniciar o processo derruba usuários e tokens.
+`POST /auth/login` recebe `{username, password}` e devolve `{access_token, token_type: "bearer", user}`. As rotas `/auth/me`, `/admin/users` e `/kb/*` aceitam `Authorization: Bearer <token>` ou o token puro (`verify_token`). O store é **em memória** (`src/chat_csa/server/auth.py`): reiniciar o processo derruba usuários e tokens.
 
-O painel `/admin` troca o Bearer por um cookie de sessão `csa_admin_token` (`HttpOnly`, `SameSite=Lax`, `path=/admin`; `Secure` quando `ADMIN_COOKIE_SECURE=1`). Ele é uma superfície do ingester apenas; o consumer permanece API pura.
+A auth admin protege duas superfícies: o CRUD de usuários (`/admin/users`) e o upload/inspeção da base (`/kb/*`). O antigo painel FastHTML `/admin` foi removido junto com o agente ingester.
+
+## Base de conhecimento (`/kb/*`)
+
+A base vive no branch órfão `data` do próprio repositório e é lida em runtime pela API do GitHub. As rotas são a superfície **admin** (o time envia conteúdo por elas); o agente consome a base em processo, sem HTTP.
+
+### `GET /kb/list?prefix=`
+
+Devolve os caminhos disponíveis na base, relativos à raiz (`KB_ROOT`), opcionalmente filtrados por prefixo:
+
+```json
+{ "prefix": "perguntas-frequentes", "paths": ["perguntas-frequentes/faq-cotas.md", "..."] }
+```
+
+### `GET /kb/file?path=`
+
+Devolve os **bytes originais** do arquivo com o content-type adequado. A conversão por tipo (csv → tabela, pdf → texto, binário → aviso) acontece na leitura do agente (`kb_read`), nunca aqui e nunca é gravada no branch.
+
+### `POST /kb/upload`
+
+Multipart em lote: o caminho relativo de cada arquivo vem no **filename** da parte. Exige auth admin e grava tudo em **um único commit atômico** no branch da base (Git Data API) — nunca deixa lote parcial.
+
+```bash
+TOKEN=$(curl -s http://localhost:8002/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"admin","password":"<senha>"}' | jq -r .access_token)
+
+curl -s http://localhost:8002/kb/upload \
+  -H "Authorization: Bearer $TOKEN" \
+  -F 'files=@./faq-cotas.md;filename=perguntas-frequentes/faq-cotas.md' \
+  -F 'files=@./cronograma.csv;filename=cronogramas/sisu-2026.csv' \
+  -F 'message=kb: primeiro lote do time'
+```
+
+Resposta de sucesso (por arquivo + sha do commit):
+
+```json
+{
+  "ok": true,
+  "sha": "e062755...",
+  "files": [
+    { "path": "perguntas-frequentes/faq-cotas.md", "ok": true, "size": 2662 },
+    { "path": "cronogramas/sisu-2026.csv", "ok": true, "size": 812 }
+  ]
+}
+```
+
+Em falha (ex.: token de escrita ausente, branch inexistente), a resposta traz `ok: false`, o erro e cada arquivo marcado como `ok: false`; nada é commitado. O teto de corpo da Vercel (~4.5 MB) limita o lote — lotes maiores devem ser fatiados pelo cliente (fora do escopo atual).
 
 ## Exemplos de consumo
 
-`examples/curl.md` traz os quatro curls básicos (OpenAI stream/non-stream e Ollama stream/non-stream); `examples/openai_client.py` usa o SDK da OpenAI com `base_url="http://localhost:8001/v1"` e `api_key` fictícia; `examples/ollama_client.py` usa `httpx` contra `/api/chat`.
+`examples/curl.md` traz os quatro curls básicos (OpenAI stream/non-stream e Ollama stream/non-stream); `examples/openai_client.py` usa o SDK da OpenAI com `base_url="http://localhost:8002/v1"` e `api_key` fictícia; `examples/ollama_client.py` usa `httpx` contra `/api/chat`.
 
 ```bash
 # non-stream
-curl http://localhost:8001/v1/chat/completions \
+curl http://localhost:8002/v1/chat/completions \
   -H 'Content-Type: application/json' \
   -d '{"model":"chat-csa","messages":[{"role":"user","content":"quais documentos para matrícula?"}]}'
 
 # stream
-curl -N http://localhost:8001/v1/chat/completions \
+curl -N http://localhost:8002/v1/chat/completions \
   -H 'Content-Type: application/json' \
   -d '{"model":"chat-csa","messages":[{"role":"user","content":"explique a lista de espera"}],"stream":true}'
 ```
@@ -81,7 +128,8 @@ curl -N http://localhost:8001/v1/chat/completions \
 - `src/chat_csa/server/app.py`
 - `src/chat_csa/server/models.py`
 - `src/chat_csa/server/auth.py`
-- `src/chat_csa/server/admin.py`
+- `src/chat_csa/server/kb_api.py`
+- `src/chat_csa/kb.py`
 - `api/index.py`
 - `examples/curl.md`, `examples/openai_client.py`, `examples/ollama_client.py`
 - `frontend/src/api/client.ts` (o que o cliente do widget consome)

@@ -12,19 +12,19 @@ Este documento reúne os padrões estruturais que se repetem no código do Chat 
 
 O motivo de existir uma fábrica (em vez de instanciar o LLM no servidor) é duplo: o mesmo servidor atende OpenAI e Ollama sem ramificação nas rotas, e os testes trocam o provedor por configuração, sem mock de rede. A montagem do agente tenta `langchain.agents.create_agent` e cai para `langgraph.prebuilt.create_react_agent` — um fallback de compatibilidade entre versões do LangChain.
 
-## 2. Registro de ferramentas controlado pelo config dir
+## 2. Registro de ferramentas com conjunto único
 
-As ferramentas são funções decoradas com `@tool` (`agent/tools.py`), agrupadas em dois conjuntos explícitos: `ALL_TOOLS` (`read`, `write`, `edit`, `bash`) e `CSA_TOOLS` (`web_csa_fetch`, `web_csa_search`). O mapa `TOOL_MAP` permite consulta por nome. `tools_for_config` decide o conjunto pelo **nome do config dir**: `.ingester` recebe tudo; `.consumer` recebe apenas `read` + `CSA_TOOLS`; `CHAT_CSA_EXTRA_TOOLS` força `none`/`ingester`/`consumer`.
+As ferramentas são funções decoradas com `@tool` (`agent/tools.py`), agrupadas em dois conjuntos explícitos: `ALL_TOOLS` (`kb_list`, `kb_read` — leitura da base remota) e `CSA_TOOLS` (`web_csa_fetch`, `web_csa_search` — portal CSA). O mapa `TOOL_MAP` permite consulta por nome. A montagem vive em `factory.py` (`tools_for_config`): o conjunto é único — `kb_list`/`kb_read` sempre, `CSA_TOOLS` só com `CHAT_CSA_PORTAL_TOOLS=1` (padrão `0`); o parâmetro `root` existe apenas por compatibilidade de assinatura.
 
-O padrão relevante é o **menor privilégio por padrão**: o consumer não recebe `bash`, `write` nem `edit`, porque o papel dele é responder, não alterar o acervo. As ferramentas de arquivo truncam a saída em 50KB/2000 linhas, espelhando a semântica de leitura usada no restante do projeto.
+O padrão relevante é o **menor privilégio por padrão**: o agente não recebe escrita nem shell — só a leitura da base remota (e o portal, quando `CHAT_CSA_PORTAL_TOOLS=1`). As ferramentas de leitura truncam a saída em 50KB/2000 linhas, espelhando a semântica usada no restante do projeto.
 
 ## 3. Configuração viva em Markdown
 
-`agent/prompt.py` compõe o system prompt a cada request: identidade base + `AGENTS.md` do config dir + todos os `skills/*/SKILL.md` (ordenados) + blocos extras. Não há cache; criar uma pasta em `.ingester/skills/` é suficiente para adicionar comportamento. O motivo é operacional: curadoria e ajuste de prompt são atividades de conteúdo, não de código — editar um `.md` não exige rebuild nem restart. O layout espelha o "AGENTS home" (um diretório com `AGENTS.md` + `skills/`) e é por isso que `.ingester`/`.consumer` ficam na raiz, fora do pacote.
+`agent/prompt.py` compõe o system prompt a cada request: identidade base + `AGENTS.md` do config dir + todos os `skills/*/SKILL.md` (ordenados) + blocos extras. Não há cache; criar uma pasta em `.consumer/skills/` é suficiente para adicionar comportamento. O motivo é operacional: curadoria e ajuste de prompt são atividades de conteúdo, não de código — editar um `.md` não exige rebuild nem restart. O layout espelha o "AGENTS home" (um diretório com `AGENTS.md` + `skills/`) e é por isso que o `.consumer` fica na raiz, fora do pacote.
 
 ## 4. Cache de QA determinístico (referência, não resposta)
 
-`qa_cache.py` lê a FAQ curada em Markdown (frontmatter + entradas `FAQ-XXX`) e a transforma em `QACacheEntry`/`QACacheHit` — dataclasses **frozen**, ou seja, imutáveis. O ranking usa `difflib.SequenceMatcher` com normalização, remoção de stopwords e limiar configurável (`CHAT_CSA_QA_CACHE_MIN_SCORE`, default `0.68`).
+`qa_cache.py` lê a FAQ curada (Markdown com frontmatter + entradas `FAQ-XXX`) do branch `data` pelo cliente `chat_csa.kb` — prefixo `perguntas-frequentes/`, cache TTL em memória — e a transforma em `QACacheEntry`/`QACacheHit` — dataclasses **frozen**, ou seja, imutáveis. O ranking usa `difflib.SequenceMatcher` com normalização, remoção de stopwords e limiar configurável (`CHAT_CSA_QA_CACHE_MIN_SCORE`, default `0.68`).
 
 O padrão decisivo está no contrato: as entradas são injetadas no prompt como **referência curada**, nunca como resposta pronta — o servidor não faz short-circuit. Entradas marcadas como `dynamic` entram com aviso explícito para conferência nas fontes. O motivo é reduzir alucinação sem congelar a resposta: o LLM adapta o conteúdo ao contexto da conversa e cita a URL do frontmatter, e a FAQ pode evoluir sem que o código mude.
 
@@ -40,6 +40,7 @@ O padrão decisivo está no contrato: as entradas são injetadas no prompt como 
 
 - `src/chat_csa/agent/factory.py`, `src/chat_csa/agent/tools.py`, `src/chat_csa/agent/prompt.py`
 - `src/chat_csa/qa_cache.py`
+- `src/chat_csa/kb.py`
 - `src/chat_csa/server/models.py`, `src/chat_csa/server/app.py`
 - `src/chat_csa/csa_portal.py`
 - `tests/test_tools.py`, `tests/test_qa_cache.py`, `tests/test_csa_portal.py`

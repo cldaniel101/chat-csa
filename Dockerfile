@@ -21,13 +21,12 @@ COPY src ./src
 RUN pip install --upgrade pip hatchling && pip install .
 
 # Copia o restante (AGENTS, skills etc.)
-COPY .ingester ./.ingester
 COPY .consumer ./.consumer
 # Mantém outros arquivos do projeto usados como referência
 COPY docs ./docs
 
 # Env padrão — sobrescreva em runtime
-ENV AGENT_CONFIG_DIR=.ingester \
+ENV AGENT_CONFIG_DIR=.consumer \
     LLM_PROVIDER=ollama \
     OLLAMA_BASE_URL=http://host.docker.internal:11434 \
     LLM_MODEL=gemma4:31b-cloud \

@@ -1,7 +1,7 @@
 ---
 name: csa-portal-lookup
 description: Localiza documentos e dados no portal CSA (listas de aprovados, editais, cronogramas) usando web_csa_search/fetch
-allowed-tools: read web_csa_fetch web_csa_search
+allowed-tools: kb_list kb_read web_csa_fetch web_csa_search
 ---
 
 # csa-portal-lookup — Busca de dados direto no portal CSA

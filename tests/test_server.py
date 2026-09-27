@@ -7,8 +7,11 @@ from fastapi.testclient import TestClient
 from chat_csa.server.app import create_app
 
 
-def _write_static_cache(path):
-    path.write_text(
+def _write_static_cache(kb_root):
+    """Grava a FAQ de teste no prefixo padrão da base local (perguntas-frequentes/)."""
+    target = kb_root / "perguntas-frequentes"
+    target.mkdir(parents=True, exist_ok=True)
+    (target / "faq.md").write_text(
         """---
 title: "FAQ de teste"
 resource: "https://csa.uefs.br/index.php/sisu261/inicial"
@@ -33,7 +36,7 @@ Sim. O ENEM 2024 pode ser utilizado no SiSU/UEFS 2026.
 
 
 def test_health():
-    app = create_app(".ingester")
+    app = create_app(".consumer")
     c = TestClient(app)
     r = c.get("/health")
     assert r.status_code == 200
@@ -65,7 +68,7 @@ def test_chat_completions_non_stream():
 
 
 def test_chat_completions_stream():
-    app = create_app(".ingester")
+    app = create_app(".consumer")
     c = TestClient(app)
     r = c.post(
         "/v1/chat/completions",
@@ -76,10 +79,8 @@ def test_chat_completions_stream():
     assert "[DONE]" in r.text
 
 
-def test_chat_completions_injects_cached_faq_as_context(tmp_path, monkeypatch):
-    cache_file = tmp_path / "faq.md"
-    _write_static_cache(cache_file)
-    monkeypatch.setenv("CHAT_CSA_QA_CACHE_PATHS", str(cache_file))
+def test_chat_completions_injects_cached_faq_as_context(kb_local, monkeypatch):
+    _write_static_cache(kb_local)
 
     import sys
 
@@ -96,7 +97,7 @@ def test_chat_completions_injects_cached_faq_as_context(tmp_path, monkeypatch):
 
     monkeypatch.setattr(server_app, "build_system_prompt", spy)
 
-    app = create_app(tmp_path / "config")
+    app = create_app(kb_local / "config")
     c = TestClient(app)
     r = c.post(
         "/v1/chat/completions",
@@ -114,12 +115,10 @@ def test_chat_completions_injects_cached_faq_as_context(tmp_path, monkeypatch):
     assert "ENEM 2024 pode ser utilizado" not in body["choices"][0]["message"]["content"]
 
 
-def test_chat_completions_stream_with_cached_faq_uses_normal_flow(tmp_path, monkeypatch):
-    cache_file = tmp_path / "faq.md"
-    _write_static_cache(cache_file)
-    monkeypatch.setenv("CHAT_CSA_QA_CACHE_PATHS", str(cache_file))
+def test_chat_completions_stream_with_cached_faq_uses_normal_flow(kb_local):
+    _write_static_cache(kb_local)
 
-    app = create_app(tmp_path / "config")
+    app = create_app(kb_local / "config")
     c = TestClient(app)
     r = c.post(
         "/v1/chat/completions",

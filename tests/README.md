@@ -58,8 +58,13 @@ uv run ruff check --fix src
 
 ```
 tests/
-├── test_tools.py            # Ferramentas básicas do agente (read/write/edit/bash)
-├── test_server.py           # API FastAPI (health, modelos, completions, Ollama)
+├── conftest.py              # fixtures: base local + reset do cliente kb
+├── test_tools.py            # Ferramentas do consumer: kb_list/kb_read e renderização por tipo
+├── test_server.py           # API FastAPI (health, modelos, completions, Ollama, FAQ no prompt)
+├── test_kb.py               # Cliente da base: github falso (write atômico) e /kb/upload
+├── test_admin.py            # Auth admin e CRUD /admin/users (painel removido)
+├── test_qa_cache.py         # FAQ curada lida da base remota (backend local)
+├── test_response_quality.py # Formatação da resposta e detecção de fonte aberta
 ├── test_csa_portal.py       # Portal CSA: fetch, busca, PDF, HTML, metadados
 └── test_citation_quality.py # Qualidade de citação: 15 cenários obrigatórios
 ```
@@ -71,17 +76,20 @@ tests/
 
 ## Descrição detalhada por arquivo
 
-### `test_tools.py` — Ferramentas do agente (3 testes)
+### `test_tools.py` — Ferramentas do consumer (6 testes)
 
 | Teste | O que verifica |
 |-------|----------------|
-| `test_write_read_edit` | Ciclo completo `write` → `read` → `edit` no filesystem temporário |
-| `test_bash` | Execução de comando shell via ferramenta `bash` |
-| `test_prompt_build` | Composição do system prompt a partir de `AGENTS.md` + skills |
+| `test_kb_list_and_read_text` | `kb_list` acha o arquivo e `kb_read` devolve o texto (backend local) |
+| `test_kb_read_csv_renders_markdown_table` | `.csv` vira tabela Markdown |
+| `test_kb_read_pdf_extracts_text` | `.pdf` tem o texto extraído |
+| `test_kb_read_binary_returns_notice` | binário vira aviso com tipo e tamanho |
+| `test_kb_read_missing_returns_error` | caminho inexistente devolve erro claro |
+| `test_prompt_build` | composição do system prompt a partir de `AGENTS.md` + skills |
 
 ---
 
-### `test_server.py` — API do servidor (5 testes)
+### `test_server.py` — API do servidor (7 testes)
 
 | Teste | O que verifica |
 |-------|----------------|
@@ -89,7 +97,47 @@ tests/
 | `test_models` | Endpoint `GET /v1/models` lista os modelos disponíveis |
 | `test_chat_completions_non_stream` | `POST /v1/chat/completions` sem streaming retorna resposta completa |
 | `test_chat_completions_stream` | `POST /v1/chat/completions` com streaming retorna `text/event-stream` com `[DONE]` |
+| `test_chat_completions_injects_cached_faq_as_context` | FAQ da base entra no prompt como referência (sem short-circuit) |
+| `test_chat_completions_stream_with_cached_faq_uses_normal_flow` | FAQ em streaming segue o fluxo normal |
 | `test_ollama_chat` | Endpoint Ollama `POST /api/chat` retorna `done: true` |
+
+---
+
+### `test_kb.py` — Cliente da base (6 testes)
+
+| Teste | O que verifica |
+|-------|----------------|
+| `test_github_write_um_unico_commit_atomico` | `write` faz blobs + tree + commit + ref num único commit (API falsa) |
+| `test_github_list_filtra_prefixo_e_raiz` | `list` filtra pelo prefixo e respeita `KB_ROOT` |
+| `test_github_read_404_vira_erro_claro` | 404 vira `KBNotFoundError` com mensagem clara |
+| `test_github_write_sem_token_falha_antes_de_qualquer_request` | sem `KB_WRITE_TOKEN`, falha sem tocar a API |
+| `test_write_invalida_cache` | `write` invalida o cache de `list`/`read` (backend local) |
+| `test_upload_endpoint_com_backend_github_falso` | `/kb/upload` commita o lote via backend github falso (sem commit real) |
+
+---
+
+### `test_admin.py` — Auth admin (3 testes)
+
+| Teste | O que verifica |
+|-------|----------------|
+| `test_admin_users_requires_auth` | `/admin/users` responde 401 sem Bearer |
+| `test_admin_users_crud` | Login + CRUD de usuários preservados |
+| `test_admin_panel_removed` | O painel FastHTML foi removido (`/admin` é 404) |
+
+---
+
+### `test_qa_cache.py` — FAQ curada (7 testes)
+
+Carrega a FAQ do prefixo `perguntas-frequentes/` da base (backend local nos
+ testes) e cobre parsing, ranking por similaridade, entradas `dynamic` sem
+short-circuit e a formatação sem vazar caminho de arquivo.
+
+---
+
+### `test_response_quality.py` — Formatação da resposta (7 testes)
+
+Cobre `_format_agent_response`, `_is_conversational` e `_has_source_lookup`
+(inclusive `kb_read` como fonte realmente aberta).
 
 ---
 
@@ -106,8 +154,8 @@ tests/
 | `test_fetch_resolves_legacy_sisu_url` | URL legada `/sisu/inicial` é resolvida para o slug vigente do SiSU |
 | `test_fetch_marks_portal_not_found_html_as_error` | HTML de “página não encontrada” do portal é tratado como erro, mesmo com HTTP 200 |
 | `test_search_fails_loud_on_schema_change` | Mudança de schema do portal gera erro explícito (sem silêncio) |
-| `test_tools_for_config` | Ingester recebe ferramentas completas; consumer apenas leitura |
-| `test_consumer_is_readonly_with_csa_tools` | Consumer não recebe `bash`, `write` nem `edit` |
+| `test_tools_for_config` | Conjunto único `[kb_list, kb_read]`; `web_csa_*` só com `CHAT_CSA_PORTAL_TOOLS=1` |
+| `test_consumer_tools_are_readonly` | Consumer não recebe ferramentas de filesystem (`read`/`bash`/`write`/`edit`) |
 | `test_fetch_pdf_extracts_text_with_python_fallback` | Falha do `pdftotext` aciona fallback `pypdf` com sucesso |
 | `test_pdf_extraction_reports_clear_error` | PDF corrompido levanta `RuntimeError` descritivo |
 | `test_html_links_preserved_as_markdown` | Links HTML são preservados no formato `[texto](url)` |

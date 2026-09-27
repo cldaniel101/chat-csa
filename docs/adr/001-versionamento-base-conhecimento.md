@@ -1,8 +1,16 @@
 # ADR-001: Versionamento Direto da Base de Conhecimento (Bundle OKF)
 
 **Data:** 2026-08-26  
-**Status:** Aceita  
+**Status:** Substituída pela [ADR-002](002-base-conhecimento-branch-data.md)  
 **Decisores:** Equipe Chat CSA (Cláudio, Davi, Paulo)
+
+---
+
+> **Nota (2026-09-26):** esta decisão foi substituída pela
+> [ADR-002](002-base-conhecimento-branch-data.md). O acoplamento entre conteúdo
+> e deploy e a necessidade de escrita em produção levaram a base para um branch
+> órfão (`data`), lido em runtime. O texto abaixo é mantido como registro
+> histórico.
 
 ---
 

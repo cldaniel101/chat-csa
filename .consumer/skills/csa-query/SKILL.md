@@ -1,7 +1,7 @@
 ---
 name: csa-query
 description: Responde perguntas sobre SISU/UEFS com recuperação do bundle e fallback no portal oficial
-allowed-tools: read web_csa_fetch web_csa_search
+allowed-tools: kb_list kb_read web_csa_fetch web_csa_search
 ---
 
 # csa-query — Fluxo de resposta do Consumer
@@ -10,9 +10,10 @@ allowed-tools: read web_csa_fetch web_csa_search
 
 Pergunta: *"Quais documentos preciso para matrícula?"* →
 
-1. Bundle local primeiro:
-   `read("knowledge/procedimentos/matricula-documentos.md")` (ou navegue
-   `knowledge/` a partir de `knowledge/index.md`).
+1. Base remota primeiro:
+   `kb_list()` para descobrir os caminhos e `kb_read("perguntas-frequentes/…")`
+   para ler o conteúdo (csv/tsv viram tabela; PDFs viram texto; binários avisam
+   o tipo).
 2. Achou resposta completa e atualizada? → responda direto.
 3. Não achou, pareceu incompleta ou desatualizada → portal. Não pare em uma
    única chamada de busca:
@@ -36,7 +37,7 @@ Fontes:
 Em caso de divergência, prevalece o edital oficial.
 ```
 
-5. Nada encontrado nem no bundle nem no portal → só então diga "Não encontrei
+5. Nada encontrado nem na base nem no portal → só então diga "Não encontrei
    essa informação nas fontes oficiais da CSA/UEFS", mas inclua as páginas/PDFs
    efetivamente consultados e aponte https://csa.uefs.br/.
 
@@ -138,7 +139,7 @@ Ao citar um PDF, inclua o status de extração ao final da referência:
 - Em saudações, agradecimentos e outras mensagens sociais curtas, não consulte
   fontes e não inclua a seção `Fontes:`.
 - Só inclua `Fontes:` quando uma fonte tiver sido efetivamente aberta neste
-  turno com `read` ou `web_csa_fetch`.
+  turno com `kb_read` ou `web_csa_fetch`.
 - Sempre cite a URL da página/PDF que você realmente leu neste turno.
 - Só afirme o que está na fonte; conflito entre fontes = dizer.
 - Nunca invente prazos, documentos ou datas.
