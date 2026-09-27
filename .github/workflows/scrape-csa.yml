@@ -1,33 +1,20 @@
-# Scrape periódico do portal CSA/UEFS para knowledge/raw/.
+# Scrape manual do portal CSA/UEFS.
 #
-# Roda o script scripts/scrape_portal.py de 12 em 12 horas (6h e 18h em
-# Brasília) e versiona o que mudou em knowledge/raw/. O agendamento usa o
-# fuso UTC: 09:00 e 21:00 UTC == 06:00 e 18:00 BRT.
+# Antes: rodava agendado e commitava o resultado em knowledge/raw/.
+# Agora: disparo manual (workflow_dispatch), sem commit/push — a saída vira
+# artifact. A base de produção vive no branch `data` e é alimentada pelo
+# endpoint /kb/upload (com aval do time).
 #
 # O agente consumidor cita a URL de cada página (frontmatter `url`), nunca o
 # caminho do arquivo Markdown — ver .consumer/AGENTS.md.
-#
-# O `schedule` roda na branch padrão do repositório (main); o disparo manual
-# (workflow_dispatch) permite escolher qualquer branch/ref para teste.
 name: Scrape portal CSA
 
 on:
-  schedule:
-    - cron: "0 9,21 * * *"
   workflow_dispatch:
-
-# Necessário para o job empurrar o commit de volta ao repositório.
-permissions:
-  contents: write
-
-# Evita duas execuções concorrentes empurrando ao mesmo tempo.
-concurrency:
-  group: scrape-csa
-  cancel-in-progress: false
 
 jobs:
   scrape:
-    name: Scrape e commit
+    name: Scrape (artifact)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -46,17 +33,9 @@ jobs:
       - name: Raspa o portal para knowledge/raw/
         run: uv run python scripts/scrape_portal.py
 
-      - name: Commita e empurra as mudanças de knowledge/raw/
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          git add knowledge/raw/
-
-          if git diff --cached --quiet; then
-            echo "Sem mudanças em knowledge/raw/ — nada a commitar."
-            exit 0
-          fi
-
-          git commit -m "chore(knowledge): scrape portal $(date -u +%Y-%m-%d)"
-          git push origin "HEAD:${GITHUB_REF_NAME}"
+      - name: Publica a saída como artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: knowledge-raw
+          path: knowledge/raw/
+          if-no-files-found: warn

@@ -1,7 +1,7 @@
 """Entrypoint do backend chat-csa para a runtime Python da Vercel.
 
 Expõe o app FastAPI (`chat_csa.server.app`) como função ASGI e aponta
-AGENT_CONFIG_DIR para o diretório `.ingester` embutido no deploy.
+AGENT_CONFIG_DIR para o diretório `.consumer` embutido no deploy.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 # O config dir precisa resolver DENTRO do bundle da função (caminho absoluto)
-os.environ.setdefault("AGENT_CONFIG_DIR", str(ROOT / ".ingester"))
+os.environ.setdefault("AGENT_CONFIG_DIR", str(ROOT / ".consumer"))
 
 from chat_csa.server.app import app  # noqa: E402
 
