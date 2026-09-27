@@ -29,16 +29,16 @@ Os tokens são **project-scoped** e o workflow não usa o link `.vercel/project.
 | Secret (GitHub) | Uso |
 |---|---|
 | `VERCEL_TOKEN_API` / `VERCEL_TOKEN_FRONTEND` | token do projeto Vercel |
-| `VERCEL_ORG_ID_API` / `VERCEL_ORG_ID_FRONTEND` | id da equipe |
+| `VERCEL_ORG_ID_API` / `VERCEL_ORG_ID_FRONTEND` | id do escopo do projeto |
 | `VERCEL_PROJECT_ID_API` / `VERCEL_PROJECT_ID_FRONTEND` | id do projeto |
 | `LLM_PROVIDER`, `LLM_MODEL`, `OLLAMA_MODEL`, `OLLAMA_BASE_URL`, `OLLAMA_API_KEY` | variáveis do backend sincronizadas para a Vercel |
 | `KB_BACKEND`, `KB_REPO`, `KB_BRANCH`, `KB_ROOT`, `KB_TOKEN`, `KB_WRITE_TOKEN`, `KB_CACHE_TTL` | base de conhecimento remota sincronizada para a Vercel |
 
 ## Sincronização de ambiente (`env-sync.yml`)
 
-Execução manual: **Actions → "Sync Vercel env" → Run workflow**, escolhendo `production`, `preview` ou `development`. O workflow instala o CLI, monta um `.env` temporário apenas com os secrets definidos (pulando ausentes) e chama `scripts/sync-vercel-env.sh <ambiente>`.
+Execução manual: **Actions → "Sync Vercel env" → Run workflow**, escolhendo `production`, `preview` ou `development`. O workflow instala o CLI, monta um `.env` temporário apenas com os secrets definidos (pulando ausentes) e chama `scripts/sync-vercel-env.sh <ambiente>`. Antes disso, descarta o `.vercel/project.json` versionado — link antigo de escopo de time que tokens project-scoped não conseguem usar; o projeto é identificado por `VERCEL_ORG_ID`/`VERCEL_PROJECT_ID`.
 
-O script aplica uma allowlist (`LLM_PROVIDER`, `LLM_MODEL`, `OLLAMA_MODEL`, `OLLAMA_BASE_URL`, `OLLAMA_API_KEY` + `KB_BACKEND`, `KB_REPO`, `KB_BRANCH`, `KB_ROOT`, `KB_TOKEN`, `KB_WRITE_TOKEN`, `KB_CACHE_TTL`), **não imprime valores** e é idempotente (`vercel env rm` + `vercel env add`). Em `production`, ele força `OLLAMA_BASE_URL=https://ollama.com` porque o `localhost` do `.env` local só vale para desenvolvimento.
+O script aplica uma allowlist (`LLM_PROVIDER`, `LLM_MODEL`, `OLLAMA_MODEL`, `OLLAMA_BASE_URL`, `OLLAMA_API_KEY` + `KB_BACKEND`, `KB_REPO`, `KB_BRANCH`, `KB_ROOT`, `KB_TOKEN`, `KB_WRITE_TOKEN`, `KB_CACHE_TTL`) e **não imprime valores**. É idempotente nos dois caminhos: com `VERCEL_TOKEN` + `VERCEL_PROJECT_ID` definidos (CI), usa a API REST — remove as entradas anteriores do alvo com `DELETE` e grava com `POST` em `api.vercel.com` —, porque tokens project-scoped não conseguem rodar `vercel env`; localmente, cai para o CLI (`vercel env rm` + `vercel env add`). Em `production`, ele força `OLLAMA_BASE_URL=https://ollama.com` porque o `localhost` do `.env` local só vale para desenvolvimento; fora de `development`, força `KB_BACKEND=github`.
 
 Para o preview da Vercel, configure ao menos `KB_BACKEND=github`, `KB_REPO`, `KB_BRANCH=data` e `KB_TOKEN` (leitura); `KB_WRITE_TOKEN` habilita o upload admin nesse ambiente.
 
