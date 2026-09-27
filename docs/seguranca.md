@@ -15,7 +15,7 @@ A base vive no branch órfão `data` do próprio repositório e é acessada pela
 - **Leitura** (`kb_list`/`kb_read`, `qa_cache`): acontece **em processo**, com `KB_TOKEN` (fine-grained, `contents:read`). O token nunca é exposto ao LLM: as tools não o recebem nem o interpolam no prompt.
 - **Escrita** (`write()`): exige `KB_WRITE_TOKEN` (fine-grained, `contents:write`; fallback para `KB_TOKEN` com escopo de escrita) e **nunca é exposta ao agente** — só aos endpoints `/kb/*`, atrás da auth admin.
 - **Superfície HTTP `/kb/*`**: `list`, `file` e `upload` exigem Bearer admin; sem token respondem 401. O agente não tem credencial de admin e não alcança `/kb/*`.
-- **Upload sem validação**: qualquer arquivo (md, pdf, csv, binário) é aceito — validações de formato ficam para passos futuros. Quem tem o token admin pode gravar qualquer conteúdo na base; trate a credencial como de operador.
+- **Upload**: o servidor valida os caminhos declarados e o orçamento por arquivo, e formato sem conversão não entra na base (volta como `converted: false`); o conteúdo em si não é validado. Quem tem o token admin pode gravar qualquer conteúdo na base; trate a credencial como de operador.
 - **Commit atômico**: o lote inteiro entra num único commit via Git Data API; em falha, nada é publicado (sem lote parcial).
 - **Sem escrita em disco no deploy**: o backend github não persiste arquivos localmente; o cache TTL (padrão 60s) vive na memória da instância.
 
@@ -56,7 +56,7 @@ Nenhum valor de chave, token ou credencial é reproduzido nesta documentação; 
 | Credencial-semente de demonstração definida em código | `server/auth.py` | permitir override/seed por ambiente e exigir troca no primeiro uso |
 | Senhas em texto plano, tokens sem expiração, store volátil | `server/auth.py` | hash + store persistente antes de qualquer uso real |
 | `CORS *` com credenciais e sem rate limit | `server/app.py` | restringir origens e adicionar limite por IP no proxy/gateway |
-| Upload sem validação de formato/tamanho | `server/kb_api.py` | validar tipo/tamanho no servidor em passo futuro |
+| Conversão do upload envia o conteúdo do arquivo ao provedor de LLM configurado | `kb_convert.py` | restringir o provedor/modelo da conversão (`KB_CONVERT_MODEL`) e tratar o conteúdo enviado como não confiável |
 | Tokens da base com escopo amplo | `kb.py` / secrets | usar fine-grained tokens mínimos (`contents:read` para leitura) |
 | `/docs` e `/openapi.json` públicos | `server/app.py` | desabilitar em produção ou proteger por rede |
 | Validação por allowlist depende do domínio exato `csa.uefs.br` | `csa_portal.py` | manter a checagem e revisar em mudanças de portal |
@@ -65,6 +65,7 @@ Nenhum valor de chave, token ou credencial é reproduzido nesta documentação; 
 
 - `src/chat_csa/server/auth.py`, `src/chat_csa/server/app.py`, `src/chat_csa/server/kb_api.py`
 - `src/chat_csa/kb.py`
+- `src/chat_csa/kb_upload.py`, `src/chat_csa/kb_convert.py`
 - `src/chat_csa/agent/tools.py`, `src/chat_csa/agent/factory.py`
 - `src/chat_csa/csa_portal.py`
 - `.gitignore`, `.env.example`

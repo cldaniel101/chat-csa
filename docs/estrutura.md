@@ -11,6 +11,9 @@ chat-csa/
 │   ├── server/          # FastAPI (app, auth, modelos, endpoints /kb/*)
 │   ├── cli.py           # entrypoint `chat-csa serve|print-prompt`
 │   ├── kb.py            # cliente da base remota (github/local, renderizador, cache)
+│   ├── kb_upload.py     # POST /kb/upload: valida, converte e monta o commit atômico
+│   ├── kb_convert.py    # conversão por tipo (pdf, imagem, csv/tsv, texto) em Markdown
+│   ├── kb_okf.py        # conceito OKF (frontmatter, caminho, índices de seção e raiz)
 │   ├── csa_portal.py    # cliente read-only do portal CSA/UEFS
 │   └── qa_cache.py      # recuperação de FAQ curada na base remota
 ├── api/index.py         # entrypoint ASGI da Vercel (importa o pacote)
@@ -40,6 +43,9 @@ O pacote segue o layout `src/`, então o código importável fica em `src/chat_c
 | `src/chat_csa/agent/prompt.py` | concatena `AGENTS.md` + `skills/*/SKILL.md` no system prompt |
 | `src/chat_csa/agent/tools.py` | ferramentas `kb_list`/`kb_read` + `web_csa_fetch`/`web_csa_search` (opcionais) |
 | `src/chat_csa/kb.py` | cliente da base remota: `list`/`read`/`write`, backends github/local, renderizador e cache TTL |
+| `src/chat_csa/kb_upload.py` | processa o `/kb/upload`: valida caminhos e orçamento, converte o lote e monta o commit atômico |
+| `src/chat_csa/kb_convert.py` | conversão por tipo em Markdown: pdf (texto por layout + páginas rasterizadas), imagem, csv/tsv e texto |
+| `src/chat_csa/kb_okf.py` | conceitos OKF e índices: frontmatter do template, normalização de caminho, índice de seção e raiz |
 | `src/chat_csa/server/app.py` | rotas HTTP compatíveis com OpenAI e Ollama + montagem do `/kb/*` |
 | `src/chat_csa/server/kb_api.py` | endpoints admin `/kb/list`, `/kb/file`, `/kb/upload` |
 | `src/chat_csa/server/auth.py` | usuários/tokens em memória (admin) |
@@ -67,7 +73,7 @@ O conjunto de ferramentas é único (`kb_list`/`kb_read` + portal opcional via `
 
 ## Base de conhecimento (branch `data`)
 
-A base é um bundle **OKF** com um conceito por arquivo Markdown (frontmatter YAML + corpo), na raiz do branch órfão `data`. Índices `index.md` não têm frontmatter. As categorias são `editais/`, `cronogramas/`, `procedimentos/`, `modalidades/` e `perguntas-frequentes/`. O branch nasce com um `README.md` explicando o fluxo; o time envia conteúdo por `POST /kb/upload`. Decisão registrada em `docs/adr/002-base-conhecimento-branch-data.md`.
+A base é um bundle **OKF** com um conceito por arquivo Markdown (frontmatter YAML + corpo), na raiz do branch órfão `data`. Índices `index.md` não têm frontmatter. As categorias são `editais/`, `cronogramas/`, `procedimentos/`, `modalidades/` e `perguntas-frequentes/`. O branch nasce com um `README.md` explicando o fluxo; o time envia conteúdo por `POST /kb/upload`, que converte cada arquivo num conceito OKF. Decisão registrada em `docs/adr/002-base-conhecimento-branch-data.md`.
 
 ## Frontend (`frontend/`)
 
@@ -97,6 +103,7 @@ O `src/` evita que o pacote seja importado por acidente a partir da raiz e casa 
 - `pyproject.toml`
 - `src/chat_csa/agent/factory.py`, `src/chat_csa/agent/prompt.py`
 - `src/chat_csa/kb.py`, `src/chat_csa/server/kb_api.py`
+- `src/chat_csa/kb_upload.py`, `src/chat_csa/kb_convert.py`, `src/chat_csa/kb_okf.py`
 - `api/index.py`, `vercel.json`
 - `.consumer/AGENTS.md`
 - `frontend/src/App.tsx`, `frontend/src/api/client.ts`, `frontend/public/embed.js`

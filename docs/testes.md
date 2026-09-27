@@ -30,6 +30,9 @@ O `tests/README.md` traz o guia de execução detalhado e mostra a saída espera
 |---|---|---|
 | `tests/test_tools.py` | ferramentas do consumer | `kb_list`/`kb_read` no backend local; renderização de texto, csv→tabela, pdf e binário; composição do prompt |
 | `tests/test_kb.py` | cliente da base | `write` atômico com backend github falso (`httpx.MockTransport`), filtro de prefixo/raiz, 404 claro, cache invalidado e `/kb/upload` ponta a ponta |
+| `tests/test_kb_upload.py` | processamento do upload | caminho inválido/duplicado não commita, conversão antes do commit, tipo sem conversão e acima do orçamento ficam `converted: false`, um único commit com conceitos + índices, sobrescrita atualiza o bullet |
+| `tests/test_kb_convert.py` | conversão por tipo | pdf página a página (texto + imagem) e fallback `pypdf`/`pymupdf` sem poppler, lotes multimodais em ordem, imagem com texto vazio, csv/tsv → tabela, texto direto, tipo não suportado e falha que não interrompe os demais |
+| `tests/test_kb_okf.py` | conceitos e índices OKF | conceito pelo template e fallback sem template, citação declarada, normalização de caminho, índice de seção (cria, atualiza sem duplicar, preserva trecho autoral) e índice raiz |
 | `tests/test_admin.py` | auth admin | `/admin/users` exige Bearer, CRUD preservado e `/admin` (painel) removido |
 | `tests/test_server.py` | API FastAPI | `/health`, `/v1/models`, completions non-stream e stream (SSE com `[DONE]`), injeção da FAQ curada no prompt, shim `/api/chat` |
 | `tests/test_csa_portal.py` | cliente do portal | allowlist bloqueia domínio externo, cache de fetch, busca com filtros, fallback para o SiSU vigente, links markdown, extração de PDF e status `completed`/`partial`/`failed` |
@@ -63,7 +66,7 @@ O job `checks` do `.github/workflows/deploy.yml` roda **lint e build**, não a s
 
 ## Fontes
 
-- `tests/README.md` e os 10 arquivos de `tests/`
+- `tests/README.md` e os 13 arquivos de `tests/`
 - `pyproject.toml` (`[tool.pytest.ini_options]`, `[tool.ruff]`)
 - `src/chat_csa/agent/factory.py` (provedor `fake`)
 - `.github/workflows/deploy.yml`

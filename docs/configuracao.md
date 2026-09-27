@@ -29,6 +29,9 @@ Fonte principal: `.env.example` (copie para `.env`). Variáveis que aparecem ape
 | `KB_WRITE_TOKEN` | token de escrita para `/kb/upload`; fallback `KB_TOKEN` | vazio (`kb.py`) |
 | `KB_CACHE_TTL` | TTL do cache em memória, em segundos (`0` desliga) | `60` (`kb.py`) |
 | `KB_LOCAL_PATH` | diretório da base no backend local | `knowledge` (`kb.py`) |
+| `KB_CONVERT_MODEL` | modelo multimodal da conversão do `/kb/upload` (vazio = `LLM_MODEL`) | vazio (`kb_convert.py`) |
+| `KB_CONVERT_PAGES_PER_CALL` | páginas de PDF por chamada multimodal no upload | `4` (`kb_convert.py`) |
+| `KB_UPLOAD_MAX_BYTES` | orçamento de bytes por arquivo no upload (teto do corpo da Vercel ~4.5 MB) | `4500000` (`kb_upload.py`) |
 | `CHAT_CSA_PORTAL_TOOLS` | `1` liga `web_csa_fetch`/`web_csa_search` no agente | `0` (`factory.py`) |
 | `CHAT_CSA_QA_CACHE_ENABLED` | liga/desliga a injeção da FAQ curada | `1` (`qa_cache.py`) |
 | `CHAT_CSA_QA_CACHE_PATHS` | prefixos da FAQ na base, separados por `os.pathsep` | `perguntas-frequentes/` |
@@ -88,5 +91,6 @@ O consumer monta `./data` como volume e lê o `.env` via `env_file`; as variáve
 - `docker-compose.yml`, `Dockerfile`, `frontend/Dockerfile`
 - `vercel.json`, `frontend/vercel.json`
 - `src/chat_csa/kb.py`, `src/chat_csa/agent/factory.py`, `src/chat_csa/agent/tools.py`, `src/chat_csa/qa_cache.py`, `src/chat_csa/csa_portal.py`
+- `src/chat_csa/kb_upload.py`, `src/chat_csa/kb_convert.py`
 - `frontend/src/api/client.ts`
 - `scripts/sync-vercel-env.sh`
