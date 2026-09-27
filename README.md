@@ -60,7 +60,7 @@ A utilização de fontes oficiais é um dos princípios centrais do projeto, bus
 De forma geral, o sistema funciona da seguinte maneira:
 
 1. O candidato envia uma pergunta em linguagem natural.
-2. O agente **consumer** busca informações relevantes no bundle de conhecimento (OKF) curado a partir das fontes oficiais do SISU/UEFS e, se necessário, consulta o portal da CSA diretamente.
+2. O agente **consumer** busca informações relevantes na base de conhecimento remota (bundle OKF, branch `data` do repositório) e, se as ferramentas do portal estiverem ligadas, consulta o portal da CSA diretamente.
 3. O conteúdo recuperado fundamenta uma resposta **extrativa**, com citações (URL + timestamp).
 4. Se a informação não existir nas fontes oficiais, o sistema declara isso explicitamente em vez de inventar.
 5. A resposta indica sempre a origem da informação para permitir sua verificação.
@@ -79,15 +79,15 @@ O assistente deverá priorizar:
 
 O sistema **não substitui os editais, comunicados ou orientações oficiais da UEFS**. Em situações de divergência, sempre prevalecerá a documentação publicada oficialmente pela universidade.
 
-## 🧠 Arquitetura — Bundle OKF + recuperação determinística
+## 🧠 Arquitetura — Base remota + recuperação determinística
 
-O projeto **não utiliza RAG** (embeddings vetoriais + geração aumentada por recuperação). Em vez disso, adota uma abordagem **determinística e auditável**, baseada em um bundle de conhecimento curado no formato **OKF — Open Knowledge Format** e em recuperação determinística por consulta direta aos conceitos curados e ao portal da CSA quando necessário:
+O projeto **não utiliza RAG** (embeddings vetoriais + geração aumentada por recuperação). Em vez disso, adota uma abordagem **determinística e auditável**, baseada em um bundle de conhecimento curado no formato **OKF — Open Knowledge Format** e em recuperação determinística por consulta direta aos conceitos curados (e ao portal da CSA, quando ligado):
 
 ```text
-Fontes oficiais da CSA/UEFS (portal csa.uefs.br)
-        ↓  (agente ingester — crawl, normalização, curadoria)
-Bundle de conhecimento OKF (conceitos versionados em Markdown)
-        ↓  (recuperação determinística — consulta direta ao bundle e ao portal)
+Fontes oficiais da CSA/UEFS (portal csa.uefs.br, PDFs)
+        ↓  time (curadoria humana) → POST /kb/upload (auth admin)
+Base de conhecimento remota (branch órfão `data`, bundle OKF na raiz)
+        ↓  (recuperação determinística — kb_list/kb_read + cache TTL)
 Agente consumer — resposta extrativa com citações
         ↓
 Usuário (resposta verificável, com URL e timestamp)
@@ -98,9 +98,10 @@ Motivações principais dessa escolha:
 * **Zero alucinação no caminho crítico**: as respostas são extrativas, extraídas verbatim de conceitos curados;
 * **Auditabilidade**: cada frase é rastreável até uma fonte oficial;
 * **Terminologia literal**: consultas sobre SISU são lexicais ("comprovante de cota racial", "lista de espera") — correspondência lexical supera busca semântica;
-* **Custo e simplicidade**: sem banco vetorial nem API de embeddings — roda offline e barato.
+* **Custo e simplicidade**: sem banco vetorial nem API de embeddings — roda offline e barato;
+* **Conteúdo separado do código**: a base vive num branch órfão (`data`) e é atualizada pelo time sem deploy.
 
-O consumer responde consultando diretamente os conceitos do bundle e o portal via `web_csa_fetch`/`web_csa_search`.
+O consumer responde consultando diretamente os conceitos da base (`kb_list`/`kb_read`), com as ferramentas do portal disponíveis como complemento opcional.
 
 ## 📋 Escopo inicial
 
@@ -122,23 +123,20 @@ Assuntos que não estejam documentados nas fontes oficiais utilizadas pelo siste
 
 ## 📖 Base de Conhecimento (Knowledge)
 
-A base de conhecimento do Chat CSA é um conjunto de arquivos Markdown curados no formato **OKF (Open Knowledge Format)**, organizados na pasta `knowledge/` na raiz do repositório. Ela é a **fonte única da verdade** usada pelo agente consumer para responder perguntas.
+A base de conhecimento do Chat CSA é um conjunto de arquivos Markdown curados no formato **OKF (Open Knowledge Format)**, organizados na **raiz do branch órfão `data`** do próprio repositório. Ela é a **fonte única da verdade** usada pelo agente consumer para responder perguntas — e é lida em runtime pela API do GitHub, com cache TTL em memória.
 
-**Para obter a base funcional, basta clonar o repositório:**
+O código (branches de desenvolvimento) não carrega mais o conteúdo: a base é atualizada pelo time pelo endpoint `POST /kb/upload` (login admin), que grava tudo em **um único commit atômico** no branch `data`. O branch nasce com um `README.md` explicando o fluxo.
 
 ```bash
-git clone https://github.com/cldaniel101/chat-csa.git
-# A pasta knowledge/ já vem incluída com os conceitos curados
+# Ver a base publicada (branch data, órfão — não tem código)
+git fetch origin data && git ls-tree -r origin/data
 ```
 
-Não é necessário executar scripts extras, downloads ou configurações adicionais para ter acesso à base mínima.
-
-### Estrutura
+### Estrutura (no branch `data`)
 
 ```text
-knowledge/
+├── README.md                   # explica o branch e como enviar arquivos
 ├── index.md                    # Índice raiz — categorias e convenções
-├── log.md                      # Registro cronológico de alterações
 ├── editais/                    # Documentos normativos oficiais
 ├── cronogramas/                # Datas e prazos do processo seletivo
 ├── procedimentos/              # Passos para inscrição, matrícula, etc.
@@ -151,9 +149,13 @@ knowledge/
 - Cada conceito possui **frontmatter YAML** com `type`, `title`, `description`, `resource` (URL oficial), `tags` e `timestamp`.
 - Índices (`index.md`) não possuem frontmatter — servem para navegação.
 - Cross-links usam caminhos relativos dentro do bundle.
-- Toda alteração é rastreada via Git (`git blame`, `git log`) e registrada em `knowledge/log.md`.
+- Toda alteração é rastreada via Git (`git blame`, `git log`) no branch `data` — cada upload é um commit.
 
-> **Decisão arquitetural:** A base é versionada diretamente no repositório para garantir auditabilidade, reprodutibilidade e onboarding instantâneo. Veja detalhes em [`docs/adr/001-versionamento-base-conhecimento.md`](docs/adr/001-versionamento-base-conhecimento.md).
+> **Decisão arquitetural:** o conteúdo foi separado do código num branch órfão, lido em runtime e atualizado por upload. Veja detalhes em [`docs/adr/002-base-conhecimento-branch-data.md`](docs/adr/002-base-conhecimento-branch-data.md) (que substitui a [ADR-001](docs/adr/001-versionamento-base-conhecimento.md)).
+
+### Base local (dev/testes)
+
+Para desenvolver sem rede, use o backend local do cliente: `KB_BACKEND=local` e `KB_LOCAL_PATH=knowledge` (a pasta `knowledge/` é gitignored e nunca versionada).
 
 ## 🛠️ Etapas do projeto
 
@@ -230,77 +232,67 @@ Prof. João B. Rocha
   
 ## 📚 Documentação
 
-Registros autorais vivem em [`docs/DESIGN.md`](docs/DESIGN.md) (design system), [`docs/adr/`](docs/adr/) (decisões) e [`docs/faq/`](docs/faq/) (FAQ curada). Os guias por tema ficam em `docs/`:
+Registros autorais vivem em [`docs/DESIGN.md`](docs/DESIGN.md) (design system) e [`docs/adr/`](docs/adr/) (decisões). Os guias por tema ficam em `docs/`:
 
 | Documento | Cobre |
 |---|---|
 | [`docs/desenvolvimento.md`](docs/desenvolvimento.md) | Setup local, Makefile, frontend e Docker |
 | [`docs/estrutura.md`](docs/estrutura.md) | Mapa de diretórios do repositório |
-| [`docs/api.md`](docs/api.md) | Rotas OpenAI/Ollama, auth e painel `/admin` |
+| [`docs/api.md`](docs/api.md) | Rotas OpenAI/Ollama, auth e superfície admin `/kb/*` |
 | [`docs/configuracao.md`](docs/configuracao.md) | Variáveis de ambiente e configuração |
-| [`docs/arquitetura.md`](docs/arquitetura.md) | Bundle OKF, os dois agentes e o fluxo de uma resposta |
+| [`docs/arquitetura.md`](docs/arquitetura.md) | Base remota (branch `data`), o agente consumer e o fluxo de uma resposta |
 | [`docs/testes.md`](docs/testes.md) | Suíte offline e contrato de citação |
-| [`docs/deploy.md`](docs/deploy.md) | Vercel, GitHub Actions e scrape periódico |
+| [`docs/deploy.md`](docs/deploy.md) | Vercel, GitHub Actions e scrape manual |
 | [`docs/padroes.md`](docs/padroes.md) | Padrões de código (fábrica, tools, cache de QA) |
 | [`docs/design-system.md`](docs/design-system.md) | Tokens e uso do design system CSA |
 | [`docs/seguranca.md`](docs/seguranca.md) | Auth, CORS, sandbox e riscos conhecidos |
 
-## 🤖 Agents — LangChain + Skills (`.ingester` / `.consumer`)
+## 🤖 Agente — LangChain + Skills (`.consumer`)
 
-This repo ships a **simple LangChain agent** with a filesystem skill system that mirrors `.agents/` — but split into two isolated configs:
+O repositório tem **um único agente** (consumer), com um sistema de skills que espelha `.agents/`:
 
 | Agent | Config dir | Purpose |
 |-------|------------|---------|
-| **Ingester** | `.ingester/` | Crawl → normalize → curate CSA sources into OKF bundle |
-| **Consumer** | `.consumer/` | Answer questions via retrieval (extractive, cited) |
+| **Consumer** | `.consumer/` | Answer questions from the remote knowledge base (extractive, cited) |
 
-Each dir is a standalone *AGENTS home*:
+`.consumer/` é o *AGENTS home*:
 ```
-.ingester/
-  AGENTS.md           # project instructions for this agent
-  skills/
-    csa-ingest/
-      SKILL.md        # skill description (any .md folder counts)
 .consumer/
-  AGENTS.md
+  AGENTS.md           # project instructions for the agent
   skills/
     csa-query/
-      SKILL.md
+      SKILL.md        # skill description (any .md folder counts)
 ```
-Any `.md` skill you drop there is concatenated into the system prompt (hot-reloaded every request). Add a skill by creating a folder:
+Qualquer `.md` de skill é concatenado no system prompt (hot-reloaded every request). Add a skill by creating a folder:
 ```bash
-mkdir -p .ingester/skills/my-skill
-cat > .ingester/skills/my-skill/SKILL.md <<'EOF'
+mkdir -p .consumer/skills/my-skill
+cat > .consumer/skills/my-skill/SKILL.md <<'EOF'
 ---
 name: my-skill
 description: does X
-allowed-tools: read write edit bash
+allowed-tools: kb_list kb_read
 ---
 # My skill — instructions for the agent
 EOF
 ```
 
-**Tools available to every skill:** `read(path)`, `write(path, content)`, `edit(path, oldText, newText)`, `bash(command)`.
+**Tools do agente:** `kb_list(prefix)`, `kb_read(path)` — leitura da base remota em processo (sem HTTP, sem credencial de admin). Com `CHAT_CSA_PORTAL_TOOLS=1`, entram também `web_csa_fetch` e `web_csa_search` (desligadas por padrão).
 
 **API:** OpenAI-compatible (`POST /v1/chat/completions`, `GET /v1/models`) **+** Ollama-native shim (`POST /api/chat`, `GET /api/tags`). Works with the OpenAI SDK, `curl`, and Ollama clients pointing at `http://localhost:8001/v1`.
 
 ### Quickstart (uv)
 
 ```bash
-cp .env.example .env   # .env has BOTH agents: INGESTER_* (.ingester :8001) + CONSUMER_* (.consumer :8002)
-# edit LLM_PROVIDER / OLLAMA_BASE_URL or OPENAI_API_KEY — shared defaults apply to both
-# each agent also supports per-agent overrides: INGESTER_LLM_PROVIDER, CONSUMER_LLM_MODEL, etc.
+cp .env.example .env   # consumer: .consumer :8002 + KB_* da base remota
 uv sync --group dev
-uv run chat-csa print-prompt --config-dir .ingester   # debug prompt
-make run-ingester   # :8001  (uses INGESTER_CONFIG_DIR/INGESTER_PORT from .env, or --config-dir flag)
+uv run chat-csa print-prompt --config-dir .consumer   # debug prompt
 make run-consumer   # :8002  (uses CONSUMER_CONFIG_DIR/CONSUMER_PORT)
-make run-both       # both side-by-side via -j2
 # In another shell — OpenAI SDK example
-curl http://localhost:8001/v1/chat/completions \
+curl http://localhost:8002/v1/chat/completions \
   -H 'Content-Type: application/json' \
   -d '{"model":"chat-csa","messages":[{"role":"user","content":"quais documentos para matrícula?"}]}'
 # Ollama shim
-curl http://localhost:8001/api/chat \
+curl http://localhost:8002/api/chat \
   -H 'Content-Type: application/json' \
   -d '{"model":"chat-csa","messages":[{"role":"user","content":"oi"}]}'
 ```
@@ -311,11 +303,12 @@ LLM_PROVIDER=ollama LLM_MODEL=gemma4:31b-cloud uv run chat-csa serve --config-di
 LLM_PROVIDER=openai OPENAI_API_KEY=sk-... OPENAI_MODEL=gpt-4o-mini uv run chat-csa serve --config-dir .consumer --port 8002
 ```
 
+Base remota em dev: por padrão o cliente usa o backend `github` (`KB_REPO`/`KB_BRANCH=data`). Para testar sem rede, use `KB_BACKEND=local` e `KB_LOCAL_PATH=knowledge` (pasta local gitignored).
+
 Ollama local model (default):
 ```bash
 ollama pull gemma4:31b-cloud
 ollama serve  # default http://localhost:11434
-# then make run-both reads OLLAMA_BASE_URL from .env
 ```
 
 ### Extração de texto de PDFs
@@ -347,29 +340,10 @@ No Windows, instale uma distribuição do Poppler e adicione a pasta que contém
 
 ```bash
 docker build -t chat-csa .
-# single
-
-docker run --rm -p 8001:8000 -e AGENT_CONFIG_DIR=.ingester -e LLM_PROVIDER=ollama -e OLLAMA_BASE_URL=http://host.docker.internal:11434 chat-csa
-# both agents (reads INGESTER_*/CONSUMER_* from .env — see .env.example)
+docker run --rm -p 8002:8000 --env-file .env -e AGENT_CONFIG_DIR=.consumer chat-csa
 make docker-build
-docker compose up   # ingester :${INGESTER_PORT:-8001} + consumer :${CONSUMER_PORT:-8002} + frontend :${FRONTEND_PORT:-5173}
-# per-agent overrides also work:
-# INGESTER_LLM_PROVIDER=openai INGESTER_OPENAI_API_KEY=sk-... docker compose up
-# frontend respects VITE_CONSUMER_URL at build time
+docker compose up   # consumer :${CONSUMER_PORT:-8002} + frontend :${FRONTEND_PORT:-5173}
 ```
-
-> **Why two vars?** `AGENT_CONFIG_DIR` is per-process (one agent = one dir + one port). `.env.example` therefore ships **both** `INGESTER_CONFIG_DIR` + `CONSUMER_CONFIG_DIR` (and `INGESTER_PORT`/`CONSUMER_PORT`) plus a fallback `AGENT_CONFIG_DIR`/`PORT` for single-agent mode. `Makefile` and `docker-compose.yml` read the `INGESTER_*`/`CONSUMER_*` set; the server itself still honors `AGENT_CONFIG_DIR` per instance.
-
-### Painel do ingester (FastHTML /admin)
-
-O ingester tem painel próprio servido pelo próprio backend — sem passar pelo frontend React (decisão registrada na discussão `ingester-fasthtml-admin`).
-
-- **Rota**: `GET /admin` no servidor do ingester (`AGENT_CONFIG_DIR=.ingester`, porta `:8001` em dev). O mount só existe no config do ingester; o consumer permanece API pura (404 em `/admin`).
-- **Login**: `POST /admin/login` valida contra o `auth_store` em memória (credencial-semente definida em `src/chat_csa/server/auth.py`; o valor não é reproduzido aqui) e abre sessão por cookie HttpOnly (`csa_admin_token`, SameSite=Lax, path=/admin). `POST /admin/logout` encerra.
-- **Chat**: painel autenticado conversa com o agente ingester via SSE contra `POST /v1/chat/completions` (mesmo origin, sem token manual). Histórico fica no cliente; servidor stateless por request.
-- **Escopo mínimo**: login + chat apenas. O CRUD de usuários segue como JSON API (`/admin/users`, Bearer).
-- **Deploy https (ex.: Vercel)**: definir `ADMIN_COOKIE_SECURE=1` para o cookie de sessão ser marcado Secure.
-- **Caveat serverless**: o `auth_store` é em memória — em cold starts/instâncias múltiplas do Vercel, sessões e usuários resetam (comportamento pré-existente de `/auth/login` e `/admin/users`).
 
 ### React Chat (frontend/)
 
@@ -383,7 +357,6 @@ make frontend-build    # production build -> frontend/dist (served by nginx in d
 ```
 
 - **Consumer**: open chat, no login.
-- **Ingester**: painel próprio em FastHTML servido pelo backend (`/admin`), com tela de login e chat SSE — o frontend React não participa mais.
 - Env: `VITE_CONSUMER_URL` (default 8002). Com Docker Compose o frontend fica em `http://localhost:5173` e conversa com o consumer em `:8002`.
 
 ### Snippet de integração
@@ -407,15 +380,13 @@ Veja opções de configuração e exemplo local em [`docs/integracao-widget.md`]
 |--------|---------------|
 | `make install` | `uv sync` |
 | `make dev` | installs dev group |
-| `make run-ingester` | ingester on `$INGESTER_PORT` (`INGESTER_CONFIG_DIR`) |
 | `make run-consumer` | consumer on `$CONSUMER_PORT` (`CONSUMER_CONFIG_DIR`) |
-| `make run-both` | both with `-j2` (respects all `INGESTER_*`/`CONSUMER_*` overrides) |
-| `make prompt-ingester` / `prompt-consumer` | print composed system prompt (AGENTS.md + skills) |
+| `make prompt-consumer` | print composed system prompt (AGENTS.md + skills) |
 | `make frontend-install` / `frontend-dev` / `frontend-build` | React app |
 | `make lint` / `format` / `test` | ruff + pytest |
 | `make docker-build` / `docker-run*` / `docker-run-both` | container flow |
 
-See `knowledge/index.md` for the OKF bundle structure.
+See the branch `data` for the OKF bundle structure (read at runtime by the consumer).
 
 ## 🚀 Deploy (Vercel + GitHub Actions)
 
@@ -423,7 +394,7 @@ O deploy é automatizado via **GitHub Actions + Vercel CLI** (sem GitHub App), c
 
 | Projeto | Diretório | URL |
 |---|---|---|
-| **chat-csa-api** (backend FastAPI + painel FastHTML) | raiz do repo (`vercel.json`, `api/index.py`) | `https://chat-csa-api.vercel.app` |
+| **chat-csa-api** (backend FastAPI + superfície admin `/kb/*`) | raiz do repo (`vercel.json`, `api/index.py`) | `https://chat-csa-api.vercel.app` |
 | **chat-csa-web** (frontend React/Vite) | `frontend/` (`frontend/vercel.json`) | *definido no painel da Vercel* |
 
 ### Fluxo do CI (`.github/workflows/deploy.yml`)
@@ -436,7 +407,7 @@ O deploy é automatizado via **GitHub Actions + Vercel CLI** (sem GitHub App), c
 
 ### Variáveis de ambiente (`.github/workflows/env-sync.yml`)
 
-O backend consome `LLM_PROVIDER`, `LLM_MODEL`, `OLLAMA_MODEL`, `OLLAMA_BASE_URL` e `OLLAMA_API_KEY`.
+O backend consome `LLM_PROVIDER`, `LLM_MODEL`, `OLLAMA_MODEL`, `OLLAMA_BASE_URL`, `OLLAMA_API_KEY` e as variáveis `KB_*` da base remota (`KB_BACKEND`, `KB_REPO`, `KB_BRANCH`, `KB_ROOT`, `KB_TOKEN`, `KB_WRITE_TOKEN`, `KB_CACHE_TTL`).
 Elas vivem como secrets do GitHub; para sincronizá-las nos ambientes da Vercel (production/preview/development),
 rode manualmente **Actions → “Sync Vercel env”** — o workflow reutiliza `scripts/sync-vercel-env.sh`
 (allowlist + override de `OLLAMA_BASE_URL=https://ollama.com` em produção).

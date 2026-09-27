@@ -1,10 +1,10 @@
 # Deploy
 
-Este documento cobre como o Chat CSA é publicado: os dois projetos na Vercel, o pipeline do GitHub Actions que faz o deploy automático, a sincronização de variáveis de ambiente e o robô que mantém a base de conhecimento atualizada. Há também o caminho manual e a alternativa via Docker.
+Este documento cobre como o Chat CSA é publicado: os dois projetos na Vercel, o pipeline do GitHub Actions que faz o deploy automático, a sincronização de variáveis de ambiente e como a base de conhecimento remota é alimentada. Há também o caminho manual e a alternativa via Docker.
 
 ## Resumo para não-devs
 
-O sistema tem dois sites publicados: a **API** (que responde às perguntas) e o **site do chat** (a página do botão flutuante). Publicar uma nova versão é automático: quando um membro da equipe envia código para a branch principal do GitHub, um robô de integração compila e publica os dois sites sozinho — e só publica se as verificações de qualidade passarem. Existe também um robô separado que, a cada 12 horas, baixa as novidades do portal da CSA e as guarda na base de conhecimento, garantindo que o chat responda com informação fresca.
+O sistema tem dois sites publicados: a **API** (que responde às perguntas) e o **site do chat** (a página do botão flutuante). Publicar uma nova versão é automático: quando um membro da equipe envia código para a branch principal do GitHub, um robô de integração compila e publica os dois sites sozinho — e só publica se as verificações de qualidade passarem. A base de conhecimento não vai mais junto com o código: ela vive num branch separado (`data`) e é atualizada pelo time pelo endpoint de upload; o deploy não publica conteúdo.
 
 ## Projetos na Vercel
 
@@ -13,7 +13,9 @@ O sistema tem dois sites publicados: a **API** (que responde às perguntas) e o 
 | `chat-csa-api` | raiz do repo | `api/index.py` (`@vercel/python`) | `https://chat-csa-api.vercel.app` |
 | `chat-csa-web` | `frontend/` | SPA Vite + React | definida no painel da Vercel |
 
-O `vercel.json` da raiz configura o build da função com `includeFiles: ["src/chat_csa/**", ".ingester/**"]` e faz rewrite de todas as rotas para `api/index.py`. O `api/index.py` insere `src/` no `sys.path`, aponta `AGENT_CONFIG_DIR` para o `.ingester` embutido e expõe o app como `handler`. O `frontend/vercel.json` só faz o rewrite de SPA para `index.html`.
+O `vercel.json` da raiz configura o build da função com `includeFiles: ["src/chat_csa/**", ".consumer/**"]` e faz rewrite de todas as rotas para `api/index.py`. O `api/index.py` insere `src/` no `sys.path`, aponta `AGENT_CONFIG_DIR` para o `.consumer` embutido e expõe o app como `handler`. O `frontend/vercel.json` só faz o rewrite de SPA para `index.html`.
+
+A base de conhecimento **não** é embutida no deploy: ela é lida em runtime pela API do GitHub (branch `data`), configurada pelas variáveis `KB_*`. Sem `KB_REPO`/`KB_TOKEN` configurados, o chat responde sem base (não quebra).
 
 ## Pipeline (`.github/workflows/deploy.yml`)
 
@@ -30,16 +32,19 @@ Os tokens são **project-scoped** e o workflow não usa o link `.vercel/project.
 | `VERCEL_ORG_ID_API` / `VERCEL_ORG_ID_FRONTEND` | id da equipe |
 | `VERCEL_PROJECT_ID_API` / `VERCEL_PROJECT_ID_FRONTEND` | id do projeto |
 | `LLM_PROVIDER`, `LLM_MODEL`, `OLLAMA_MODEL`, `OLLAMA_BASE_URL`, `OLLAMA_API_KEY` | variáveis do backend sincronizadas para a Vercel |
+| `KB_BACKEND`, `KB_REPO`, `KB_BRANCH`, `KB_ROOT`, `KB_TOKEN`, `KB_WRITE_TOKEN`, `KB_CACHE_TTL` | base de conhecimento remota sincronizada para a Vercel |
 
 ## Sincronização de ambiente (`env-sync.yml`)
 
 Execução manual: **Actions → "Sync Vercel env" → Run workflow**, escolhendo `production`, `preview` ou `development`. O workflow instala o CLI, monta um `.env` temporário apenas com os secrets definidos (pulando ausentes) e chama `scripts/sync-vercel-env.sh <ambiente>`.
 
-O script aplica uma allowlist de 5 chaves (`LLM_PROVIDER`, `LLM_MODEL`, `OLLAMA_MODEL`, `OLLAMA_BASE_URL`, `OLLAMA_API_KEY`), **não imprime valores** e é idempotente (`vercel env rm` + `vercel env add`). Em `production`, ele força `OLLAMA_BASE_URL=https://ollama.com` porque o `localhost` do `.env` local só vale para desenvolvimento.
+O script aplica uma allowlist (`LLM_PROVIDER`, `LLM_MODEL`, `OLLAMA_MODEL`, `OLLAMA_BASE_URL`, `OLLAMA_API_KEY` + `KB_BACKEND`, `KB_REPO`, `KB_BRANCH`, `KB_ROOT`, `KB_TOKEN`, `KB_WRITE_TOKEN`, `KB_CACHE_TTL`), **não imprime valores** e é idempotente (`vercel env rm` + `vercel env add`). Em `production`, ele força `OLLAMA_BASE_URL=https://ollama.com` porque o `localhost` do `.env` local só vale para desenvolvimento.
 
-## Scrape periódico (`scrape-csa.yml`)
+Para o preview da Vercel, configure ao menos `KB_BACKEND=github`, `KB_REPO`, `KB_BRANCH=data` e `KB_TOKEN` (leitura); `KB_WRITE_TOKEN` habilita o upload admin nesse ambiente.
 
-Roda `scripts/scrape_portal.py` via `uv sync --frozen`, grava `knowledge/raw/` e commita de volta com `github-actions[bot]` (permissão `contents: write`). O agendamento é `0 9,21 * * *` UTC — 06h e 18h em Brasília — e há disparo manual para testes. Se nada mudou, o job encerra sem commit; a concorrência (`group: scrape-csa`) evita dois pushes simultâneos.
+## Scrape manual (`scrape-csa.yml`)
+
+O workflow agora é **manual** (`workflow_dispatch`), sem agendamento e **sem commit**: roda `scripts/scrape_portal.py` via `uv sync --frozen`, grava `knowledge/raw/` no runner e publica a saída como artifact (`knowledge-raw`). Quem decide o que entra na base é o time, pelo upload (`POST /kb/upload`).
 
 ## Caminho manual
 
@@ -53,13 +58,14 @@ Pré-requisito: `npx vercel link` uma vez em cada diretório (raiz e `frontend/`
 
 ## Alternativa: Docker
 
-O `Dockerfile` da raiz gera uma imagem única do backend (porta 8000, `HEALTHCHECK` em `/health`, `AGENT_CONFIG_DIR` configurável em runtime) e `docker compose up` sobe ingester, consumer e frontend. É o caminho para hospedagem própria/single-host, não o usado na Vercel — os detalhes de variáveis estão em [configuracao.md](./configuracao.md).
+O `Dockerfile` da raiz gera uma imagem única do backend (porta 8000, `HEALTHCHECK` em `/health`, `AGENT_CONFIG_DIR=.consumer`) e `docker compose up` sobe consumer e frontend. É o caminho para hospedagem própria/single-host, não o usado na Vercel — os detalhes de variáveis estão em [configuracao.md](./configuracao.md).
 
 ## Limitações do ambiente serverless
 
-- O `auth_store` é em memória: em cold start ou múltiplas instâncias da função, usuários e sessões do `/admin` resetam. Para o cookie de sessão funcionar em https, defina `ADMIN_COOKIE_SECURE=1`.
-- Sem `CHAT_CSA_ADMIN_SECRET_KEY`, a chave de sessão do FastHTML é gerada por cold start e derruba sessões; a variável existe para estabilizar isso.
-- O scraper depende de commit de volta no repositório (não roda na Vercel).
+- O `auth_store` é em memória: em cold start ou múltiplas instâncias da função, usuários e tokens resetam — inclusive os que protegem `/kb/upload`.
+- O cache da base (TTL padrão 60s) vive na memória de cada instância; uploads aparecem na leitura após o TTL ou em uma nova instância.
+- O filesystem da função é somente leitura e efêmero: nada da base é gravado em disco; o backend github não persiste arquivos localmente.
+- O scraper é manual e roda no GitHub Actions (não roda na Vercel).
 
 ## Fontes
 
