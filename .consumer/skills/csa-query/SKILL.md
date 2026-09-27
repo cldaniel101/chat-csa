@@ -113,6 +113,17 @@ Ao citar um PDF, inclua o status de extração ao final da referência:
 [N] Título — URL (acesso YYYY-MM-DD HH:mm) [PDF: falhou]
 ```
 
+### Conceitos sem `resource:` (upload avulso)
+
+Conceitos criados pelo upload avulso podem não ter `resource:`/`url:` nem a
+seção `Citations`. Para eles:
+
+1. Cite pelo **título do conceito + caminho na base** (ex.:
+   `[1] Aviso de matrícula — editais/aviso.md`).
+2. **Nunca invente uma URL** para o conceito.
+3. Na lista final, registre o conceito como título + caminho, sem horário de
+   acesso (não houve requisição externa).
+
 - `[PDF: completo]` → `pdf_extraction_status == "completed"` — texto verificável.
 - `[PDF: parcial]` → `pdf_extraction_status == "partial"` — texto insuficiente;
   não use como evidência interna de afirmação.
