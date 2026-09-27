@@ -1136,177 +1136,82 @@ https://csa.uefs.br/index.php/Sisu261/inicial .
 
                                         ANEXO II
 
-  Quadro 1 - Quantitativo total de vagas com sobrevagas ofertadas por Curso e
-                            turno da Oferta (Sisu 2026)
-                                        Total de      Total de
-              CURSO                   Vagas com     Vagas com       Turno da Oferta
-                                      sobrevagas    sobrevagas
-                                      para 2026.1   para 2026.2
+**Quadro 1 - Quantitativo total de vagas com sobrevagas ofertadas por Curso e turno da Oferta (Sisu 2026)**
 
-Bacharelado em Administração              45            45              noturno
+| CURSO | Total de Vagas com sobrevagas para 2026.1 | Total de Vagas com sobrevagas para 2026.2 | Turno da Oferta |
+| --- | --- | --- | --- |
+| Bacharelado em Administração | 45 | 45 | noturno |
+| Bacharelado em Agronomia | 45 | 45 | matutino e vespertino |
+| Bacharelado em Ciências Biológicas | 25 | 25 | matutino e vespertino |
+| Licenciatura em Ciências Biológicas | 31 | 31 | matutino e vespertino |
+| Bacharelado em Ciências Contábeis | 45 | 45 | noturno |
+| Bacharelado em Ciências Econômicas | 45 | 45 | noturno |
+| Bacharelado em Direito | 45 | 45 | noturno |
+| Licenciatura em Educação Física | 45 | 45 | matutino e vespertino |
+| Bacharelado em Enfermagem | 45 | 45 | matutino e vespertino |
+| Bacharelado em Engenharia Civil | 45 | 45 | matutino e vespertino |
+| Bacharelado em Engenharia de Alimentos | 45 | 45 | matutino e vespertino |
+| Bacharelado em Engenharia de Computação | 45 | 45 | matutino e vespertino |
+| Bacharelado em Farmácia | 35 | 35 | matutino e vespertino |
+| Bacharelado em Filosofia | 15 | 15 | noturno |
+| Licenciatura em Filosofia | 30 | 30 | noturno |
+| Licenciatura em Física | 33 | 33 | matutino e vespertino |
+| Bacharelado em Física | 23 | 23 | matutino e vespertino |
+| Bacharelado em Geografia | 20 | 20 | matutino e vespertino |
+| Licenciatura em Geografia | 35 | 35 | matutino e vespertino |
+| Licenciatura em História | 45 | 45 | matutino e vespertino |
+| Licenciatura em Letras: Português e Espanhol | 25 | 25 | matutino e vespertino |
+| Licenciatura em Letras: Português e Francês | 20 | 20 | matutino e vespertino |
+| Licenciatura em Letras - Inglês | 25 | 25 | matutino e vespertino |
+| Licenciatura em Letras: Língua Portuguesa | 45 | 45 | matutino e vespertino |
+| Licenciatura em Matemática | 45 | 45 | matutino e vespertino |
+| Bacharelado em Medicina (entrada anual) | --- | 35 | matutino e vespertino |
+| Licenciatura em Música (entrada anual) | 28 | --- | matutino e vespertino |
+| Bacharelado em Odontologia | 35 | 35 | matutino e vespertino |
+| Licenciatura em Pedagogia | 45 | 45 | matutino e vespertino |
+| Bacharelado Psicologia | 35 | 35 | matutino e vespertino |
+| Licenciatura em Química | 35 | 35 | noturno |
+| TOTAL | 1080 | 1087 | --- |
 
-Bacharelado em Agronomia                  45            45        matutino e vespertino
-
-Bacharelado em Ciências                   25            25        matutino e vespertino
-Biológicas
-
-Licenciatura em Ciências Biológicas       31            31        matutino e vespertino
-
-Bacharelado em Ciências Contábeis         45            45              noturno
-
-Bacharelado em Ciências                   45            45              noturno
-Econômicas
-
-Bacharelado em Direito                    45            45              noturno
-
-Licenciatura em Educação Física           45            45        matutino e vespertino
-
-Bacharelado em Enfermagem                 45            45        matutino e vespertino
-
-Bacharelado em Engenharia Civil           45            45        matutino e vespertino
-
-Bacharelado em Engenharia
-de Alimentos                              45            45        matutino e vespertino
-
-Bacharelado em Engenharia de
-Computação                                45            45        matutino e vespertino
-
-Bacharelado em Farmácia                   35            35        matutino e vespertino
-
-Bacharelado em Filosofia                  15            15              noturno
-
-Licenciatura em Filosofia                 30            30              noturno
-
-Licenciatura em Física                    33            33        matutino e vespertino
-
-Bacharelado em Física                     23            23        matutino e vespertino
-
-Bacharelado em Geografia                  20            20        matutino e vespertino
-
-Licenciatura em Geografia                 35            35        matutino e vespertino
-
-Licenciatura em História                  45            45        matutino e vespertino
-
-Licenciatura em Letras: Português e
-Espanhol                              25     25     matutino e vespertino
-
-Licenciatura em Letras: Português e
-Francês                               20     20     matutino e vespertino
-
-Licenciatura em Letras - Inglês       25     25     matutino e vespertino
-
-Licenciatura em Letras: Língua
-Portuguesa                            45     45     matutino e vespertino
-
-Licenciatura em Matemática            45     45     matutino e vespertino
-
-Bacharelado em Medicina (entrada
-anual)                                 ---   35     matutino e vespertino
-
-Licenciatura em Música (entrada       28      ---   matutino e vespertino
-anual)
-
-Bacharelado em Odontologia            35     35     matutino e vespertino
-
-Licenciatura em Pedagogia             45     45     matutino e vespertino
-
-Bacharelado Psicologia                35     35     matutino e vespertino
-
-Licenciatura em Química               35     35           noturno
-
-TOTAL                                 1080   1087            ---
 
                                                        ANEXO III
 
-       Quadro 2 - PESOS E AS NOTAS MÍNIMAS DE CADA UMA DAS PROVAS DO ENEM PARA
-                                       CADA CURSO
-                     Ciências da       Ciências         Linguagens,       Matemática            Redação
-                     Natureza e       Humanas e          Códigos e          e suas                           Média
-                        suas             suas              suas           Tecnologias                        Mínima
-    CURSO            Tecnologia       Tecnologia        Tecnologias                                            no
-                          s                s                                                                 ENEM
-                    Peso   Nota      Peso    Nota      Peso     Nota      Peso    Nota      Peso    Not
-                           Mínima            Mínim              Míni              Míni              a
-                                             a                  ma                ma                Míni
-                                                                                                    ma
-Bacharelado em      2,00    350,00    5,00    350,00    5,00   450,00     4,00   400,00      5,00   500,00    410,00
- Administração
-Bacharelado em      5,00    338,00    4,00    338,00    4,00    338,00    4,00    338,00     5,00   375,00    345,40
-  Agronomia
-Bacharelado em      5,00     1,00     2,00     1,00     4,00   1,000      3,00       1,00    4,00   400,00    80,80
-     Ciências
-    Biológicas
- Licenciatura em    5,00     1,00     2,00     1,00     4,00   1,000      3,00       1,00    4,00   400,00    80,80
-     Ciências
-    Biológicas
-Bacharelado em      2,00    100,00    5,00    300,00    5,00   300,       5,00     300,00    4,00   400,00    280,0
-     Ciências                                                   00
-    Contábeis
-Bacharelado em      2,00     1,00     5,00    100,00    5,00   1,00       4,00       1,00    5,00   400,00    106,00
-     Ciências
-   Econômicas
-Bacharelado em      2,00    100,00    5,00    200,00    5,00   300,00     4,00   100,00      5,00   300,00    200,00
-     Direito
-Licenciatura em     5,00     1,00     3,00     1,00     5,00   1,00       3,00       1,00    4,00   200,00    40,80
-Educação Física
-Bacharelado em      5,00    450,00    3,00    450,00    5,00   450,00     3,00   450,00      4,00   450,00    450,00
- Enfermagem
-Bacharelado em      4,00    300,00    2,00    300,00    5,00   300,00     5,00   300,00      4,00   400,00    320,00
- Engenharia de
-   Alimentos
- Bacharelado em     3,00    350,00    3,00    350,00    5,00   350,00     5,00   350,00      4,00   500,00    380,00
- Engenharia Civil
-Bacharelado em      4,00    450,00    2,00    450,00    5,00   450,00     5,00   450,00      4,00   450,00    450,00
- Engenharia de
-  Computação
-Bacharelado em      5,00    450,00    2,00    450,00    5,00   450,00     4,00   450,00      5,00   500,00    460,00
-   Farmácia
- Bacharelado em     2,00    200,00    5,00    400,00    5,00   400,00     2,00   200,00      5,00   400,00    320,00
-    Filosofia
-Licenciatura em     2,00    200,00    5,00    400,00    5,00   400,00     2,00   200,00      5,00   400,00    320,00
-    Filosofia
-Bacharelado em      5,00    50,00     1,00     1,00     3,00       1,00   4,00    50,00      5,00   50,00     30,40
-    Física
-Licenciatura em     5,00    50,00     1,00     1,00     3,00       1,00   4,00    50,00      5,00   50,00     30,40
-     Física
-Bacharelado em      3,00    400,00    5,00    400,00    5,00   400,00     2,00   400,00      5,00   400,00    400,00
+**Quadro 2 - Pesos e as notas mínimas de cada uma das provas do ENEM para cada curso**
 
-     Geografia
- Licenciatura     3,00   400,00   5,00   400,00   5,00   400,00   2,00   400,00   5,00   400,00   400,00
-em Geografia
- Licenciatura     3,00   400,00   5,00   400,00   5,00   400,00   2,00   400,00   5,00   400,00   400,00
- em História
-  Licenciatura    2,00    1,00    4,00    1,00    5,00     1,00   3,00    1,00    5,00    1,00     1,00
-  em Letras -
-  Português e
-   Espanhol
-Licenciatura em   2,00    1,00    4,00    1,00    5,00     1,00   3,00    1,00    5,00    1,00     1,00
-    Letras –
-  Português e
-    Francês
- Licenciatura     2,00    1,00    4,00    1,00    5,00     1,00   3,00    1,00    5,00    1,00     1,00
-  em Letras -
-     Inglês
-Licenciatura em   2,00    1,00    4,00    1,00    5,00     1,00   3,00    1,00    5,00    1,00     1,00
-Letras - Língua
-  Portuguesa
- Licenciatura     3,00    1,00    2,00    1,00    3,00   1,00     5,00   200,00   5,00   200,00   80,60
-     em
- Matemática
- Bacharelado      5,00   500,00   5,00   500,00   5,00   500,00   5,00   500,00   5,00   500,00   500,00
-   Medicina
- Bacharelado      2,00   1,00     4,00    1,00    5,00     1,00   2,0     1,00    5,00   250,00   50,80
-  em Música                                                        0
+| CURSO | Ciências da Natureza e suas Tecnologias — Peso | Ciências da Natureza e suas Tecnologias — Nota Mínima | Ciências Humanas e suas Tecnologias — Peso | Ciências Humanas e suas Tecnologias — Nota Mínima | Linguagens, Códigos e suas Tecnologias — Peso | Linguagens, Códigos e suas Tecnologias — Nota Mínima | Matemática e suas Tecnologias — Peso | Matemática e suas Tecnologias — Nota Mínima | Redação — Peso | Redação — Nota Mínima | Média Mínima no ENEM |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Bacharelado em Administração | 2,00 | 350,00 | 5,00 | 350,00 | 5,00 | 450,00 | 4,00 | 400,00 | 5,00 | 500,00 | 410,00 |
+| Bacharelado em Agronomia | 5,00 | 338,00 | 4,00 | 338,00 | 4,00 | 338,00 | 4,00 | 338,00 | 5,00 | 375,00 | 345,40 |
+| Bacharelado em Ciências Biológicas | 5,00 | 1,00 | 2,00 | 1,00 | 4,00 | 1,000 | 3,00 | 1,00 | 4,00 | 400,00 | 80,80 |
+| Licenciatura em Ciências Biológicas | 5,00 | 1,00 | 2,00 | 1,00 | 4,00 | 1,000 | 3,00 | 1,00 | 4,00 | 400,00 | 80,80 |
+| Bacharelado em Ciências Contábeis | 2,00 | 100,00 | 5,00 | 300,00 | 5,00 | 300,00 | 5,00 | 300,00 | 4,00 | 400,00 | 280,0 |
+| Bacharelado em Ciências Econômicas | 2,00 | 1,00 | 5,00 | 100,00 | 5,00 | 1,00 | 4,00 | 1,00 | 5,00 | 400,00 | 106,00 |
+| Bacharelado em Direito | 2,00 | 100,00 | 5,00 | 200,00 | 5,00 | 300,00 | 4,00 | 100,00 | 5,00 | 300,00 | 200,00 |
+| Licenciatura em Educação Física | 5,00 | 1,00 | 3,00 | 1,00 | 5,00 | 1,00 | 3,00 | 1,00 | 4,00 | 200,00 | 40,80 |
+| Bacharelado em Enfermagem | 5,00 | 450,00 | 3,00 | 450,00 | 5,00 | 450,00 | 3,00 | 450,00 | 4,00 | 450,00 | 450,00 |
+| Bacharelado em Engenharia de Alimentos | 4,00 | 300,00 | 2,00 | 300,00 | 5,00 | 300,00 | 5,00 | 300,00 | 4,00 | 400,00 | 320,00 |
+| Bacharelado em Engenharia Civil | 3,00 | 350,00 | 3,00 | 350,00 | 5,00 | 350,00 | 5,00 | 350,00 | 4,00 | 500,00 | 380,00 |
+| Bacharelado em Engenharia de Computação | 4,00 | 450,00 | 2,00 | 450,00 | 5,00 | 450,00 | 5,00 | 450,00 | 4,00 | 450,00 | 450,00 |
+| Bacharelado em Farmácia | 5,00 | 450,00 | 2,00 | 450,00 | 5,00 | 450,00 | 4,00 | 450,00 | 5,00 | 500,00 | 460,00 |
+| Bacharelado em Filosofia | 2,00 | 200,00 | 5,00 | 400,00 | 5,00 | 400,00 | 2,00 | 200,00 | 5,00 | 400,00 | 320,00 |
+| Licenciatura em Filosofia | 2,00 | 200,00 | 5,00 | 400,00 | 5,00 | 400,00 | 2,00 | 200,00 | 5,00 | 400,00 | 320,00 |
+| Bacharelado em Física | 5,00 | 50,00 | 1,00 | 1,00 | 3,00 | 1,00 | 4,00 | 50,00 | 5,00 | 50,00 | 30,40 |
+| Licenciatura em Física | 5,00 | 50,00 | 1,00 | 1,00 | 3,00 | 1,00 | 4,00 | 50,00 | 5,00 | 50,00 | 30,40 |
+| Bacharelado em Geografia | 3,00 | 400,00 | 5,00 | 400,00 | 5,00 | 400,00 | 2,00 | 400,00 | 5,00 | 400,00 | 400,00 |
+| Licenciatura em Geografia | 3,00 | 400,00 | 5,00 | 400,00 | 5,00 | 400,00 | 2,00 | 400,00 | 5,00 | 400,00 | 400,00 |
+| Licenciatura em História | 3,00 | 400,00 | 5,00 | 400,00 | 5,00 | 400,00 | 2,00 | 400,00 | 5,00 | 400,00 | 400,00 |
+| Licenciatura em Letras - Português e Espanhol | 2,00 | 1,00 | 4,00 | 1,00 | 5,00 | 1,00 | 3,00 | 1,00 | 5,00 | 1,00 | 1,00 |
+| Licenciatura em Letras – Português e Francês | 2,00 | 1,00 | 4,00 | 1,00 | 5,00 | 1,00 | 3,00 | 1,00 | 5,00 | 1,00 | 1,00 |
+| Licenciatura em Letras - Inglês | 2,00 | 1,00 | 4,00 | 1,00 | 5,00 | 1,00 | 3,00 | 1,00 | 5,00 | 1,00 | 1,00 |
+| Licenciatura em Letras - Língua Portuguesa | 2,00 | 1,00 | 4,00 | 1,00 | 5,00 | 1,00 | 3,00 | 1,00 | 5,00 | 1,00 | 1,00 |
+| Licenciatura em Matemática | 3,00 | 1,00 | 2,00 | 1,00 | 3,00 | 1,00 | 5,00 | 200,00 | 5,00 | 200,00 | 80,60 |
+| Bacharelado Medicina | 5,00 | 500,00 | 5,00 | 500,00 | 5,00 | 500,00 | 5,00 | 500,00 | 5,00 | 500,00 | 500,00 |
+| Bacharelado em Música | 2,00 | 1,00 | 4,00 | 1,00 | 5,00 | 1,00 | 2,00 | 1,00 | 5,00 | 250,00 | 50,80 |
+| Bacharelado em Odontologia | 5,00 | 450,00 | 2,00 | 450,00 | 5,00 | 450,00 | 3,00 | 450,00 | 4,00 | 450,00 | 450,00 |
+| Licenciatura em Pedagogia | 2,00 | 1,00 | 5,00 | 1,00 | 5,00 | 1,00 | 4,00 | 1,00 | 5,00 | 1,00 | 1,00 |
+| Bacharelado Psicologia | 4,00 | 1,00 | 5,00 | 1,00 | 5,00 | 1,00 | 3,00 | 1,00 | 5,00 | 500,00 | 100,80 |
+| Licenciatura em Química | 5,00 | 300,00 | 3,00 | 300,00 | 5,00 | 300,00 | 5,00 | 300,00 | 4,00 | 300,00 | 300,00 |
 
- Bacharelado      5,00   450,00   2,00   450,00   5,00   450,00   3,00   450,00   4,00   450,00   450,00
-     em
- Odontologia
- Licenciatura     2,00    1,00    5,00    1,00    5,00     1,00   4,00    1,00    5,00    1,00     1,00
-em Pedagogia
-  Bacharelado     4,00    1,00    5,00    1,00    5,00     1,00   3,00    1,00    5,00   500,00   100,80
-   Psicologia
- Licenciatura     5,00   300,00   3,00   300,00   5,00   300,00   5,00   300,00   4,00   300,00   300,00
- em Química
 
                                                                                                            1
 
