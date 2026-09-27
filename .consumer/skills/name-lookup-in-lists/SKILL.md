@@ -1,7 +1,7 @@
 ---
 name: name-lookup-in-lists
 description: Busca um nome específico em listas de aprovados/convocados do portal CSA (PDFs de resultado)
-allowed-tools: read web_csa_fetch web_csa_search
+allowed-tools: kb_list kb_read web_csa_fetch web_csa_search
 ---
 
 # name-lookup-in-lists — Procurar nome em listas de resultado

@@ -1,8 +1,10 @@
 """FAQ curada em Markdown, usada como referência para o agente.
 
-O módulo lê arquivos Markdown versionados (FAQ) e recupera as entradas mais
-parecidas com a pergunta do usuário. As entradas não são respostas diretas:
-elas são injetadas no prompt do agente como referência curada, e a resposta é
+O módulo lê arquivos Markdown da base de conhecimento remota (prefixo
+padrão: `perguntas-frequentes/`) pelo cliente `chat_csa.kb` — cache TTL em
+memória, sem leitura de disco — e recupera as entradas mais parecidas com a
+pergunta do usuário. As entradas não são respostas diretas: elas são
+injetadas no prompt do agente como referência curada, e a resposta é
 formulada pelo agente no turno — adaptada ao contexto da conversa e com
 citação das fontes. Entradas marcadas como `dynamic` avisam que a informação
 pode mudar e devem ser conferidas nas fontes oficiais.
@@ -17,7 +19,9 @@ from dataclasses import dataclass
 from difflib import SequenceMatcher
 from pathlib import Path
 
-DEFAULT_QA_CACHE_PATHS = (Path("docs/faq"), Path("knowledge/perguntas-frequentes"))
+from .kb import KBError, get_kb
+
+DEFAULT_QA_CACHE_PREFIXES = ("perguntas-frequentes/",)
 DEFAULT_MIN_MATCH_SCORE = 0.68
 
 _FAQ_HEADER_RE = re.compile(r"^##\s+(FAQ-[A-Za-z0-9_-]+)\s+[—-]\s+(.+?)\s*$", re.MULTILINE)
@@ -113,16 +117,20 @@ class QACacheHit:
         )
 
 
-def get_cache_paths() -> list[Path]:
-    """Retorna os caminhos configurados para cache de FAQ."""
+def get_cache_prefixes() -> list[str]:
+    """Retorna os prefixos da base onde o cache de FAQ vive.
+
+    Padrão: `perguntas-frequentes/`. Override via CHAT_CSA_QA_CACHE_PATHS
+    (separados por `os.pathsep`), sempre relativos à raiz da base.
+    """
     raw = os.getenv("CHAT_CSA_QA_CACHE_PATHS", "").strip()
     if raw:
-        return [Path(part.strip()) for part in raw.split(os.pathsep) if part.strip()]
-    return list(DEFAULT_QA_CACHE_PATHS)
+        return [part.strip().strip("/") for part in raw.split(os.pathsep) if part.strip()]
+    return list(DEFAULT_QA_CACHE_PREFIXES)
 
 
 def lookup_cached_matches(
-    question: str, paths: list[Path] | None = None, top_k: int = 3
+    question: str, prefixes: list[str] | None = None, top_k: int = 3
 ) -> list[QACacheHit]:
     """Recupera as entradas FAQ mais parecidas com a pergunta, para usar como contexto.
 
@@ -139,7 +147,7 @@ def lookup_cached_matches(
 
     hits = [
         QACacheHit(entry=entry, score=score, matched_question=matched)
-        for entry in load_cache_entries(paths)
+        for entry in load_cache_entries(prefixes)
         for score, matched in [_score_entry(query, entry)]
     ]
     hits.sort(key=lambda hit: hit.score, reverse=True)
@@ -147,13 +155,13 @@ def lookup_cached_matches(
     return [hit for hit in hits if hit.score >= threshold][:top_k]
 
 
-def lookup_cached_answer(question: str, paths: list[Path] | None = None) -> QACacheHit | None:
+def lookup_cached_answer(question: str, prefixes: list[str] | None = None) -> QACacheHit | None:
     """Procura uma entrada estática suficientemente parecida com a pergunta.
 
     Mantido para compatibilidade com testes anteriores; o servidor usa
     `lookup_cached_matches` para injetar contexto no agente.
     """
-    for hit in lookup_cached_matches(question, paths=paths, top_k=1):
+    for hit in lookup_cached_matches(question, prefixes=prefixes, top_k=1):
         if hit.entry.cache_policy == "static":
             return hit
     return None
@@ -183,30 +191,40 @@ def format_faq_reference(entry: QACacheEntry) -> str:
     return block
 
 
-def load_cache_entries(paths: list[Path] | None = None) -> list[QACacheEntry]:
-    """Carrega entradas FAQ dos arquivos Markdown informados."""
+def load_cache_entries(prefixes: list[str] | None = None) -> list[QACacheEntry]:
+    """Carrega entradas FAQ dos arquivos Markdown da base remota.
+
+    Lista e lê pelo cliente `chat_csa.kb` (cache TTL em memória). Se a base
+    não estiver configurada ou falhar, devolve lista vazia — o servidor segue
+    sem FAQ, sem quebrar.
+    """
+    try:
+        kb = get_kb()
+    except KBError:
+        return []
     entries: list[QACacheEntry] = []
-    selected_paths = get_cache_paths() if paths is None else paths
-    for path in _iter_markdown_files(selected_paths):
+    selected = get_cache_prefixes() if prefixes is None else prefixes
+    seen: set[str] = set()
+    for prefix in selected:
         try:
-            text = path.read_text(encoding="utf-8", errors="replace")
-        except OSError:
+            paths = kb.list(prefix)
+        except KBError:
             continue
-        metadata, body = _split_frontmatter(text)
-        entries.extend(_parse_structured_faq(path, metadata, body))
-        entries.extend(_parse_simple_faq(path, metadata, body))
+        for rel in paths:
+            if not rel.lower().endswith(".md") or Path(rel).name.lower() == "index.md":
+                continue
+            if rel in seen:
+                continue
+            seen.add(rel)
+            try:
+                text = kb.render(rel)
+            except KBError:
+                continue
+            metadata, body = _split_frontmatter(text)
+            path = Path(rel)
+            entries.extend(_parse_structured_faq(path, metadata, body))
+            entries.extend(_parse_simple_faq(path, metadata, body))
     return entries
-
-
-def _iter_markdown_files(paths: list[Path]) -> list[Path]:
-    files: list[Path] = []
-    for raw_path in paths:
-        path = raw_path.expanduser()
-        if path.is_file() and path.suffix.lower() == ".md":
-            files.append(path)
-        elif path.is_dir():
-            files.extend(p for p in sorted(path.rglob("*.md")) if p.name.lower() != "index.md")
-    return files
 
 
 def _split_frontmatter(text: str) -> tuple[dict[str, str], str]:
