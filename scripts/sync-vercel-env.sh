@@ -35,6 +35,13 @@ if [ "$TARGET_ENV" != "development" ]; then
   OVERRIDES[KB_BACKEND]="github"
 fi
 
+# No CI o token vem por VERCEL_TOKEN; passa explícito para o CLI (mesmo padrão
+# do deploy, que usa --token). Localmente, sem a var, usa a sessão do CLI.
+TOKEN_FLAG=()
+if [ -n "${VERCEL_TOKEN:-}" ]; then
+  TOKEN_FLAG=(--token "$VERCEL_TOKEN")
+fi
+
 for key in "${KEYS[@]}"; do
   val="$(grep -E "^${key}=" "$ENV_FILE" | tail -1 | cut -d= -f2- | tr -d '\"')"
   if [ -z "$val" ]; then
@@ -45,8 +52,8 @@ for key in "${KEYS[@]}"; do
     val="${OVERRIDES[$key]}"
   fi
   # remove versão anterior (se existir) e recria — garante idempotência
-  vercel env rm "$key" "$TARGET_ENV" -y >/dev/null 2>&1 || true
-  printf '%s' "$val" | vercel env add "$key" "$TARGET_ENV" >/dev/null
+  vercel "${TOKEN_FLAG[@]}" env rm "$key" "$TARGET_ENV" -y >/dev/null 2>&1 || true
+  printf '%s' "$val" | vercel "${TOKEN_FLAG[@]}" env add "$key" "$TARGET_ENV" >/dev/null
   echo "ok: ${key} -> ${TARGET_ENV}"
 done
 
