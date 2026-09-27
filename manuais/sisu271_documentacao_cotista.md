@@ -2,7 +2,7 @@
 type: Documento
 title: "Critérios e documentos para concorrer pelas cotas da UEFS"
 description: "Critérios e documentos exigidos para concorrer pelas cotas da UEFS, por modalidade (SiSU UEFS 2027)."
-resource: "raw/manuais/documentacao_cotista.docx"
+resource: "raw/manuais/sisu271_documentacao_cotista.docx"
 tags: [sisu-2027, cotas, manual]
 timestamp: "2026-09-27"
 ---
@@ -376,4 +376,4 @@ OBSERVAÇÃO 1: A apresentação da Folha Resumo do Cadastro Único para Program
 
 # Citations
 
-[1] [Critérios e documentos para concorrer pelas cotas da UEFS](raw/manuais/documentacao_cotista.docx)
+[1] [Critérios e documentos para concorrer pelas cotas da UEFS](raw/manuais/sisu271_documentacao_cotista.docx)

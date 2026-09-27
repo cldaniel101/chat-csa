@@ -85,6 +85,6 @@ Documentos oficiais da edição SiSU/UEFS 2026 (`sisu261`), convertidos do porta
 * [Cartilha da Heteroidentificação](manuais/sisu261_cartilha_heteroidentificacao.md) - Documento do SiSU/UEFS 2026 (cartilha_heteroidentificacao).
 * [Catálogo dos Cursos de Graduação da UEFS](manuais/sisu261_catalogo_cursos_graduacao_UEFS.md) - Documento do SiSU/UEFS 2026 (catalogo_cursos_graduacao_UEFS).
 * [Cronograma](manuais/sisu261_cronograma.md) - Documento do SiSU/UEFS 2026 (cronograma).
-* [Critérios e documentos para concorrer pelas cotas da UEFS](manuais/sisu261_documentacao_cotista.md) - Critérios e documentos exigidos por modalidade de concorrência (cotas).
+* [Critérios e documentos para concorrer pelas cotas da UEFS](manuais/sisu271_documentacao_cotista.md) - Critérios e documentos exigidos por modalidade de concorrência (cotas).
 * [Manual do candidato - SIDOC](manuais/sisu261_manual_SIDOC.md) - Documento do SiSU/UEFS 2026 (manual_SIDOC).
 * [Manual de Acesso às Políticas de Ações Afirmativas e Assistência Estudantil](manuais/sisu261_manual_politicas_acoes_afirmativas.md) - Documento do SiSU/UEFS 2026 (manual_politicas_acoes_afirmativas).
