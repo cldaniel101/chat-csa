@@ -1,4 +1,4 @@
-"""Portal CSA/UEFS: fetch e busca read-only para o agente ingester.
+"""Portal CSA/UEFS: fetch e busca read-only para as ferramentas web_csa_*.
 
 Implementa a proposta v2 da discussão web-csa-tools-for-ingester:
 
@@ -62,7 +62,7 @@ MIN_INTERVAL_S = float(__import__("os").getenv("CSA_MIN_INTERVAL_S", "3"))
 CACHE_DIR = Path(__import__("os").getenv("CSA_CACHE_DIR", ".cache/csa-web"))
 CACHE_TTL_S = float(__import__("os").getenv("CSA_CACHE_TTL_S", "3600"))
 MAX_BACKOFF_S = 60.0
-USER_AGENT = "chat-csa-ingester/1.0 (projeto de extensao UEFS; leitura apenas)"
+USER_AGENT = "chat-csa/1.0 (projeto de extensao UEFS; leitura apenas)"
 
 # Segmentos de URL que indicam documento oficial (edital, resultado final, matrícula)
 _OFFICIAL_URL_SEGMENTS = (

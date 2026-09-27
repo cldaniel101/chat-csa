@@ -39,7 +39,6 @@ from ..agent.factory import build_agent
 from ..agent.prompt import build_system_prompt
 from ..qa_cache import format_faq_reference, lookup_cached_matches
 from . import auth as auth_store
-from .admin import build_admin_panel
 from .kb_api import router as kb_router
 from .models import ChatMessage, ModelCard, ModelsResponse
 
@@ -641,7 +640,7 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
         return StreamingResponse(ollama_stream(), media_type="application/x-ndjson")
 
     # ------------------------------------------------------------------
-    # Auth — login do ingester + CRUD admin simples (admin / sudo123)
+    # Auth — login + CRUD admin simples (admin / sudo123)
     # ------------------------------------------------------------------
     @app.post("/auth/login")
     async def auth_login_route(req: Request):
@@ -691,13 +690,8 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
     # ------------------------------------------------------------------
     app.include_router(kb_router)
 
-    # Painel FastHTML do ingester (decisão da discussão ingester-fasthtml-admin):
-    # o admin só existe no servidor do ingester; o consumer permanece API pura.
-    # Montado após as rotas JSON /admin/users para não sobrescrevê-las (o match
-    # exato de rota tem precedência sobre o prefixo do mount).
-    if config_dir.name.startswith(".ingester"):
-        app.mount("/admin", build_admin_panel(), name="admin")
-
+    # Painel FastHTML do ingester removido (só o consumer existe agora);
+    # as rotas JSON /admin/users e a auth admin continuam nesta app.
     return app
 
 

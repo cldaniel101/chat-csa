@@ -24,6 +24,9 @@ Thumbs.db
 data/raw/
 data/*.db
 
+# Base de conhecimento local (dev/testes) — a base de produção vive no branch `data`
+knowledge/
+
 # IDE
 .vscode/
 .idea/

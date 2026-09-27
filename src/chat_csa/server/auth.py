@@ -1,4 +1,4 @@
-"""Auth simples para o ingester — usuários e tokens em memória.
+"""Auth simples do servidor — usuários e tokens em memória.
 
 Padrão: admin / sudo123  (conforme solicitado)
 Tokens são UUIDs guardados em memória. CRUD admin protegido.
