@@ -9,7 +9,7 @@ from pathlib import Path
 from langchain_core.language_models import BaseChatModel
 
 from .prompt import build_system_prompt
-from .tools import ALL_TOOLS, CSA_TOOLS, read
+from .tools import ALL_TOOLS, CSA_TOOLS
 
 
 def get_llm(
@@ -75,26 +75,19 @@ def get_llm(
 
 
 def tools_for_config(root: Path) -> list:
-    """Lista de ferramentas para uma raiz de config.
+    """Ferramentas do agente consumer — um único conjunto.
 
-    - Ingester (.ingester): ferramentas completas (read/write/edit/bash) + as
-      de leitura do portal CSA (web_csa_fetch / web_csa_search).
-    - Consumer (.consumer): somente leitura — `read` + as ferramentas CSA.
-      O consumidor responde a partir do bundle; não escreve nem executa comandos.
-    Override via CHAT_CSA_EXTRA_TOOLS=ingester|none.
+    Base fixa: `kb_list` e `kb_read` (leitura da base remota, em processo).
+    As ferramentas do portal CSA (`web_csa_*`) só entram quando
+    CHAT_CSA_PORTAL_TOOLS=1 (padrão 0). Não há mais agente ingester: o
+    parâmetro `root` permanece só para compatibilidade de assinatura.
     """
-    extra = os.getenv("CHAT_CSA_EXTRA_TOOLS", "").lower()
-    if extra == "none":
-        return list(ALL_TOOLS)
-    if root.name.startswith(".ingester") or extra == "ingester":
-        return [*ALL_TOOLS, *CSA_TOOLS]
-    if root.name.startswith(".consumer") or extra == "consumer":
-        return [read, *CSA_TOOLS]
-    return list(ALL_TOOLS)
+    portal = os.getenv("CHAT_CSA_PORTAL_TOOLS", "0").strip().lower() in {"1", "true", "yes", "on"}
+    return [*ALL_TOOLS, *(CSA_TOOLS if portal else [])]
 
 
 def build_agent(
-    config_dir: str | Path = ".ingester",
+    config_dir: str | Path = ".consumer",
     provider: str | None = None,
     model: str | None = None,
     temperature: float = 0.2,
@@ -113,7 +106,7 @@ def build_agent(
     system_prompt = build_system_prompt(root)
     llm = get_llm(provider=provider, model=model, temperature=temperature)
 
-    # Ferramentas do portal CSA apenas para o agente ingester (leitura only)
+    # Ferramentas do consumer: kb_list/kb_read (+ web_csa_* se ligadas).
     tools = tools_for_config(root)
 
     # Prefere o novo langchain.agents.create_agent (LangChain v1)

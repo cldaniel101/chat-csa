@@ -9,13 +9,12 @@ Endpoints:
 
 O servidor é stateless por request; o system prompt é recarregado da
 raiz de config (AGENT_CONFIG_DIR / --config-dir) a cada chamada, para que
-dá para editar .ingester/AGENTS.md ou skills sem reiniciar.
+dá para editar .consumer/AGENTS.md ou skills sem reiniciar.
 
 Execução:
-  uv run chat-csa --config-dir .ingester --port 8001
   uv run chat-csa --config-dir .consumer --port 8002
   # ou
-  AGENT_CONFIG_DIR=.ingester uv run uvicorn chat_csa.server.app:create_app --factory --port 8001
+  AGENT_CONFIG_DIR=.consumer uv run uvicorn chat_csa.server.app:create_app --factory --port 8002
 """
 
 from __future__ import annotations
@@ -287,7 +286,7 @@ def _has_source_lookup(messages: list) -> bool:
         )
         for tool_call in tool_calls or []:
             name = tool_call.get("name") or tool_call.get("function", {}).get("name")
-            if name == "read":
+            if name == "kb_read":
                 return True
             if name == "web_csa_fetch":
                 has_fetch_call = True
@@ -333,11 +332,11 @@ def _format_agent_response(response_text: str, *, source_was_consulted: bool) ->
 
 _RESPONSE_GUIDE_BLOCK = """## Guia de citações (obrigatório)
 
-- Termine a resposta com uma seção `Fontes:` sempre que usar qualquer fonte: FAQ curada, bundle de conhecimento (`knowledge/`) ou páginas do portal.
+- Termine a resposta com uma seção `Fontes:` sempre que usar qualquer fonte: base de conhecimento remota (kb_list/kb_read) ou páginas do portal.
 - Formato de cada fonte: `[1] Nome da fonte — URL`; para FAQ curada injetada use `[1] FAQ curada — cache FAQ-XXX`.
 - Cite a fonte inline com `[N]` logo após a informação que veio dela.
-- **Nunca cite caminho de arquivo** (`knowledge/…md`, `docs/…md`) em `Fontes:` nem no corpo da resposta. Evidência vinda de arquivo do bundle é citada pela URL do frontmatter: `resource:` (bundle curado) ou `url:` (`knowledge/raw/`).
-- Fontes válidas: a FAQ curada injetada neste prompt, arquivos do bundle (citando a URL do frontmatter) e páginas abertas com `web_csa_fetch` no turno.
+- **Nunca cite caminho de arquivo** (`perguntas-frequentes/…md`) em `Fontes:` nem no corpo da resposta. Evidência vinda da base é citada pela URL do frontmatter: `resource:` (bundle curado) ou `url:` (conteúdo do portal).
+- Fontes válidas: a FAQ curada injetada neste prompt, arquivos da base remota (citando a URL do frontmatter) e páginas abertas com `web_csa_fetch` no turno.
 - Sem URL pública para a evidência? Não invente URLs e não use o caminho do arquivo como substituto: diga que a informação vem da base curada interna do Chat CSA e mantenha a afirmação sem link.
 """
 
@@ -349,7 +348,7 @@ def _prompt_extra(faq_block: str) -> str:
 
 
 def create_app(config_dir: str | Path | None = None) -> FastAPI:
-    config_dir = Path(config_dir or os.getenv("AGENT_CONFIG_DIR") or ".ingester")
+    config_dir = Path(config_dir or os.getenv("AGENT_CONFIG_DIR") or ".consumer")
 
     app = FastAPI(
         title="Chat CSA — Agent API",
@@ -703,5 +702,5 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
 
 
 # App padrão para `uvicorn chat_csa.server.app:app`
-# Usa a env AGENT_CONFIG_DIR (padrão: .ingester)
+# Usa a env AGENT_CONFIG_DIR (padrão: .consumer)
 app = create_app()

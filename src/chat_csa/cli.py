@@ -1,7 +1,6 @@
 """Ponto de entrada da CLI: chat-csa
 
 Uso:
-  chat-csa --config-dir .ingester --port 8001
   chat-csa --config-dir .consumer --port 8002 --provider ollama --model gemma4:31b-cloud
   chat-csa --help
 """
@@ -25,7 +24,7 @@ console = Console()
 @app.command()
 def serve(
     config_dir: str = typer.Option(
-        ".ingester",
+        ".consumer",
         "--config-dir",
         "-c",
         help="Agent config dir (like .agents). Holds AGENTS.md + skills/",
@@ -72,7 +71,7 @@ def serve(
 
 @app.command("print-prompt")
 def print_prompt(
-    config_dir: str = typer.Option(".ingester", "--config-dir", "-c"),
+    config_dir: str = typer.Option(".consumer", "--config-dir", "-c"),
 ):
     """Imprime o system prompt composto para um config dir (para depuração)."""
     from .agent.prompt import build_system_prompt

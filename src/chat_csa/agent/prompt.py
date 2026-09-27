@@ -1,7 +1,7 @@
 """Carregador de prompt: compõe AGENTS.md + skills em um system prompt.
 
-O design espelha o layout .agents do pi, mas enraizado em um diretório
-arbitrário (.ingester / .consumer). Layout:
+O design espelha o layout .agents do pi, mas enraizado no diretório de
+config do agente (padrão: .consumer). Layout:
 
     {root}/
       AGENTS.md               # instruções opcionais do projeto
@@ -13,9 +13,9 @@ arbitrário (.ingester / .consumer). Layout:
 Todo markdown encontrado é concatenado em um único system prompt, que é
 anteposto à mensagem de sistema do LLM.
 
-Você pode colocar o que quiser dentro de .ingester ou .consumer — eles
-são o "AGENTS home" de cada agente. Em runtime o agente os lê frescos a
-cada request (sem cache), então dá para editar skills a quente sem reiniciar.
+Você pode colocar o que quiser dentro de .consumer — ele é o "AGENTS home"
+do agente. Em runtime o agente o lê fresco a cada request (sem cache),
+então dá para editar skills a quente sem reiniciar.
 """
 
 from __future__ import annotations
@@ -64,10 +64,12 @@ def build_system_prompt(root: Path, extra: str | None = None) -> str:
     parts.append(
         textwrap_dedent(
             """
-            Você é um agente de IA prestativo com acesso a ferramentas de filesystem: read, write, edit, bash.
-            - Use ferramentas quando precisar inspecionar ou modificar arquivos, ou executar comandos.
-            - Seja conciso, cite fontes ao responder a partir de arquivos e nunca alucine.
-            - Se uma operação de arquivo falhar, explique o erro e sugira uma correção.
+            Você é o agente consumer do Chat CSA: responde perguntas sobre SISU/UEFS
+            a partir da base de conhecimento remota, nunca alucinando.
+            - Use kb_list/kb_read para consultar a base antes de afirmar qualquer fato.
+            - Cite sempre a URL do frontmatter (`resource:`/`url:`) da fonte — nunca o caminho do arquivo.
+            - Seja conciso e nunca invente prazos, documentos ou datas.
+            - Se uma ferramenta falhar, explique o erro e responda com o que foi possível confirmar.
             """
         ).strip()
     )
@@ -85,21 +87,26 @@ def build_system_prompt(root: Path, extra: str | None = None) -> str:
     if extra:
         parts.append(extra.strip())
 
-    # Dica de uso das ferramentas
-    parts.append(
-        textwrap_dedent(
-            """
-            # Ferramentas
-            - read(path): lê um arquivo de texto (truncado para 50KB/2000 linhas)
-            - write(path, content): cria/sobrescreve um arquivo (cria os diretórios pais)
-            - edit(path, oldText, newText): substituição exata de texto (oldText deve ser único)
-            - bash(command, timeout=30): executa um comando de shell
-
-            Prefira edit() para mudanças pequenas e write() para arquivos novos.
-            Use bash() para ls, grep, find, git etc.
-            """
-        ).strip()
-    )
+    # Dica de uso das ferramentas (web_csa_* só quando ligadas)
+    portal_on = __import__("os").getenv("CHAT_CSA_PORTAL_TOOLS", "0").strip().lower() in {
+        "1", "true", "yes", "on",
+    }
+    tool_lines = [
+        "# Ferramentas",
+        "- kb_list(prefix): lista os caminhos disponíveis na base de conhecimento remota",
+        "- kb_read(path): lê um arquivo da base (csv/tsv -> tabela, pdf -> texto, binário -> aviso)",
+    ]
+    if portal_on:
+        tool_lines += [
+            "- web_csa_search(query, categoria, since, limit): busca no catálogo do portal CSA/UEFS",
+            "- web_csa_fetch(url, refresh, extract_text): abre uma página/PDF do portal (allowlist csa.uefs.br)",
+        ]
+    tool_lines += [
+        "",
+        "Sempre consulte a base com kb_list/kb_read antes de responder perguntas factuais.",
+        "Cite a URL do frontmatter (`resource:`/`url:`) da fonte — nunca o caminho do arquivo.",
+    ]
+    parts.append("\n".join(tool_lines))
 
     return "\n\n---\n\n".join(parts)
 

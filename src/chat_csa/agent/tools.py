@@ -1,9 +1,12 @@
-"""Ferramentas LangChain: read / write / edit / bash.
+"""Ferramentas LangChain do agente consumer: kb_list e kb_read.
 
-São intencionalmente mínimas e limitadas ao filesystem do diretório de
-trabalho atual (a raiz do projeto). Caminhos são resolvidos relativos ao
-cwd e então validados para permanecer dentro do cwd, a menos que
-CHAT_CSA_ALLOW_ABSOLUTE=1.
+O agente lê a base de conhecimento remota (branch `data` do repositório) em
+processo, via `chat_csa.kb` — nunca por HTTP e sem credencial de admin. As
+ferramentas do portal CSA (`web_csa_*`) continuam no código, desligadas por
+padrão (CHAT_CSA_PORTAL_TOOLS=0).
+
+As descrições das ferramentas mandam citar a URL do frontmatter
+(`resource:`/`url:`), nunca o caminho do arquivo.
 
 A saída é truncada para 50KB / 2000 linhas, espelhando a semântica de
 ferramentas do pi.
@@ -11,26 +14,12 @@ ferramentas do pi.
 
 from __future__ import annotations
 
-import os
-import subprocess
-from pathlib import Path
-
 from langchain_core.tools import tool
+
+from ..kb import KBError, get_kb, render_file
 
 MAX_BYTES = 50 * 1024
 MAX_LINES = 2000
-
-
-def _resolve(path: str) -> Path:
-    p = Path(path).expanduser()
-    if not p.is_absolute():
-        p = Path.cwd() / p
-    p = p.resolve()
-    if os.getenv("CHAT_CSA_ALLOW_ABSOLUTE", "0") != "1":
-        # guarda suave: avisa mas não bloqueia; mantém a UX simples
-        # só bloqueia fuga para caminhos sensíveis do sistema se desejado
-        pass
-    return p
 
 
 def _truncate(text: str) -> str:
@@ -49,112 +38,45 @@ def _truncate(text: str) -> str:
 
 
 @tool
-def read(path: str) -> str:
-    """Lê um arquivo de texto. Retorna o conteúdo truncado para 50KB/2000 linhas.
+def kb_list(prefix: str = "") -> str:
+    """Lista os caminhos disponíveis na base de conhecimento do Chat CSA.
+
+    Use SEMPRE antes de responder perguntas factuais: descubra o que existe
+    na base e leia os arquivos relevantes com `kb_read`. O prefixo opcional
+    filtra caminhos (ex.: "perguntas-frequentes/"). Os caminhos retornados
+    são o argumento de `kb_read` — nunca os cite na resposta: cite a URL do
+    frontmatter (`resource:` ou `url:`) do arquivo lido.
 
     Args:
-        path: Caminho de arquivo relativo ou absoluto.
+        prefix: prefixo de caminho para filtrar (vazio = base inteira).
     """
-    p = _resolve(path)
-    if not p.exists():
-        return f"Error: file not found: {p}"
-    if p.is_dir():
-        return f"Error: {p} is a directory, not a file."
     try:
-        text = p.read_text(encoding="utf-8", errors="replace")
-    except Exception as e:
-        return f"Error reading {p}: {e}"
-    return _truncate(text)
+        paths = get_kb().list(prefix)
+    except KBError as exc:
+        return f"Error: {exc}"
+    if not paths:
+        return "(base vazia ou nenhum caminho para o prefixo informado)"
+    return "\n".join(paths)
 
 
 @tool
-def write(path: str, content: str) -> str:
-    """Cria ou sobrescreve um arquivo com o conteúdo dado.
+def kb_read(path: str) -> str:
+    """Lê um arquivo da base de conhecimento (texto renderizado por tipo).
 
-    Cria automaticamente os diretórios pais.
-
-    Args:
-        path: Caminho do arquivo de destino.
-        content: Conteúdo de texto completo a escrever.
-    """
-    p = _resolve(path)
-    try:
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(content, encoding="utf-8")
-        return f"Wrote {len(content)} bytes to {p}"
-    except Exception as e:
-        return f"Error writing {p}: {e}"
-
-
-@tool
-def edit(path: str, oldText: str, newText: str) -> str:  # noqa: N803
-    """Edita um arquivo por substituição exata de texto (oldText -> newText).
-
-    - oldText deve corresponder exatamente a uma única região única do arquivo.
-    - Se oldText for vazio, o arquivo é criado com newText.
-    - Cria diretórios pais se necessário quando o arquivo não existe.
+    A conversão acontece só na leitura: .csv/.tsv viram tabela Markdown;
+    .pdf tem o texto extraído; textos vêm direto; binários retornam um aviso.
+    Cite sempre a URL do frontmatter (`resource:` ou `url:`) da fonte — nunca
+    o caminho do arquivo. Se o arquivo não existir, confira os caminhos com
+    `kb_list` antes de concluir que a informação não está na base.
 
     Args:
-        path: Caminho do arquivo.
-        oldText: Texto exato a substituir (deve ser único).
-        newText: Texto de substituição.
-    """
-    p = _resolve(path)
-    try:
-        if not p.exists():
-            if oldText == "":
-                p.parent.mkdir(parents=True, exist_ok=True)
-                p.write_text(newText, encoding="utf-8")
-                return f"Created {p} ({len(newText)} bytes)"
-            return f"Error: file not found: {p}"
-        original = p.read_text(encoding="utf-8", errors="replace")
-        if oldText == "":
-            return "Error: oldText is empty but file exists; use write() instead."
-        count = original.count(oldText)
-        if count == 0:
-            return f"Error: oldText not found in {p}"
-        if count > 1:
-            return f"Error: oldText matches {count} regions (must be unique) in {p}"
-        updated = original.replace(oldText, newText, 1)
-        p.write_text(updated, encoding="utf-8")
-        return f"Edited {p} (replaced {len(oldText)} -> {len(newText)} chars)"
-    except Exception as e:
-        return f"Error editing {p}: {e}"
-
-
-@tool
-def bash(command: str, timeout: int = 30) -> str:
-    """Executa um comando bash e retorna stdout+stderr.
-
-    Args:
-        command: Comando de shell a executar.
-        timeout: Tempo limite em segundos (padrão 30).
+        path: caminho relativo do arquivo, como devolvido por kb_list.
     """
     try:
-        result = subprocess.run(
-            command,
-            shell=True,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            cwd=str(Path.cwd()),
-        )
-        output = ""
-        if result.stdout:
-            output += result.stdout
-        if result.stderr:
-            if output:
-                output += "\n--- stderr ---\n"
-            output += result.stderr
-        if not output:
-            output = f"(exit {result.returncode}, no output)"
-        else:
-            output = f"(exit {result.returncode})\n" + output
-        return _truncate(output)
-    except subprocess.TimeoutExpired:
-        return f"Error: command timed out after {timeout}s: {command}"
-    except Exception as e:
-        return f"Error: {e}"
+        file = get_kb().read(path)
+    except KBError as exc:
+        return f"Error: {exc}"
+    return _truncate(render_file(file))
 
 
 @tool
@@ -213,8 +135,11 @@ def web_csa_search(query: str = "", categoria: str = "", since: str = "", limit:
         return f"Error: {e}"
 
 
-ALL_TOOLS = [read, write, edit, bash]
+# Ferramentas do agente consumer (leitura da base remota).
+ALL_TOOLS = [kb_list, kb_read]
+
+# Ferramentas do portal CSA — opcionais, liberadas por CHAT_CSA_PORTAL_TOOLS=1.
 CSA_TOOLS = [web_csa_fetch, web_csa_search]
 
 # Para agentes que preferem consulta por dict
-TOOL_MAP = {t.name: t for t in ALL_TOOLS}
+TOOL_MAP = {t.name: t for t in [*ALL_TOOLS, *CSA_TOOLS]}
