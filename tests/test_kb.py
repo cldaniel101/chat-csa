@@ -6,6 +6,7 @@ criado. O teste do endpoint cobre `/kb/upload` ponta a ponta com esse backend.
 
 from __future__ import annotations
 
+import base64
 import json
 
 import httpx
@@ -32,6 +33,7 @@ def _github_settings(**overrides) -> KBSettings:
 
 def _handler(state: dict):
     """Handler do MockTransport simulando a Git Data API do GitHub."""
+    files = state.setdefault("files", {})
 
     def handler(request: httpx.Request) -> httpx.Response:
         path = request.url.path
@@ -41,12 +43,29 @@ def _handler(state: dict):
             return httpx.Response(200, json={"object": {"sha": "base-commit"}})
         if path == f"/repos/{REPO}/git/commits/base-commit":
             return httpx.Response(200, json={"tree": {"sha": "base-tree"}})
+        if path == f"/repos/{REPO}/git/trees/base-commit":
+            tree = [{"path": name, "type": "blob"} for name in sorted(files)]
+            return httpx.Response(200, json={"tree": tree, "truncated": False})
+        if path.startswith(f"/repos/{REPO}/contents/"):
+            rel = path[len(f"/repos/{REPO}/contents/") :]
+            if rel not in files:
+                return httpx.Response(404, json={"message": "not found"})
+            content = files[rel]
+            if isinstance(content, str):
+                content = content.encode("utf-8")
+            encoded = base64.b64encode(content).decode("ascii")
+            return httpx.Response(200, json={"content": encoded, "encoding": "base64"})
         if path == f"/repos/{REPO}/git/blobs":
             payload = json.loads(request.content)
             state.setdefault("blobs", []).append(payload)
             return httpx.Response(201, json={"sha": f"blob-{len(state['blobs'])}"})
         if path == f"/repos/{REPO}/git/trees" and request.method == "POST":
-            state["tree"] = json.loads(request.content)
+            tree = json.loads(request.content)
+            state["tree"] = tree
+            # Aplica os blobs no estado local (scaffold de leituras seguintes).
+            for item in tree["tree"]:
+                number = int(item["sha"].rsplit("-", 1)[1])
+                state["files"][item["path"]] = base64.b64decode(state["blobs"][number - 1]["content"])
             return httpx.Response(201, json={"sha": "new-tree"})
         if path == f"/repos/{REPO}/git/commits" and request.method == "POST":
             state["commit"] = json.loads(request.content)
@@ -152,6 +171,7 @@ def test_upload_endpoint_com_backend_github_falso(monkeypatch):
     state: dict = {}
     fake = _fake_github(state)
     monkeypatch.setattr(kb_api, "get_kb", lambda: fake)
+    monkeypatch.setattr(kb_api, "default_model_call", lambda: (lambda prompt, images: "# stub"))
 
     from chat_csa.server.app import create_app
 
@@ -162,7 +182,7 @@ def test_upload_endpoint_com_backend_github_falso(monkeypatch):
         "/kb/upload",
         headers={"Authorization": f"Bearer {token}"},
         files=[
-            ("files", ("perguntas-frequentes/faq.md", b"# FAQ")),
+            ("files", ("perguntas-frequentes/faq.md", b"# FAQ\n\nPergunta e resposta.")),
             ("files", ("cronogramas/c.csv", b"a,b\n1,2\n")),
         ],
         data={"message": "kb: lote de teste"},
@@ -172,7 +192,114 @@ def test_upload_endpoint_com_backend_github_falso(monkeypatch):
     body = response.json()
     assert body["ok"] is True
     assert body["sha"] == "new-commit"
-    assert [item["ok"] for item in body["files"]] == [True, True]
+    assert [(item["ok"], item["converted"]) for item in body["files"]] == [(True, True), (True, True)]
     assert state["commit"]["message"] == "kb: lote de teste"
-    assert len(state["blobs"]) == 2
+
+    paths = [item["path"] for item in state["tree"]["tree"]]
+    assert paths == [
+        "perguntas-frequentes/faq.md",
+        "cronogramas/c.md",
+        "perguntas-frequentes/index.md",
+        "cronogramas/index.md",
+        "index.md",
+    ]
+    assert len(paths) == len(state["blobs"]) == 5
+    # O original não é preservado: só conceitos .md e índices.
+    assert all(path.endswith(".md") for path in paths)
+    # Conceito com frontmatter OKF e o saudação preservada no corpo.
+    concept = state["files"]["perguntas-frequentes/faq.md"].decode("utf-8")
+    assert concept.startswith("---\n")
+    assert 'title: "FAQ"' in concept
+    assert "Pergunta e resposta." in concept
+    # Índice raiz criado com a seção.
+    root_index = state["files"]["index.md"].decode("utf-8")
+    assert "## perguntas-frequentes" in root_index
+    assert "* [FAQ](perguntas-frequentes/faq.md) - Pergunta e resposta." in root_index
+    fake.close()
+
+
+def _upload_client(monkeypatch, state: dict):
+    """Cliente admin apontado para o backend GitHub falso, com modelo stub."""
+    import chat_csa.server.kb_api as kb_api
+
+    fake = _fake_github(state)
+    monkeypatch.setattr(kb_api, "get_kb", lambda: fake)
+    monkeypatch.setattr(kb_api, "default_model_call", lambda: (lambda prompt, images: "# stub"))
+
+    from chat_csa.server.app import create_app
+
+    client = TestClient(create_app(".consumer"))
+    token = client.post("/auth/login", json={"username": "admin", "password": "sudo123"}).json()["access_token"]
+    return client, token, fake
+
+
+def test_upload_endpoint_resposta_aditiva_sem_eco(monkeypatch):
+    state: dict = {}
+    client, token, fake = _upload_client(monkeypatch, state)
+    conteudo = b"# Segredo\n\nConteudo secreto do arquivo."
+
+    response = client.post(
+        "/kb/upload",
+        headers={"Authorization": f"Bearer {token}"},
+        files=[
+            ("files", ("editais/segredo.txt", conteudo)),
+            ("files", ("editais/planilha.xlsx", b"PK-binario")),
+        ],
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert set(body) == {"ok", "sha", "files"}
+    assert body["ok"] is True
+    convertido, sem_conversao = body["files"]
+    assert set(convertido) == {"path", "ok", "size", "converted"}
+    assert convertido == {
+        "path": "editais/segredo.txt",
+        "ok": True,
+        "size": len(conteudo),
+        "converted": True,
+    }
+    assert sem_conversao["converted"] is False and "sem conversão" in sem_conversao["error"]
+    # Sem eco do Markdown convertido.
+    assert "Conteudo secreto" not in response.text
+    # Lote misto num único commit atômico: conceito + índice da seção + raiz.
+    assert [item["path"] for item in state["tree"]["tree"]] == [
+        "editais/segredo.md",
+        "editais/index.md",
+        "index.md",
+    ]
+    ref_updates = [call for call in state["calls"] if call[0] == "PATCH"]
+    assert ref_updates == [("PATCH", f"/repos/{REPO}/git/refs/heads/data")]
+    # O arquivo sem conversão não é gravado de jeito nenhum.
+    assert "editais/planilha.xlsx" not in state["files"]
+    fake.close()
+
+
+def test_upload_endpoint_sources_declarado_e_invalido(monkeypatch):
+    state: dict = {}
+    client, token, fake = _upload_client(monkeypatch, state)
+
+    response = client.post(
+        "/kb/upload",
+        headers={"Authorization": f"Bearer {token}"},
+        files=[("files", ("editais/fonte.txt", b"# Fonte\n\nCorpo."))],
+        data={"sources": json.dumps({"editais/fonte.txt": "https://csa.uefs.br/fonte.pdf"})},
+    )
+
+    assert response.status_code == 200
+    concept = state["files"]["editais/fonte.md"].decode("utf-8")
+    assert 'resource: "https://csa.uefs.br/fonte.pdf"' in concept
+    assert 'url: "https://csa.uefs.br/fonte.pdf"' in concept
+    assert "# Citations" in concept
+    assert "[1] [Fonte](https://csa.uefs.br/fonte.pdf)" in concept
+
+    response = client.post(
+        "/kb/upload",
+        headers={"Authorization": f"Bearer {token}"},
+        files=[("files", ("editais/fonte.txt", b"# Fonte\n\nCorpo."))],
+        data={"sources": "{nao e json"},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["ok"] is False
     fake.close()
