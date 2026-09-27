@@ -88,3 +88,7 @@ Documentos oficiais da edição SiSU/UEFS 2026 (`sisu261`), convertidos do porta
 * [Critérios e documentos para concorrer pelas cotas da UEFS](manuais/sisu271_documentacao_cotista.md) - Critérios e documentos exigidos por modalidade de concorrência (cotas).
 * [Manual do candidato - SIDOC](manuais/sisu261_manual_SIDOC.md) - Documento do SiSU/UEFS 2026 (manual_SIDOC).
 * [Manual de Acesso às Políticas de Ações Afirmativas e Assistência Estudantil](manuais/sisu261_manual_politicas_acoes_afirmativas.md) - Documento do SiSU/UEFS 2026 (manual_politicas_acoes_afirmativas).
+
+## testes-upload
+
+* [RELATORIO E2E DO UPLOAD](testes-upload/relatorio-e2e-2026.md) - Documento de teste da conversao automatica para Markdown.
