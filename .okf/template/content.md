@@ -3,6 +3,8 @@ type: Documento PDF
 title: "<título do documento>"
 description: "<resumo de uma frase sobre o documento>"
 resource: "<URL real do PDF de origem>"
+url: "<URL real do PDF de origem>"
+source_page: "<URL da página que lista o PDF>"
 tags: [sisu-2026, "<categoria>"]
 timestamp: "<AAAA-MM-DD>"
 ---
