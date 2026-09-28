@@ -111,9 +111,12 @@ O workflow agora é **manual** (`workflow_dispatch`), sem agendamento e **sem co
 make deploy-env        # scripts/sync-vercel-env.sh production
 make deploy-api        # raiz do repo: npx vercel deploy --prod --yes
 make deploy-frontend   # frontend/: npx vercel deploy --prod --yes
+make deploy-staging    # par de staging: chat-csa-api-preview + chat-csa-web-preview
 ```
 
-Pré-requisito: `npx vercel link` uma vez em cada diretório (raiz e `frontend/`) — na Vercel, sem os tokens project-scoped do CI.
+Pré-requisito: `npx vercel link` uma vez em cada diretório (raiz e `frontend/`) — na Vercel, sem os tokens project-scoped do CI. Os alvos de staging já passam `--project`/`--scope` e funcionam sem link.
+
+Enquanto os secrets `VERCEL_TOKEN_API_PREVIEW`/`VERCEL_TOKEN_FRONTEND_PREVIEW` não existirem, o CI **pula** o deploy de staging (aviso no run) — `make deploy-staging` publica o par com a sua sessão local, sem token nenhum.
 
 ## Alternativa: Docker
 

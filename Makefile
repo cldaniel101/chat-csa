@@ -1,4 +1,4 @@
-.PHONY: help install dev run run-consumer prompt-consumer lint format test docker-build docker-run docker-run-consumer docker-run-both clean frontend-install frontend-dev frontend-build deploy-api deploy-frontend deploy-env
+.PHONY: help install dev run run-consumer prompt-consumer lint format test docker-build docker-run docker-run-consumer docker-run-both clean frontend-install frontend-dev frontend-build deploy-api deploy-frontend deploy-staging deploy-staging-api deploy-staging-frontend deploy-env
 
 # Usa uv se disponível; senão, cai para pip
 UV ?= uv
@@ -58,12 +58,21 @@ frontend-dev: ## Roda o dev server React (conecta automático ao consumer)
 frontend-build: ## Gera o bundle de produção do React
 	cd frontend && npm run build
 
-# Deploy manual na Vercel (alternativa ao CI — exige `vercel link` local uma vez por projeto)
+# Deploy manual na Vercel (alternativa ao CI). Local: `vercel link` uma vez em
+# cada projeto; os alvos de staging já passam --project/--scope e dispensam link.
 deploy-api: ## Deploy do backend na Vercel — produção
 	npx vercel deploy --prod --yes
 
 deploy-frontend: ## Deploy do frontend na Vercel — produção
 	cd frontend && npx vercel deploy --prod --yes
+
+deploy-staging: deploy-staging-api deploy-staging-frontend ## Publica o par de staging (API + site)
+
+deploy-staging-api: ## Deploy da API de staging (chat-csa-api-preview)
+	npx vercel deploy --prod --yes --project chat-csa-api-preview --scope dev-davmg
+
+deploy-staging-frontend: ## Deploy do site de staging (chat-csa-web-preview)
+	cd frontend && npx vercel deploy --prod --yes --project chat-csa-web-preview --scope dev-davmg
 
 deploy-env: ## Sincroniza variáveis de ambiente do backend na Vercel (produção)
 	./scripts/sync-vercel-env.sh production
