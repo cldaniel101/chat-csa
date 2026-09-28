@@ -1,20 +1,21 @@
 # Deploy automático para a Vercel via GitHub Actions + Vercel CLI (sem GitHub App).
 #
-# Estratégia:
-#   - push em `main`         -> deploy de produção (--prod) nos dois projetos
-#   - push em `development`  -> deploy de preview nos dois projetos
-#   - pull request (mesmo repo) -> deploy de preview nos dois projetos
+# Estratégia (dois pares de projetos — produção e staging):
+#   - push em `main`            -> --prod no par principal      (chat-csa-api / chat-csa-web)
+#   - push em `development`     -> --prod no par de staging     (chat-csa-api-preview / chat-csa-web-preview)
+#   - pull request (mesmo repo) -> preview no par principal     (URL descartável, sem promoção)
 #
-# Dois projetos separados, cada um com seu token project-scoped:
-#   - API (raiz do repo, vercel.json)  -> chat-csa-api  (função @vercel/python)
-#   - Frontend (frontend/, vercel.json) -> chat-csa-web (SPA Vite + React)
+# Cada par tem seu próprio token project-scoped e a API de staging é a URL fixa
+# que o site de staging chama (ver docs/deploy.md, "Preview do site e da API").
 #
 # Secrets do repositório (GitHub):
-#   VERCEL_TOKEN_API / VERCEL_TOKEN_FRONTEND  -> tokens project-scoped da Vercel
-#   VERCEL_ORG_ID_API / VERCEL_ORG_ID_FRONTEND -> id do escopo dono dos projetos
-#     (os dois vivem no mesmo time: `dev-davmg`, id team_a1g9RHULTlOEdkqTUhGZwhGF;
+#   VERCEL_TOKEN_API / VERCEL_TOKEN_FRONTEND          -> tokens project-scoped do par principal
+#   VERCEL_TOKEN_API_PREVIEW / _FRONTEND_PREVIEW      -> tokens project-scoped do par de staging
+#   VERCEL_ORG_ID_API / VERCEL_ORG_ID_FRONTEND        -> id do escopo dono dos projetos
+#     (os quatro vivem no mesmo time: `dev-davmg`, id team_a1g9RHULTlOEdkqTUhGZwhGF;
 #     ver docs/deploy.md, "Escopo e propriedade")
-#   VERCEL_PROJECT_ID_API / _FRONTEND          -> id de cada projeto
+#   VERCEL_PROJECT_ID_API / _FRONTEND                 -> id de cada projeto do par principal
+#   VERCEL_PROJECT_ID_API_PREVIEW / _FRONTEND_PREVIEW -> id de cada projeto do par de staging
 name: Deploy
 
 on:
@@ -76,11 +77,15 @@ jobs:
             token_secret: VERCEL_TOKEN_API
             org_secret: VERCEL_ORG_ID_API
             project_secret: VERCEL_PROJECT_ID_API
+            staging_token_secret: VERCEL_TOKEN_API_PREVIEW
+            staging_project_secret: VERCEL_PROJECT_ID_API_PREVIEW
           - name: frontend
             workdir: frontend
             token_secret: VERCEL_TOKEN_FRONTEND
             org_secret: VERCEL_ORG_ID_FRONTEND
             project_secret: VERCEL_PROJECT_ID_FRONTEND
+            staging_token_secret: VERCEL_TOKEN_FRONTEND_PREVIEW
+            staging_project_secret: VERCEL_PROJECT_ID_FRONTEND_PREVIEW
     steps:
       - uses: actions/checkout@v4
 
@@ -92,7 +97,7 @@ jobs:
       #
       # Build remoto: a Vercel roda o build no próprio lado (Python/Node),
       # então não usamos --prebuilt nem precisamos instalar toolchains aqui.
-      - name: Deploy de produção
+      - name: Deploy de produção (`main`)
         if: github.ref == 'refs/heads/main'
         working-directory: ${{ matrix.workdir }}
         env:
@@ -101,16 +106,26 @@ jobs:
         timeout-minutes: 30
         run: npx vercel@59 deploy --prod --yes --token "${{ secrets[matrix.token_secret] }}"
 
-      - name: Deploy de preview
-        if: github.ref != 'refs/heads/main'
+      # `development` publica no par de staging com --prod: cada projeto tem a
+      # própria URL fixa (chat-csa-api-preview / chat-csa-web-preview), como uma
+      # produção paralela usada só como preview.
+      - name: Deploy de staging (`development`)
+        if: github.ref == 'refs/heads/development'
+        working-directory: ${{ matrix.workdir }}
+        env:
+          VERCEL_ORG_ID: ${{ secrets[matrix.org_secret] }}
+          VERCEL_PROJECT_ID: ${{ secrets[matrix.staging_project_secret] }}
+        timeout-minutes: 30
+        run: npx vercel@59 deploy --prod --yes --token "${{ secrets[matrix.staging_token_secret] }}"
+
+      - name: Deploy de preview (PRs)
+        if: github.event_name == 'pull_request'
         working-directory: ${{ matrix.workdir }}
         env:
           VERCEL_ORG_ID: ${{ secrets[matrix.org_secret] }}
           VERCEL_PROJECT_ID: ${{ secrets[matrix.project_secret] }}
         timeout-minutes: 30
-        # O frontend de preview é compilado com VITE_CONSUMER_URL apontando para
-        # o alias chat-csa-api-development.vercel.app (env de Preview do projeto
-        # chat-csa-web), porque o build estático embute a URL da API. Hoje o
-        # alias é movido à mão: tokens project-scoped não criam alias ("User not
-        # found"). Ver docs/deploy.md, "Preview do site e da API".
+        # PRs publicam um preview descartável no par principal. O site usa o
+        # VITE_CONSUMER_URL do ambiente Preview do projeto chat-csa-web, que
+        # aponta para a API de staging (chat-csa-api-preview).
         run: npx vercel@59 deploy --yes --token "${{ secrets[matrix.token_secret] }}"

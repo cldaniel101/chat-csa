@@ -1,6 +1,10 @@
 # Sincroniza as variáveis de ambiente do backend na Vercel a partir dos
 # secrets do GitHub, reutilizando scripts/sync-vercel-env.sh.
 #
+# Sincroniza os dois projetos de API: o de produção (alvo escolhido no input) e
+# o de staging, que é publicado com --prod e por isso consome sempre o alvo
+# "production" do próprio projeto.
+#
 # Execução manual: aba Actions -> "Sync Vercel env" -> Run workflow
 # (escolha o ambiente: production | preview | development).
 #
@@ -8,6 +12,7 @@
 #   LLM_PROVIDER, LLM_MODEL, OLLAMA_MODEL, OLLAMA_BASE_URL, OLLAMA_API_KEY
 #   KB_BACKEND, KB_REPO, KB_BRANCH, KB_ROOT, KB_TOKEN, KB_WRITE_TOKEN, KB_CACHE_TTL
 #   VERCEL_TOKEN_API, VERCEL_ORG_ID_API, VERCEL_PROJECT_ID_API
+#   VERCEL_TOKEN_API_PREVIEW, VERCEL_PROJECT_ID_API_PREVIEW
 name: Sync Vercel env
 
 on:
@@ -30,11 +35,8 @@ jobs:
       - name: Instala o Vercel CLI
         run: npm i -g vercel@59
 
-      - name: Monta .env a partir dos secrets e sincroniza
+      - name: Monta o .env a partir dos secrets
         env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN_API }}
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID_API }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_API }}
           LLM_PROVIDER: ${{ secrets.LLM_PROVIDER }}
           LLM_MODEL: ${{ secrets.LLM_MODEL }}
           OLLAMA_MODEL: ${{ secrets.OLLAMA_MODEL }}
@@ -64,4 +66,19 @@ jobs:
             fi
           done
           test -s .env
-          ./scripts/sync-vercel-env.sh "${{ inputs.environment }}"
+
+      - name: Sincroniza o projeto de produção (`chat-csa-api`)
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN_API }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID_API }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_API }}
+        run: ./scripts/sync-vercel-env.sh "${{ inputs.environment }}"
+
+      - name: Sincroniza o projeto de staging (`chat-csa-api-preview`)
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN_API_PREVIEW }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID_API }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_API_PREVIEW }}
+        run: |
+          # O staging é publicado com --prod: o alvo é o "production" do projeto.
+          ./scripts/sync-vercel-env.sh production
