@@ -216,3 +216,159 @@ export async function chatCompletion(
   const data = await res.json();
   return data.choices?.[0]?.message?.content || "";
 }
+
+// ─── Autenticação admin ──────────────────────────────────────────────────────
+
+export type AuthToken = {
+  access_token: string;
+  token_type: string;
+  user: { username: string; role: string };
+};
+
+/** Faz login admin e retorna o token de acesso. */
+export async function authLogin(
+  username: string,
+  password: string,
+): Promise<AuthToken> {
+  const base = getConsumerUrl();
+  let res: Response;
+
+  try {
+    res = await fetch(`${base.replace(/\/$/, "")}/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    });
+  } catch {
+    throw new Error(
+      `Não foi possível conectar ao servidor em ${base}. Verifique se o backend está em execução.`,
+    );
+  }
+
+  if (!res.ok) {
+    const fallback = "Usuário ou senha inválidos.";
+    const text = await res.text();
+    try {
+      const payload = JSON.parse(text);
+      throw new Error(payload?.detail || payload?.error || fallback);
+    } catch (e) {
+      if (e instanceof SyntaxError) throw new Error(fallback);
+      throw e;
+    }
+  }
+
+  return res.json();
+}
+
+// ─── Base de conhecimento (/kb/*) ────────────────────────────────────────────
+
+export type KBListResult = {
+  prefix: string;
+  paths: string[];
+};
+
+export type KBUploadFileResult = {
+  path: string;
+  ok: boolean;
+  size?: number;
+  converted?: boolean;
+  error?: string;
+};
+
+export type KBUploadResult = {
+  ok: boolean;
+  sha?: string;
+  files: KBUploadFileResult[];
+  error?: string;
+};
+
+/**
+ * Lista caminhos disponíveis na base de conhecimento.
+ * Requer token admin obtido via `authLogin`.
+ */
+export async function kbList(
+  token: string,
+  prefix = "",
+): Promise<KBListResult> {
+  const base = getConsumerUrl();
+  let res: Response;
+
+  try {
+    res = await fetch(
+      `${base.replace(/\/$/, "")}/kb/list?prefix=${encodeURIComponent(prefix)}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+  } catch {
+    throw new Error(`Não foi possível conectar ao servidor em ${base}.`);
+  }
+
+  if (!res.ok) throw new Error(await responseErrorMessage(res));
+  return res.json();
+}
+
+/**
+ * Retorna a URL para download/visualização do arquivo original.
+ * O endpoint devolve os bytes com o content-type correto.
+ */
+export function kbFileUrl(token: string, path: string): string {
+  const base = getConsumerUrl();
+  // O token vai na query string para uso em <a href> / window.open
+  return `${base.replace(/\/$/, "")}/kb/file?path=${encodeURIComponent(path)}&token=${encodeURIComponent(token)}`;
+}
+
+/**
+ * Remove um arquivo da base de conhecimento via commit atômico.
+ * Exige token admin obtido via `authLogin`.
+ */
+export async function kbDelete(token: string, path: string): Promise<{ ok: boolean; sha?: string }> {
+  const base = getConsumerUrl();
+  let res: Response;
+
+  try {
+    res = await fetch(
+      `${base.replace(/\/$/, "")}/kb/file?path=${encodeURIComponent(path)}`,
+      { method: "DELETE", headers: { Authorization: `Bearer ${token}` } },
+    );
+  } catch {
+    throw new Error(`Não foi possível conectar ao servidor em ${base}.`);
+  }
+
+  if (!res.ok) throw new Error(await responseErrorMessage(res));
+  return res.json();
+}
+
+/**
+ * Faz upload de um lote de arquivos para a base de conhecimento.
+ * `files` é uma lista de File (selecionados via <input type="file">).
+ * `message` é a mensagem do commit (opcional).
+ */
+export async function kbUpload(
+  token: string,
+  files: File[],
+  message?: string,
+): Promise<KBUploadResult> {
+  const base = getConsumerUrl();
+  const formData = new FormData();
+
+  for (const file of files) {
+    formData.append("files", file, file.name);
+  }
+
+  if (message) {
+    formData.append("message", message);
+  }
+
+  let res: Response;
+  try {
+    res = await fetch(`${base.replace(/\/$/, "")}/kb/upload`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+    });
+  } catch {
+    throw new Error(`Não foi possível conectar ao servidor em ${base}.`);
+  }
+
+  if (!res.ok) throw new Error(await responseErrorMessage(res));
+  return res.json();
+}

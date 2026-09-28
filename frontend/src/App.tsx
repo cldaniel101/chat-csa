@@ -1,6 +1,7 @@
 import "./App.css";
 import { CSAChatWidget } from "./components/chat/CSAChatWidget";
-import { useEffect } from "react";
+import { KBExplorer } from "./components/kb/KBExplorer";
+import { useEffect, useState } from "react";
 
 function isEmbedMode() {
   if (typeof window === "undefined") {
@@ -14,6 +15,8 @@ function isEmbedMode() {
 // o ingester tem painel próprio em FastHTML no backend (/admin).
 export default function App() {
   const embedded = isEmbedMode();
+  // Controla se o widget de chat está aberto (acionado pelo KBExplorer).
+  const [chatOpen, setChatOpen] = useState(false);
 
   useEffect(() => {
     document.documentElement.classList.toggle("csa-embed-mode", embedded);
@@ -25,18 +28,17 @@ export default function App() {
   return (
     <div className={`app${embedded ? " app--embedded" : ""}`}>
       <main className="main">
-        {!embedded && (
-          /* Mock: captura (full-page) do portal real da CSA como fundo,
-             para simular o botão do chat embutido na página do portal. */
-          <img
-            className="csa-page-backdrop"
-            src="/csa-portal.png"
-            alt=""
-            aria-hidden="true"
-            draggable={false}
-          />
+        {embedded ? (
+          /* Modo embed: somente o widget flutuante, sem explorador. */
+          <CSAChatWidget embedded={true} />
+        ) : (
+          <>
+            {/* Modo desktop: explorador de arquivos como tela principal. */}
+            <KBExplorer onStartChat={() => setChatOpen(true)} />
+            {/* Widget do chatbot — controlado pelo explorador. */}
+            <CSAChatWidget embedded={false} initialOpen={chatOpen} onOpenChange={setChatOpen} />
+          </>
         )}
-        <CSAChatWidget embedded={embedded} />
       </main>
     </div>
   );

@@ -35,6 +35,10 @@ type ChatMessage = {
 
 type CSAChatWidgetProps = {
   embedded?: boolean;
+  /** Quando true, abre o widget automaticamente (ex.: acionado pelo KBExplorer). */
+  initialOpen?: boolean;
+  /** Chamado quando o estado aberto/fechado muda. */
+  onOpenChange?: (open: boolean) => void;
 };
 
 type SourceEntry = {
@@ -285,7 +289,7 @@ function AgentStatusLine({
   );
 }
 
-export function CSAChatWidget({ embedded = false }: CSAChatWidgetProps) {
+export function CSAChatWidget({ embedded = false, initialOpen = false, onOpenChange }: CSAChatWidgetProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -296,9 +300,18 @@ export function CSAChatWidget({ embedded = false }: CSAChatWidgetProps) {
   const reasoningRef = useRef("");
   const stepsRef = useRef<AgentToolStep[]>([]);
   const [health, setHealth] = useState<ChatHealth>("checking");
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initialOpen);
   const messagesRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Sincroniza abertura externa (KBExplorer → iniciar chatbot).
+  useEffect(() => {
+    if (initialOpen && !open) {
+      setOpen(true);
+    }
+  // Apenas quando initialOpen muda para true — não controla fechamento
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialOpen]);
 
   useEffect(() => {
     if (!embedded || window.parent === window) return;
@@ -311,7 +324,9 @@ export function CSAChatWidget({ embedded = false }: CSAChatWidgetProps) {
       },
       "*",
     );
-  }, [embedded, open]);
+    // Notifica o pai (App.tsx) para sincronizar o estado
+    onOpenChange?.(open);
+  }, [embedded, open, onOpenChange]);
 
   useEffect(() => {
     const controller = new AbortController();
