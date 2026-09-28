@@ -325,8 +325,8 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
     }
   }, [token, onLogout]);
 
-  // oxlint-disable-next-line set-state-in-effect -- carregamento assíncrono de dados externos é o padrão correto aqui
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- carregamento assíncrono de dados externos é o padrão correto aqui
     void loadFiles();
   }, [loadFiles]);
 
