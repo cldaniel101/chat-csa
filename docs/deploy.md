@@ -88,7 +88,7 @@ Para o preview da Vercel, configure ao menos `KB_BACKEND=github`, `KB_REPO`, `KB
 
 O par de staging é sincronizado **sempre** no alvo `production` do próprio projeto, porque `development` publica com `--prod` — o input do workflow vale só para o projeto principal.
 
-Enquanto os secrets `VERCEL_TOKEN_API_PREVIEW`/`VERCEL_TOKEN_FRONTEND_PREVIEW` não existirem, o workflow **pula** o deploy de staging com um aviso (`::warning::`) em vez de falhar; ao criar os tokens, ele passa a publicar sozinho.
+Enquanto o secret `VERCEL_TOKEN_API_PREVIEW` não existir, o workflow **pula** o sync do projeto de staging com um aviso (`::warning::`) em vez de falhar; ao criar o token, o passo volta a rodar sozinho.
 
 **Mudar variável de ambiente exige novo deploy**: a Vercel injeta as variáveis na criação do deployment; um deployment antigo continua com as antigas. Foi o que aconteceu com o `chat-csa-api-preview`, que subiu sem `LLM_*`/`KB_*` e respondia 500 ("All connection attempts failed" no site) até ser reenviado depois do sync.
 

@@ -3,7 +3,8 @@
 #
 # Sincroniza os dois projetos de API: o de produção (alvo escolhido no input) e
 # o de staging, que é publicado com --prod e por isso consome sempre o alvo
-# "production" do próprio projeto.
+# "production" do próprio projeto. Sem o token project-scoped do staging, esse
+# passo é pulado com aviso (mesmo critério do deploy.yml).
 #
 # Execução manual: aba Actions -> "Sync Vercel env" -> Run workflow
 # (escolha o ambiente: production | preview | development).
@@ -29,6 +30,10 @@ permissions:
 jobs:
   sync:
     runs-on: ubuntu-latest
+    # Sem o token project-scoped do staging, o passo do staging é pulado com
+    # aviso em vez de falhar com "No existing credentials found".
+    env:
+      STAGING_READY: ${{ secrets.VERCEL_TOKEN_API_PREVIEW != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -74,7 +79,13 @@ jobs:
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_API }}
         run: ./scripts/sync-vercel-env.sh "${{ inputs.environment }}"
 
+      - name: "Aviso: staging sem token"
+        if: env.STAGING_READY != 'true'
+        run: |
+          echo "::warning::Secret VERCEL_TOKEN_API_PREVIEW ausente — sync do staging pulado. Crie o token project-scoped (docs/deploy.md, 'Bootstrap')."
+
       - name: Sincroniza o projeto de staging (`chat-csa-api-preview`)
+        if: env.STAGING_READY == 'true'
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN_API_PREVIEW }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID_API }}
