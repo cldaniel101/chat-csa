@@ -1,7 +1,7 @@
 ---
 name: csa-query
 description: Responde perguntas sobre SISU/UEFS com recuperação do bundle e fallback no portal oficial
-allowed-tools: kb_list kb_read web_csa_fetch web_csa_search
+allowed-tools: kb_list kb_read
 ---
 
 # csa-query — Fluxo de resposta do Consumer
@@ -15,18 +15,10 @@ Pergunta: *"Quais documentos preciso para matrícula?"* →
    para ler o conteúdo (csv/tsv viram tabela; PDFs viram texto; binários avisam
    o tipo).
 2. Achou resposta completa e atualizada? → responda direto.
-3. Não achou, pareceu incompleta ou desatualizada → portal. Não pare em uma
-   única chamada de busca:
-   - `web_csa_search(query="documentos matrícula")`
-   - `web_csa_search(query="edital matrícula")`
-   - `web_csa_search(query="<termos do usuário>")`
-   - `web_csa_search(categoria="sisu")` quando a pergunta for sobre SiSU
-   Depois faça `web_csa_fetch(url_da_pagina)` nas páginas prováveis e, se for
-   PDF, `web_csa_fetch(url_do_pdf, extract_text=True)`.
-   Se o retorno trouxer `text_error`, não use o PDF como evidência interna:
-   informe a limitação e continue buscando outra fonte oficial.
-   Se o retorno trouxer `error`, trate a URL como inválida para citação; siga
-   `suggested_urls`, se houver, e continue a busca antes de declarar ausência.
+3. Não achou, pareceu incompleta ou desatualizada → **com as ferramentas do
+   portal ligadas**, siga a skill `csa-portal-lookup` (busca persistente: várias
+   consultas, páginas prováveis e PDFs). Sem o portal, responda com o que a base
+   cobre e diga que a informação não está nela — sem inventar.
 4. Responda extrativo:
 
 ```markdown
@@ -43,21 +35,14 @@ Em caso de divergência, prevalece o edital oficial.
 
 ## Busca persistente antes de "não encontrado"
 
-- `web_csa_search` é um índice de catálogo; ele pode não conter termos que
-  aparecem apenas no corpo de PDFs. Não use resultado vazio da busca como prova
-  de ausência.
-- Para perguntas sobre documentação de matrícula, ações afirmativas, indígenas,
-  renda ou vínculo de trabalho, priorize páginas e PDFs de `downloads`,
-  `documentos para matrícula`, `edital`, `vagas reservadas` e anexos.
-- Ao ler PDF, procure no texto por variações do termo do usuário. Exemplo:
-  "TRABALHADORES ASSALARIADOS indígenas" deve acionar buscas por
-  `trabalhadores assalariados`, `assalariados`, `comprovantes de rendimentos`,
-  `indígenas aldeados`, `vagas reservadas`, `contracheques`, `CTPS`.
-- Se encontrar uma seção ampla e uma subseção específica, responda combinando
-  as duas, deixando claro o escopo. Ex.: documentação específica de indígenas
-  + comprovantes de renda para trabalhadores assalariados.
+- Liste a base inteira com `kb_list` e leia os arquivos prováveis antes de
+  concluir; com o portal ligado, siga também a busca persistente da skill
+  `csa-portal-lookup`.
+- Para documentação de matrícula, ações afirmativas, indígenas, renda ou vínculo
+  de trabalho, procure na base por arquivos e seções relacionadas: `edital`,
+  `downloads`, `documentos para matrícula`, `vagas reservadas`, `anexo`.
 - Se ainda não encontrou, diga "não encontrei depois de consultar..." e liste
-  as URLs lidas. Isso é diferente de "não existe".
+  os caminhos/URLs lidos. Isso é diferente de "não existe".
 
 ## Disciplina de citação
 
@@ -103,16 +88,6 @@ Se duas fontes conflitarem:
 3. Diga explicitamente: *"O edital (fonte [1]) prevalece sobre a página
    informativa (fonte [2]) neste ponto."*
 
-### Status de PDF nas referências
-
-Ao citar um PDF, inclua o status de extração ao final da referência:
-
-```
-[N] Título — URL (acesso YYYY-MM-DD HH:mm) [PDF: completo]
-[N] Título — URL (acesso YYYY-MM-DD HH:mm) [PDF: parcial]
-[N] Título — URL (acesso YYYY-MM-DD HH:mm) [PDF: falhou]
-```
-
 ### Conceitos sem `resource:` (upload avulso)
 
 Conceitos criados pelo upload avulso podem não ter `resource:`/`url:` nem a
@@ -123,12 +98,6 @@ seção `Citations`. Para eles:
 2. **Nunca invente uma URL** para o conceito.
 3. Na lista final, registre o conceito como título + caminho, sem horário de
    acesso (não houve requisição externa).
-
-- `[PDF: completo]` → `pdf_extraction_status == "completed"` — texto verificável.
-- `[PDF: parcial]` → `pdf_extraction_status == "partial"` — texto insuficiente;
-  não use como evidência interna de afirmação.
-- `[PDF: falhou]` → `pdf_extraction_status == "failed"` ou `text_error` presente —
-  não afirme conteúdo interno; informe a limitação ao usuário.
 
 ### Não reutilize citações
 
@@ -150,9 +119,9 @@ seção `Citations`. Para eles:
 - Em saudações, agradecimentos e outras mensagens sociais curtas, não consulte
   fontes e não inclua a seção `Fontes:`.
 - Só inclua `Fontes:` quando uma fonte tiver sido efetivamente aberta neste
-  turno com `kb_read` ou `web_csa_fetch`.
+  turno (`kb_list`/`kb_read` e, com o portal ligado, as ferramentas da skill
+  `csa-portal-lookup`).
 - Sempre cite a URL da página/PDF que você realmente leu neste turno.
 - Só afirme o que está na fonte; conflito entre fontes = dizer.
 - Nunca invente prazos, documentos ou datas.
-- `text_error` em PDF significa falha de leitura, não ausência de conteúdo.
 - Data e hora de acesso no formato: `YYYY-MM-DD HH:mm`.

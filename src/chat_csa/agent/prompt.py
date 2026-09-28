@@ -20,7 +20,33 @@ então dá para editar skills a quente sem reiniciar.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
+
+
+def _portal_enabled() -> bool:
+    """`CHAT_CSA_PORTAL_TOOLS=1` liga as ferramentas do portal CSA."""
+    return os.getenv("CHAT_CSA_PORTAL_TOOLS", "0").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _skill_requires_portal(content: str) -> bool:
+    """Diz se a skill declara `requires: portal` no frontmatter.
+
+    Lê o bloco `--- ... ---` inicial sem dependência de YAML. Skill que exige o
+    portal não é carregada quando `CHAT_CSA_PORTAL_TOOLS` está desligado — caso
+    contrário o prompt anuncia `web_csa_*` e o modelo tenta chamar ferramenta
+    que não está registrada.
+    """
+    if not content.startswith("---"):
+        return False
+    end = content.find("\n---", 3)
+    if end == -1:
+        return False
+    for line in content[3:end].splitlines():
+        key, _, value = line.partition(":")
+        if key.strip() == "requires":
+            return "portal" in value.lower()
+    return False
 
 
 def load_agents_md(root: Path) -> str | None:
@@ -34,7 +60,12 @@ def load_agents_md(root: Path) -> str | None:
     return None
 
 
-def load_skills(root: Path) -> list[tuple[str, str]]:
+def load_skills(root: Path, portal_on: bool = False) -> list[tuple[str, str]]:
+    """Skills do config dir, em ordem alfabética.
+
+    Skills marcadas com `requires: portal` só entram quando as ferramentas do
+    portal estão ligadas (ver `_skill_requires_portal`).
+    """
     skills_dir = root / "skills"
     if not skills_dir.is_dir():
         return []
@@ -53,6 +84,8 @@ def load_skills(root: Path) -> list[tuple[str, str]]:
             content = skill_md.read_text(encoding="utf-8", errors="replace")
         except Exception:
             continue
+        if not portal_on and _skill_requires_portal(content):
+            continue
         out.append((child.name, content))
     return out
 
@@ -70,15 +103,19 @@ def build_system_prompt(root: Path, extra: str | None = None) -> str:
             - Cite sempre a URL do frontmatter (`resource:`/`url:`) da fonte — nunca o caminho do arquivo.
             - Seja conciso e nunca invente prazos, documentos ou datas.
             - Se uma ferramenta falhar, explique o erro e responda com o que foi possível confirmar.
+            - A seção `# Ferramentas` no fim deste prompt lista as ferramentas reais:
+              não tente chamar nenhuma que não esteja lá.
             """
         ).strip()
     )
+
+    portal_on = _portal_enabled()
 
     agents_md = load_agents_md(root)
     if agents_md:
         parts.append(f"# Project Instructions ({root}/AGENTS.md)\n\n{agents_md.strip()}")
 
-    skills = load_skills(root)
+    skills = load_skills(root, portal_on=portal_on)
     if skills:
         parts.append(f"# Skills loaded from {root}/skills/ ({len(skills)} found)")
         for name, content in skills:
@@ -88,9 +125,6 @@ def build_system_prompt(root: Path, extra: str | None = None) -> str:
         parts.append(extra.strip())
 
     # Dica de uso das ferramentas (web_csa_* só quando ligadas)
-    portal_on = __import__("os").getenv("CHAT_CSA_PORTAL_TOOLS", "0").strip().lower() in {
-        "1", "true", "yes", "on",
-    }
     tool_lines = [
         "# Ferramentas",
         "- kb_list(prefix): lista os caminhos disponíveis na base de conhecimento remota",

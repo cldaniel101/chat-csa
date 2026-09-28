@@ -2,6 +2,7 @@
 name: csa-portal-lookup
 description: Localiza documentos e dados no portal CSA (listas de aprovados, editais, cronogramas) usando web_csa_search/fetch
 allowed-tools: kb_list kb_read web_csa_fetch web_csa_search
+requires: portal
 ---
 
 # csa-portal-lookup — Busca de dados direto no portal CSA
@@ -61,3 +62,30 @@ extrai texto de PDF com `extract_text=True`) e filtre o texto você mesmo.
 - Antes de dizer "não encontrei", cite quais páginas e PDFs foram lidos e quais
   termos principais foram buscados.
 - `text_error` em PDF significa que a leitura falhou; não trate como lista vazia.
+
+## Antes de declarar ausência (busca persistente)
+
+- `web_csa_search` é um índice de catálogo: pode não conter termos que aparecem
+  apenas no corpo de PDFs. Resultado vazio **não** é prova de ausência.
+- Percorra as páginas prováveis da seleção — `inicial`, `downloads`,
+  `matricula`, `documentos`, `regular`, `listaespera`, `editais` — e siga os
+  links de PDF, sempre com `web_csa_fetch(url_pdf, extract_text=True)`.
+- Procure no texto variações com/sem acento, singular/plural e termos de seção
+  relacionados. Ex.: para "trabalhadores assalariados indígenas", procure
+  também `indígenas aldeados`, `vagas reservadas`, `comprovantes de rendimentos`,
+  `trabalhadores`, `assalariados`, `CTPS`, `contracheques`.
+- Só declare ausência depois de ler os PDFs/páginas mais prováveis, listando
+  exatamente quais URLs foram consultadas.
+
+## Campos de erro e status nos retornos
+
+- `text_error` em `web_csa_fetch(..., extract_text=True)`: a leitura do PDF
+  falhou — não afirme conteúdo interno; informe a limitação e cite a URL.
+- `error`: aquela URL não é fonte válida e não deve aparecer em `Fontes:`; siga
+  `suggested_urls`, quando existirem, antes de concluir.
+- `pdf_extraction_status` (`completed` | `partial` | `failed`): entre na citação
+  como `[PDF: completo]`, `[PDF: parcial]` ou `[PDF: falhou]`;
+  `partial`/`failed` não servem como evidência interna de afirmação.
+- `is_official: true` (ou URL com `/edital`, `/downloads`): a fonte é edital
+  oficial e **prevalece** sobre página informativa — em conflito, diga qual
+  prevalece e por quê.
