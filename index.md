@@ -92,3 +92,7 @@ Documentos oficiais da edição SiSU/UEFS 2026 (`sisu261`), convertidos do porta
 ## testes-upload
 
 * [RELATORIO E2E DO UPLOAD](testes-upload/relatorio-e2e-2026.md) - Documento de teste da conversao automatica para Markdown.
+
+## geral
+
+* [hello calabreso](geral/hello_calabreso.md) - hello calabreso
