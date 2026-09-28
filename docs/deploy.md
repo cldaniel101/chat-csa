@@ -12,6 +12,10 @@ O sistema tem dois sites publicados: a **API** (que responde às perguntas) e o 
 |---|---|---|---|
 | `chat-csa-api` | raiz do repo | `api/index.py` (`@vercel/python`) | `https://chat-csa-api.vercel.app` |
 | `chat-csa-web` | `frontend/` | SPA Vite + React | definida no painel da Vercel |
+| `chat-csa-api-preview` | raiz do repo | idem (staging) | `https://chat-csa-api-preview.vercel.app` |
+| `chat-csa-web-preview` | `frontend/` | idem (staging) | `https://chat-csa-web-preview.vercel.app` |
+
+Cada ambiente tem o **seu par** de projetos, porque um deploy `--prod` promove todos os domínios do projeto: o par principal serve produção (`main`) e o par de staging serve o preview (`development`), publicado com `--prod` para ter URL fixa.
 
 O `vercel.json` da raiz configura o build da função com `includeFiles: ["src/chat_csa/**", ".consumer/**"]` e faz rewrite de todas as rotas para `api/index.py`. O `api/index.py` insere `src/` no `sys.path`, aponta `AGENT_CONFIG_DIR` para o `.consumer` embutido e expõe o app como `handler`. O `frontend/vercel.json` só faz o rewrite de SPA para `index.html`.
 
@@ -19,7 +23,7 @@ A base de conhecimento **não** é embutida no deploy: ela é lida em runtime pe
 
 ## Escopo e propriedade
 
-Os dois projetos vivem no **escopo de um time** — `dev-davmg`, id `team_a1g9RHULTlOEdkqTUhGZwhGF` —, não no escopo pessoal de quem os criou: o time é o dono e a conta pessoal é apenas um acesso. É isso que faz o deploy sobreviver à saída de uma pessoa, **desde que o time tenha mais de um owner**. A transferência de um projeto entre escopos é feita no painel da Vercel (Project → Settings → Transfer).
+Os quatro projetos vivem no **escopo de um time** — `dev-davmg`, id `team_a1g9RHULTlOEdkqTUhGZwhGF` —, não no escopo pessoal de quem os criou: o time é o dono e a conta pessoal é apenas um acesso. É isso que faz o deploy sobreviver à saída de uma pessoa, **desde que o time tenha mais de um owner**. A transferência de um projeto entre escopos é feita no painel da Vercel (Project → Settings → Transfer).
 
 Os secrets `VERCEL_ORG_ID_*` precisam conter o id desse time. Se um projeto for movido para um escopo pessoal (ou o secret apontar para um), o deploy falha com `Project not found` mesmo com token e project id válidos — foi exatamente o que aconteceu em 27/09/2026, quando o `VERCEL_ORG_ID_API` ficou com um id de escopo pessoal.
 
@@ -28,25 +32,28 @@ O `.vercel/project.json` versionado (raiz e `frontend/`) existe para o **deploy 
 ### Se o acesso ao deploy for perdido
 
 1. Autenticar (`npx vercel login`) com uma conta que tenha acesso ao time.
-2. Localizar ou recriar os dois projetos — `chat-csa-api` na raiz e `chat-csa-web` em `frontend/` — com `npx vercel link` em cada diretório.
-3. Atualizar os secrets do repositório com os ids dos `project.json` recém-gerados: `VERCEL_ORG_ID_API`, `VERCEL_ORG_ID_FRONTEND`, `VERCEL_PROJECT_ID_API`, `VERCEL_PROJECT_ID_FRONTEND`, além de tokens project-scoped novos em `VERCEL_TOKEN_API`/`VERCEL_TOKEN_FRONTEND`.
-4. Rodar o workflow **Sync Vercel env** (`workflow_dispatch`) para reenviar as variáveis de runtime à Vercel.
-5. Confirmar com um push em `development` (preview) e, depois, em `main` (produção).
+2. Localizar ou recriar os quatro projetos — `chat-csa-api` (raiz), `chat-csa-web` (`frontend/`), `chat-csa-api-preview` (raiz) e `chat-csa-web-preview` (`frontend/`) — com `npx vercel link` em cada diretório.
+3. Atualizar os secrets do repositório com os ids dos `project.json` recém-gerados: `VERCEL_PROJECT_ID_API`, `VERCEL_PROJECT_ID_FRONTEND`, `VERCEL_PROJECT_ID_API_PREVIEW`, `VERCEL_PROJECT_ID_FRONTEND_PREVIEW` e `VERCEL_ORG_ID_API`/`VERCEL_ORG_ID_FRONTEND` (o id do time), além de tokens project-scoped novos em `VERCEL_TOKEN_API`, `VERCEL_TOKEN_FRONTEND`, `VERCEL_TOKEN_API_PREVIEW` e `VERCEL_TOKEN_FRONTEND_PREVIEW`.
+4. Recriar a variável de produção do site de staging (`chat-csa-web-preview` → Production → `VITE_CONSUMER_URL=https://chat-csa-api-preview.vercel.app`).
+5. Rodar o workflow **Sync Vercel env** (`workflow_dispatch`) para reenviar as variáveis de runtime aos dois projetos de API.
+6. Confirmar com um push em `development` (staging) e, depois, em `main` (produção).
 
 ## Pipeline (`.github/workflows/deploy.yml`)
 
 Disparo: push em `main` ou `development`, e pull requests. A concorrência é por ref (`deploy-${{ github.ref }}`, cancel-in-progress), o workflow tem `contents: read` e roda dois jobs:
 
 1. **`checks`** — `npm ci`, `npx oxlint src` e `npm run build` em `frontend/`; `pip install ruff && ruff check src` no backend. Qualquer falha bloqueia o deploy.
-2. **`deploy`** — matriz com um item por projeto (`api` na raiz, `frontend/` em `frontend`). Push em `main` → `vercel deploy --prod`; qualquer outro ref → deploy de preview. PRs de fork são excluídas da condição porque não recebem secrets. O build é remoto na Vercel (sem `--prebuilt`) e o CLI é fixado em `vercel@59`.
+2. **`deploy`** — matriz com um item por projeto (`api` na raiz, `frontend/` em `frontend`), com três caminhos: push em `main` → `vercel deploy --prod` no par principal; push em `development` → `vercel deploy --prod` no par de **staging**; pull request → preview descartável no par principal. PRs de fork são excluídas da condição porque não recebem secrets. O build é remoto na Vercel (sem `--prebuilt`) e o CLI é fixado em `vercel@59`.
 
 Os tokens são **project-scoped** e o workflow não usa o link `.vercel/project.json`; a identificação vem das variáveis `VERCEL_ORG_ID`/`VERCEL_PROJECT_ID` do passo.
 
 | Secret (GitHub) | Uso |
 |---|---|
-| `VERCEL_TOKEN_API` / `VERCEL_TOKEN_FRONTEND` | token do projeto Vercel |
-| `VERCEL_ORG_ID_API` / `VERCEL_ORG_ID_FRONTEND` | id do escopo do projeto |
-| `VERCEL_PROJECT_ID_API` / `VERCEL_PROJECT_ID_FRONTEND` | id do projeto |
+| `VERCEL_TOKEN_API` / `VERCEL_TOKEN_FRONTEND` | token do projeto do par principal |
+| `VERCEL_TOKEN_API_PREVIEW` / `VERCEL_TOKEN_FRONTEND_PREVIEW` | token do projeto do par de staging |
+| `VERCEL_ORG_ID_API` / `VERCEL_ORG_ID_FRONTEND` | id do escopo (time) dono dos quatro projetos |
+| `VERCEL_PROJECT_ID_API` / `VERCEL_PROJECT_ID_FRONTEND` | id de cada projeto do par principal |
+| `VERCEL_PROJECT_ID_API_PREVIEW` / `VERCEL_PROJECT_ID_FRONTEND_PREVIEW` | id de cada projeto do par de staging |
 | `LLM_PROVIDER`, `LLM_MODEL`, `OLLAMA_MODEL`, `OLLAMA_BASE_URL`, `OLLAMA_API_KEY` | variáveis do backend sincronizadas para a Vercel |
 | `KB_BACKEND`, `KB_REPO`, `KB_BRANCH`, `KB_ROOT`, `KB_TOKEN`, `KB_WRITE_TOKEN`, `KB_CACHE_TTL` | base de conhecimento remota sincronizada para a Vercel |
 
@@ -54,13 +61,9 @@ Os tokens são **project-scoped** e o workflow não usa o link `.vercel/project.
 
 O frontend é um build estático: o Vite **embute** a URL da API em tempo de build (`import.meta.env.VITE_CONSUMER_URL`), e a variável de ambiente tem prioridade sobre o `.env`. O `.env.production` versionado aponta para a produção (`https://chat-csa-api.vercel.app`) — o correto para o deploy de `main`.
 
-Para o preview do site falar com o preview da API — e não com a produção — o projeto `chat-csa-web` tem a variável de ambiente **Preview** `VITE_CONSUMER_URL=https://chat-csa-api-development.vercel.app`. Esse alias precisa apontar para o último deployment da API, e **hoje isso é manual**:
+O preview vive no **par de staging** (`chat-csa-api-preview` / `chat-csa-web-preview`), publicado com `--prod` a cada push em `development`: são produções paralelas, com URL fixa, usadas só como preview. O site de staging é compilado com `VITE_CONSUMER_URL=https://chat-csa-api-preview.vercel.app` (variável de ambiente de **Production** do próprio projeto), então ele sempre fala com a API de staging — sem alias e sem passo manual.
 
-```bash
-npx vercel alias set <deployment-da-api>.vercel.app chat-csa-api-development.vercel.app
-```
-
-Os tokens project-scoped do CI não conseguem criar alias (`User not found.`), por isso o workflow não move o alias. Sem essa ligação, o site de preview chama a produção e parece estar na versão antiga do backend.
+Os previews de PR continuam no par principal, com URL descartável; o site usa o `VITE_CONSUMER_URL` do ambiente **Preview** do `chat-csa-web`, que também aponta para a API de staging.
 
 Em qualquer URL de preview, dá para apontar o site para uma API específica na hora: `?consumerUrl=https://<deployment-da-api>.vercel.app` (lido por `runtimeConsumerUrl()` em `frontend/src/api/client.ts`).
 
