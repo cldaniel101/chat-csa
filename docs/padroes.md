@@ -22,6 +22,8 @@ O padrão relevante é o **menor privilégio por padrão**: o agente não recebe
 
 `agent/prompt.py` compõe o system prompt a cada request: identidade base + `AGENTS.md` do config dir + todos os `skills/*/SKILL.md` (ordenados) + blocos extras. Não há cache; criar uma pasta em `.consumer/skills/` é suficiente para adicionar comportamento. O motivo é operacional: curadoria e ajuste de prompt são atividades de conteúdo, não de código — editar um `.md` não exige rebuild nem restart. O layout espelha o "AGENTS home" (um diretório com `AGENTS.md` + `skills/`) e é por isso que o `.consumer` fica na raiz, fora do pacote.
 
+Skill com `requires: portal` no frontmatter só entra no prompt quando `CHAT_CSA_PORTAL_TOOLS=1` — sem isso o prompt anunciaria `web_csa_*` e o modelo tentaria chamar ferramenta que não está registrada (a UI mostra o passo com erro). O fluxo que usa o portal vive inteiro nas skills marcadas; `AGENTS.md`/`csa-query` só apontam para elas quando ligadas.
+
 ## 4. Cache de QA determinístico (referência, não resposta)
 
 `qa_cache.py` lê a FAQ curada (Markdown com frontmatter + entradas `FAQ-XXX`) do branch `data` pelo cliente `chat_csa.kb` — prefixo `perguntas-frequentes/`, cache TTL em memória — e a transforma em `QACacheEntry`/`QACacheHit` — dataclasses **frozen**, ou seja, imutáveis. O ranking usa `difflib.SequenceMatcher` com normalização, remoção de stopwords e limiar configurável (`CHAT_CSA_QA_CACHE_MIN_SCORE`, default `0.68`).
