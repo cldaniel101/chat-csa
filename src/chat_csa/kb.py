@@ -213,6 +213,9 @@ class _Backend:
     def write(self, files: list[tuple[str, bytes]], message: str) -> KBCommit:  # pragma: no cover
         raise NotImplementedError
 
+    def delete(self, path: str, message: str) -> KBCommit:  # pragma: no cover - interface
+        raise NotImplementedError
+
 
 class _GithubBackend(_Backend):
     """Backend de produção: GitHub Contents API + Git Data API.
@@ -430,6 +433,51 @@ class _GithubBackend(_Backend):
         self._check(ref_resp, f"atualizar o branch {branch!r}")
         return KBCommit(sha=sha, paths=tuple(rel for rel, _ in files))
 
+    # -- delete -------------------------------------------------------------
+
+    def delete(self, path: str, message: str) -> KBCommit:
+        """Remove um arquivo do branch via commit atômico (sha: null na tree)."""
+        repo, branch, root = self._settings.repo, self._settings.branch, self._settings.root
+        token = self._settings.write_token
+        if not token:
+            raise KBConfigError(
+                "KB_WRITE_TOKEN (ou KB_TOKEN com escopo de escrita) não configurado; "
+                "a base é somente leitura."
+            )
+        base_commit = self._ref_commit_sha(token)
+        commit_resp = self._request("GET", f"/repos/{repo}/git/commits/{base_commit}", token=token)
+        self._check(commit_resp, "ler o commit base do branch")
+        base_tree = commit_resp.json()["tree"]["sha"]
+
+        full_path = _join_root(path, root)
+        # sha: null marca deleção na Git Data API
+        tree_resp = self._request(
+            "POST",
+            f"/repos/{repo}/git/trees",
+            token=token,
+            json={
+                "base_tree": base_tree,
+                "tree": [{"path": full_path, "mode": "100644", "type": "blob", "sha": None}],
+            },
+        )
+        self._check(tree_resp, f"criar tree de remoção de {path!r}")
+        new_commit_resp = self._request(
+            "POST",
+            f"/repos/{repo}/git/commits",
+            token=token,
+            json={"message": message, "tree": tree_resp.json()["sha"], "parents": [base_commit]},
+        )
+        self._check(new_commit_resp, f"criar commit de remoção de {path!r}")
+        sha = new_commit_resp.json()["sha"]
+        ref_resp = self._request(
+            "PATCH",
+            f"/repos/{repo}/git/refs/heads/{branch}",
+            token=token,
+            json={"sha": sha, "force": False},
+        )
+        self._check(ref_resp, f"atualizar o branch {branch!r}")
+        return KBCommit(sha=sha, paths=(path,))
+
 
 class _LocalBackend(_Backend):
     """Backend de dev/testes: mesmas operações sobre KB_LOCAL_PATH."""
@@ -468,6 +516,14 @@ class _LocalBackend(_Backend):
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(content)
         return KBCommit(sha="", paths=tuple(rel for rel, _ in files))
+
+    def delete(self, path: str, message: str) -> KBCommit:
+        """Remove o arquivo do disco local."""
+        target = self._dir() / path
+        if not target.is_file():
+            raise KBNotFoundError(f"Arquivo não encontrado na base: {path!r}.")
+        target.unlink()
+        return KBCommit(sha="", paths=(path,))
 
 
 def _make_backend(settings: KBSettings) -> _Backend:
@@ -564,6 +620,14 @@ class KnowledgeBase:
         normalized = _normalize_files(files)
         commit = self._backend.write(normalized, message)
         self._cache.invalidate_reads([path for path, _ in normalized])
+        self._cache.invalidate_lists()
+        return commit
+
+    def delete(self, path: str, message: str = "") -> KBCommit:
+        """Remove um arquivo da base e invalida o cache. Bloqueia `..`."""
+        rel = _normalize_path(path)
+        commit = self._backend.delete(rel, message or f"kb: remove {rel}")
+        self._cache.invalidate_reads([rel])
         self._cache.invalidate_lists()
         return commit
 

@@ -64,6 +64,10 @@ def _handler(state: dict):
             state["tree"] = tree
             # Aplica os blobs no estado local (scaffold de leituras seguintes).
             for item in tree["tree"]:
+                if item["sha"] is None:
+                    # Deleção: remove o arquivo do estado local se existir.
+                    state["files"].pop(item["path"], None)
+                    continue
                 number = int(item["sha"].rsplit("-", 1)[1])
                 state["files"][item["path"]] = base64.b64decode(state["blobs"][number - 1]["content"])
             return httpx.Response(201, json={"sha": "new-tree"})
@@ -303,3 +307,99 @@ def test_upload_endpoint_sources_declarado_e_invalido(monkeypatch):
     assert response.status_code == 400
     assert response.json()["ok"] is False
     fake.close()
+
+
+# ─── Testes de remoção ────────────────────────────────────────────────────────
+
+
+def test_delete_local_remove_arquivo_e_invalida_cache(kb_local):
+    """delete() remove o arquivo do disco local e invalida o cache."""
+    kb = KnowledgeBase(settings=KBSettings(backend="local", local_path=kb_local))
+
+    # Cria o arquivo primeiro
+    kb.write({"remover.md": b"# Remover"}, "kb: cria")
+    assert kb.list() == ["remover.md"]
+
+    # Remove
+    commit = kb.delete("remover.md")
+
+    assert commit.paths == ("remover.md",)
+    # Cache invalidado: list() não retorna mais o arquivo
+    assert kb.list() == []
+    kb.close()
+
+
+def test_delete_local_arquivo_inexistente_levanta_not_found(kb_local):
+    """delete() com caminho inexistente levanta KBNotFoundError."""
+    from chat_csa.kb import KBNotFoundError
+
+    kb = KnowledgeBase(settings=KBSettings(backend="local", local_path=kb_local))
+
+    with pytest.raises(KBNotFoundError):
+        kb.delete("nao-existe.md")
+    kb.close()
+
+
+def test_delete_github_commit_atomico_com_sha_null():
+    """delete() no backend GitHub cria commit com sha: null e atualiza a ref."""
+    state: dict = {"files": {"remover.md": b"# Conteudo"}}
+    kb = _fake_github(state)
+
+    commit = kb.delete("remover.md", "kb: remove remover.md")
+
+    assert commit.sha == "new-commit"
+    assert commit.paths == ("remover.md",)
+    # A tree tem a entrada com sha None (deleção)
+    tree_entries = state["tree"]["tree"]
+    assert len(tree_entries) == 1
+    assert tree_entries[0]["path"] == "remover.md"
+    assert tree_entries[0]["sha"] is None
+    # Um único PATCH na ref
+    ref_updates = [call for call in state["calls"] if call[0] == "PATCH"]
+    assert ref_updates == [("PATCH", f"/repos/{REPO}/git/refs/heads/data")]
+    kb.close()
+
+
+def test_delete_endpoint_retorna_ok_e_sha(monkeypatch):
+    """DELETE /kb/file com token válido retorna {ok: true, sha}."""
+    import chat_csa.server.kb_api as kb_api
+
+    state: dict = {"files": {"editais/remover.md": b"# Remover"}}
+    fake = _fake_github(state)
+    monkeypatch.setattr(kb_api, "get_kb", lambda: fake)
+
+    from chat_csa.server.app import create_app
+
+    client = TestClient(create_app(".consumer"))
+    token = client.post("/auth/login", json={"username": "admin", "password": "sudo123"}).json()["access_token"]
+
+    response = client.delete(
+        "/kb/file",
+        headers={"Authorization": f"Bearer {token}"},
+        params={"path": "editais/remover.md"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is True
+    assert body["sha"] == "new-commit"
+    fake.close()
+
+
+def test_delete_endpoint_sem_auth_retorna_401(monkeypatch):
+    """DELETE /kb/file sem token retorna 401."""
+    import chat_csa.server.kb_api as kb_api
+
+    state: dict = {"files": {"editais/remover.md": b"# Remover"}}
+    fake = _fake_github(state)
+    monkeypatch.setattr(kb_api, "get_kb", lambda: fake)
+
+    from chat_csa.server.app import create_app
+
+    client = TestClient(create_app(".consumer"))
+
+    response = client.delete("/kb/file", params={"path": "editais/remover.md"})
+
+    assert response.status_code == 401
+    fake.close()
+

@@ -74,6 +74,20 @@ async def kb_file_route(path: str, _user: Annotated[dict, Depends(require_admin)
     return Response(content=file.content, media_type=file.content_type)
 
 
+@router.delete("/file")
+async def kb_delete_route(path: str, _user: Annotated[dict, Depends(require_admin)] = None):
+    """Remove um arquivo da base via commit atômico no branch data.
+
+    Exige token admin e caminho relativo à raiz da base. Caminhos com `..`
+    são rejeitados pelo `kb.delete()` antes de qualquer operação de rede.
+    """
+    try:
+        commit = await run_in_threadpool(get_kb().delete, path)
+    except KBError as exc:
+        return _error_response(exc)
+    return {"ok": True, "sha": commit.sha}
+
+
 def _env_int(name: str, default: int) -> int:
     """Inteiro positivo do ambiente; qualquer outra coisa vale o padrão."""
     raw = (os.getenv(name) or "").strip()
