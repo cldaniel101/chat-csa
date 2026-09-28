@@ -507,6 +507,11 @@
   color: var(--c-error);
 }
 
+.kbe-modal-header-icon--upload {
+  background: rgba(161, 18, 132, 0.1);
+  color: var(--c-primary);
+}
+
 .kbe-modal-header h3 {
   margin: 0;
   font-family: var(--font-heading);
@@ -542,6 +547,232 @@
   padding: var(--sp-md) var(--sp-lg);
   border-top: 1px solid var(--c-border-subtle);
   background: var(--c-surface-subtle);
+}
+
+/* ─── Modal de destino do upload ──────────────────────────────────────────── */
+
+.kbe-upload-file-list {
+  max-height: 120px;
+  margin: 0 0 var(--sp-md);
+  padding-left: 1.2em;
+  overflow-y: auto;
+  font-family: monospace;
+  font-size: 12px;
+  color: var(--c-on-surface);
+}
+
+.kbe-upload-label {
+  display: block;
+  margin-bottom: var(--sp-xs);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--c-on-surface);
+}
+
+.kbe-upload-input {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+  background: var(--c-surface);
+  color: var(--c-on-surface);
+  font-size: 14px;
+  outline: none;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.kbe-upload-input:focus {
+  border-color: var(--c-primary-light);
+  box-shadow: var(--shadow-focus);
+}
+
+.kbe-upload-hint {
+  margin: var(--sp-sm) 0 0;
+  font-size: 11.5px;
+  color: var(--c-muted);
+}
+
+.kbe-upload-hint code {
+  padding: 1px 3px;
+  border-radius: var(--radius-sm);
+  background: var(--c-surface-subtle);
+  font-family: monospace;
+  font-size: 11px;
+}
+
+/* ─── Modal de preview de arquivo ─────────────────────────────────────────── */
+
+.kbe-modal--preview {
+  width: 100%;
+  max-width: 860px;
+  max-height: min(88dvh, 820px);
+  display: flex;
+  flex-direction: column;
+}
+
+.kbe-modal--preview .kbe-modal-header {
+  gap: var(--sp-md);
+}
+
+.kbe-preview-heading {
+  flex: 1;
+  min-width: 0;
+}
+
+.kbe-preview-heading h3 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kbe-preview-sub {
+  margin: 0;
+  font-family: monospace;
+  font-size: 11.5px;
+  color: var(--c-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kbe-preview-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--sp-lg);
+  background: var(--c-surface-subtle);
+}
+
+.kbe-preview-markdown {
+  padding: var(--sp-lg);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border-subtle);
+  border-radius: var(--radius-md);
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--c-on-surface);
+  overflow-wrap: anywhere;
+}
+
+.kbe-preview-markdown h1,
+.kbe-preview-markdown h2,
+.kbe-preview-markdown h3,
+.kbe-preview-markdown h4 {
+  font-family: var(--font-heading);
+  color: var(--c-on-surface);
+  line-height: 1.3;
+  margin: var(--sp-lg) 0 var(--sp-sm);
+}
+
+.kbe-preview-markdown h1 { font-size: 20px; margin-top: 0; }
+.kbe-preview-markdown h2 { font-size: 17px; }
+.kbe-preview-markdown h3 { font-size: 15px; }
+.kbe-preview-markdown p { margin: 0 0 var(--sp-sm); }
+.kbe-preview-markdown ul,
+.kbe-preview-markdown ol {
+  margin: 0 0 var(--sp-sm);
+  padding-left: 1.4em;
+}
+
+.kbe-preview-markdown code {
+  font-family: monospace;
+  font-size: 12px;
+  background: var(--c-surface-subtle);
+  border-radius: var(--radius-sm);
+  padding: 1px 4px;
+}
+
+.kbe-preview-markdown pre {
+  margin: 0 0 var(--sp-md);
+  padding: var(--sp-md);
+  background: var(--c-neutral);
+  border-radius: var(--radius-md);
+  overflow-x: auto;
+}
+
+.kbe-preview-markdown pre code {
+  background: none;
+  padding: 0;
+}
+
+.kbe-preview-markdown table {
+  width: 100%;
+  margin: 0 0 var(--sp-md);
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.kbe-preview-markdown th,
+.kbe-preview-markdown td {
+  padding: 6px 8px;
+  border: 1px solid var(--c-border);
+  text-align: left;
+}
+
+.kbe-preview-markdown th {
+  background: var(--c-surface-subtle);
+}
+
+.kbe-preview-markdown blockquote {
+  margin: 0 0 var(--sp-sm);
+  padding-left: var(--sp-md);
+  border-left: 3px solid var(--c-primary);
+  color: var(--c-muted);
+}
+
+.kbe-preview-markdown a {
+  color: var(--c-link);
+}
+
+.kbe-preview-markdown img {
+  max-width: 100%;
+}
+
+.kbe-preview-text {
+  margin: 0;
+  padding: var(--sp-lg);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border-subtle);
+  border-radius: var(--radius-md);
+  font-family: monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--c-on-surface);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.kbe-preview-image {
+  display: block;
+  max-width: 100%;
+  margin: 0 auto;
+  border-radius: var(--radius-md);
+}
+
+.kbe-preview-pdf {
+  width: 100%;
+  height: min(68dvh, 660px);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.kbe-preview-binary {
+  display: grid;
+  place-items: center;
+  gap: var(--sp-sm);
+  padding: var(--sp-xl);
+  text-align: center;
+  color: var(--c-muted);
+}
+
+.kbe-preview-binary p {
+  margin: 0;
+}
+
+.kbe-preview-meta {
+  font-family: monospace;
+  font-size: 11.5px;
 }
 
 /* ─── Tela de login ────────────────────────────────────────────────────────── */

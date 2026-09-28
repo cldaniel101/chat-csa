@@ -52,6 +52,25 @@ async function responseErrorMessage(res: Response): Promise<string> {
   }
 }
 
+/** Erro de autenticação (HTTP 401) — o front deve voltar para o login. */
+export class UnauthorizedError extends Error {
+  constructor(message = "Sessão expirada. Faça login novamente.") {
+    super(message);
+    this.name = "UnauthorizedError";
+  }
+}
+
+/** Lança o erro adequado quando a resposta não é 2xx. */
+async function ensureOk(res: Response): Promise<void> {
+  if (res.ok) {
+    return;
+  }
+  if (res.status === 401) {
+    throw new UnauthorizedError();
+  }
+  throw new Error(await responseErrorMessage(res));
+}
+
 export type ChatCompletionMessage = {
   role: "user" | "assistant" | "system";
   content: string;
@@ -302,18 +321,43 @@ export async function kbList(
     throw new Error(`Não foi possível conectar ao servidor em ${base}.`);
   }
 
-  if (!res.ok) throw new Error(await responseErrorMessage(res));
+  await ensureOk(res);
   return res.json();
 }
 
+export type KBFileResult = {
+  blob: Blob;
+  contentType: string;
+};
+
 /**
- * Retorna a URL para download/visualização do arquivo original.
- * O endpoint devolve os bytes com o content-type correto.
+ * Baixa o arquivo original da base com o header `Authorization`.
+ *
+ * O front renderiza o conteúdo (preview), em vez de redirecionar para a API:
+ * navegações diretas (`window.open`/`<a href>`) não enviam o header de
+ * autorização, o que resultava em 401.
  */
-export function kbFileUrl(token: string, path: string): string {
+export async function kbFile(token: string, path: string): Promise<KBFileResult> {
   const base = getConsumerUrl();
-  // O token vai na query string para uso em <a href> / window.open
-  return `${base.replace(/\/$/, "")}/kb/file?path=${encodeURIComponent(path)}&token=${encodeURIComponent(token)}`;
+  let res: Response;
+
+  try {
+    res = await fetch(
+      `${base.replace(/\/$/, "")}/kb/file?path=${encodeURIComponent(path)}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+  } catch {
+    throw new Error(`Não foi possível conectar ao servidor em ${base}.`);
+  }
+
+  await ensureOk(res);
+
+  const blob = await res.blob();
+  return {
+    blob,
+    contentType:
+      res.headers.get("content-type") || blob.type || "application/octet-stream",
+  };
 }
 
 /**
@@ -333,29 +377,43 @@ export async function kbDelete(token: string, path: string): Promise<{ ok: boole
     throw new Error(`Não foi possível conectar ao servidor em ${base}.`);
   }
 
-  if (!res.ok) throw new Error(await responseErrorMessage(res));
+  await ensureOk(res);
   return res.json();
 }
+
+export type KBUploadOptions = {
+  /** Seção (pasta) de destino; o servidor exige ao menos uma. Ex.: "editais". */
+  section?: string;
+  /** Mensagem do commit (opcional). */
+  message?: string;
+};
 
 /**
  * Faz upload de um lote de arquivos para a base de conhecimento.
  * `files` é uma lista de File (selecionados via <input type="file">).
- * `message` é a mensagem do commit (opcional).
+ *
+ * O servidor exige que o caminho declarado tenha uma pasta de seção
+ * (`<seção>/<arquivo>`), que vai no filename da parte multipart.
  */
 export async function kbUpload(
   token: string,
   files: File[],
-  message?: string,
+  options: KBUploadOptions = {},
 ): Promise<KBUploadResult> {
   const base = getConsumerUrl();
   const formData = new FormData();
+  const section = (options.section ?? "")
+    .trim()
+    .replace(/^\/+|\/+$/g, "")
+    .replace(/\\/g, "/");
 
   for (const file of files) {
-    formData.append("files", file, file.name);
+    const declared = section ? `${section}/${file.name}` : file.name;
+    formData.append("files", file, declared);
   }
 
-  if (message) {
-    formData.append("message", message);
+  if (options.message) {
+    formData.append("message", options.message);
   }
 
   let res: Response;
@@ -369,6 +427,6 @@ export async function kbUpload(
     throw new Error(`Não foi possível conectar ao servidor em ${base}.`);
   }
 
-  if (!res.ok) throw new Error(await responseErrorMessage(res));
+  await ensureOk(res);
   return res.json();
 }

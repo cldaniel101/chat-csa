@@ -403,3 +403,50 @@ def test_delete_endpoint_sem_auth_retorna_401(monkeypatch):
     assert response.status_code == 401
     fake.close()
 
+
+def test_get_file_endpoint_com_auth_retorna_bytes(monkeypatch):
+    """GET /kb/file exige o header Authorization — é assim que o front baixa o original."""
+    import chat_csa.server.kb_api as kb_api
+
+    state: dict = {"files": {"editais/documento.md": b"# Documento\n\nCorpo."}}
+    fake = _fake_github(state)
+    monkeypatch.setattr(kb_api, "get_kb", lambda: fake)
+
+    from chat_csa.server.app import create_app
+
+    client = TestClient(create_app(".consumer"))
+    token = client.post("/auth/login", json={"username": "admin", "password": "sudo123"}).json()["access_token"]
+
+    response = client.get(
+        "/kb/file",
+        headers={"Authorization": f"Bearer {token}"},
+        params={"path": "editais/documento.md"},
+    )
+
+    assert response.status_code == 200
+    assert response.content == b"# Documento\n\nCorpo."
+    assert response.headers["content-type"].startswith("text/markdown")
+    fake.close()
+
+
+def test_get_file_endpoint_token_na_query_nao_autentica(monkeypatch):
+    """Regressão: o token na query string não autentica (browser não manda o header)."""
+    import chat_csa.server.kb_api as kb_api
+
+    state: dict = {"files": {"editais/documento.md": b"# Documento"}}
+    fake = _fake_github(state)
+    monkeypatch.setattr(kb_api, "get_kb", lambda: fake)
+
+    from chat_csa.server.app import create_app
+
+    client = TestClient(create_app(".consumer"))
+    token = client.post("/auth/login", json={"username": "admin", "password": "sudo123"}).json()["access_token"]
+
+    response = client.get(
+        "/kb/file",
+        params={"path": "editais/documento.md", "token": token},
+    )
+
+    assert response.status_code == 401
+    fake.close()
+

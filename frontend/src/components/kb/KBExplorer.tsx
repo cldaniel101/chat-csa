@@ -9,7 +9,7 @@
  *  1. Usuário faz login → token guardado em sessionStorage
  *  2. Lista de documentos carregada via GET /kb/list
  *  3. Upload via POST /kb/upload (multipart)
- *  4. Abertura via GET /kb/file (abre em nova aba)
+ *  4. Abertura via GET /kb/file com header de auth → preview renderizado no front
  *  5. Remoção: modal de confirmação → DELETE /kb/file → commit atômico no branch data
  *  6. Iniciar chatbot: modal de confirmação → callback para abrir o widget
  */
@@ -18,6 +18,7 @@ import { BsStars } from "react-icons/bs";
 import {
   AlertTriangle,
   CheckCircle,
+  Download,
   Eye,
   FileText,
   FolderOpen,
@@ -36,13 +37,16 @@ import {
   useRef,
   useState,
 } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   authLogin,
   getConsumerUrl,
   kbDelete,
-  kbFileUrl,
+  kbFile,
   kbList,
   kbUpload,
+  UnauthorizedError,
   type KBUploadFileResult,
 } from "../../api/client";
 import "./KBExplorer.css";
@@ -70,6 +74,26 @@ function loadToken(): string | null {
 function clearToken() {
   try {
     sessionStorage.removeItem(SESSION_KEY);
+  } catch {
+    /* ignora */
+  }
+}
+
+// ─── Seção de destino do upload ───────────────────────────────────────────────
+
+const UPLOAD_SECTION_KEY = "kbe_upload_section";
+
+function loadUploadSection(): string {
+  try {
+    return localStorage.getItem(UPLOAD_SECTION_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function saveUploadSection(section: string) {
+  try {
+    localStorage.setItem(UPLOAD_SECTION_KEY, section);
   } catch {
     /* ignora */
   }
@@ -110,6 +134,50 @@ type KBFile = {
   category: string;
 };
 
+/** Como o preview no front renderiza cada tipo de arquivo. */
+type PreviewKind = "markdown" | "text" | "image" | "pdf" | "binary";
+
+type PreviewState = {
+  file: KBFile;
+  kind: PreviewKind;
+  contentType: string;
+  size: number;
+  text?: string;
+  objectUrl: string;
+};
+
+/** Decide o modo de preview a partir da extensão/content-type. */
+function previewKind(path: string, contentType: string): PreviewKind {
+  const ext = path.split(".").pop()?.toLowerCase() ?? "";
+  if (ext === "md" || ext === "markdown" || contentType === "text/markdown") {
+    return "markdown";
+  }
+  if (contentType.startsWith("image/")) {
+    return "image";
+  }
+  if (contentType === "application/pdf" || ext === "pdf") {
+    return "pdf";
+  }
+  if (
+    contentType.startsWith("text/") ||
+    contentType === "application/json" ||
+    contentType.endsWith("+json") ||
+    contentType === "application/xml" ||
+    contentType.endsWith("+xml") ||
+    contentType === "application/javascript"
+  ) {
+    return "text";
+  }
+  return "binary";
+}
+
+/** Formata bytes para exibição no preview. */
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 type Screen = "login" | "explorer";
 
 type KBExplorerProps = {
@@ -120,11 +188,12 @@ type KBExplorerProps = {
 // ─── Modal de confirmação genérico ────────────────────────────────────────────
 
 type ConfirmModalProps = {
-  icon: "chat" | "danger";
+  icon: "chat" | "danger" | "upload";
   title: string;
   body: React.ReactNode;
   confirmLabel: string;
   cancelLabel?: string;
+  confirmDisabled?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 };
@@ -135,6 +204,7 @@ function ConfirmModal({
   body,
   confirmLabel,
   cancelLabel = "Cancelar",
+  confirmDisabled = false,
   onConfirm,
   onCancel,
 }: ConfirmModalProps) {
@@ -151,7 +221,7 @@ function ConfirmModal({
       <div className="kbe-modal">
         <div className="kbe-modal-header">
           <span className={`kbe-modal-header-icon kbe-modal-header-icon--${icon}`} aria-hidden="true">
-            {icon === "chat" ? <MessageCircle size={20} /> : <AlertTriangle size={20} />}
+            {icon === "chat" ? <MessageCircle size={20} /> : icon === "upload" ? <Upload size={20} /> : <AlertTriangle size={20} />}
           </span>
           <h3 id="kbe-modal-title">{title}</h3>
         </div>
@@ -170,6 +240,7 @@ function ConfirmModal({
             type="button"
             className={`kbe-btn ${icon === "danger" ? "kbe-btn--danger" : "kbe-btn--primary"}`}
             onClick={onConfirm}
+            disabled={confirmDisabled}
           >
             {confirmLabel}
           </button>
@@ -285,6 +356,9 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
   const [uploading, setUploading] = useState(false);
   const [uploadResults, setUploadResults] = useState<KBUploadFileResult[] | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  /* Arquivos escolhidos aguardando a seção de destino */
+  const [pendingFiles, setPendingFiles] = useState<File[] | null>(null);
+  const [uploadSection, setUploadSection] = useState<string>(() => loadUploadSection());
 
   /* Remoção */
   const [deleteTarget, setDeleteTarget] = useState<KBFile | null>(null);
@@ -294,7 +368,19 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
   /* Modal de confirmação para chatbot */
   const [showChatConfirm, setShowChatConfirm] = useState(false);
 
+  /* Preview do arquivo (renderizado no front, token no header) */
+  const [preview, setPreview] = useState<PreviewState | null>(null);
+  const [previewLoading, setPreviewLoading] = useState<string | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  /* Revoga a object URL do preview ao trocar/fechar o documento */
+  useEffect(() => {
+    return () => {
+      if (preview?.objectUrl) URL.revokeObjectURL(preview.objectUrl);
+    };
+  }, [preview]);
 
   /* Carrega lista de documentos */
   const loadFiles = useCallback(async () => {
@@ -312,14 +398,13 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
       }));
       setFiles(parsed);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Erro ao carregar a lista.";
-      /* Token expirado ou inválido */
-      if (msg.toLowerCase().includes("401") || msg.toLowerCase().includes("não autorizado")) {
+      /* Token expirado ou inválido → volta para o login */
+      if (err instanceof UnauthorizedError) {
         clearToken();
         onLogout();
         return;
       }
-      setError(msg);
+      setError(err instanceof Error ? err.message : "Erro ao carregar a lista.");
     } finally {
       setLoading(false);
     }
@@ -334,34 +419,90 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
   function handleFileInputChange(e: ChangeEvent<HTMLInputElement>) {
     const selected = Array.from(e.target.files ?? []);
     if (!selected.length) return;
-    void doUpload(selected);
+    /* Abre o modal para declarar a seção antes de enviar */
+    setPendingFiles(selected);
     /* Limpa o input para permitir reenvio do mesmo arquivo */
     e.target.value = "";
   }
 
-  async function doUpload(selected: File[]) {
+  /* Envia o lote com o caminho `<seção>/<arquivo>` exigido pelo servidor */
+  function handleUploadConfirm() {
+    if (!pendingFiles) return;
+    const section = uploadSection.trim().replace(/^\/+|\/+$/g, "");
+    if (!section) return;
+    saveUploadSection(section);
+    setUploadSection(section);
+    const selected = pendingFiles;
+    setPendingFiles(null);
+    void doUpload(selected, section);
+  }
+
+  async function doUpload(selected: File[], section: string) {
     setUploading(true);
     setUploadResults(null);
     setUploadError(null);
 
     try {
-      const result = await kbUpload(token, selected);
+      const result = await kbUpload(token, selected, { section });
       setUploadResults(result.files);
       /* Recarrega a lista após upload bem-sucedido */
       if (result.ok) {
         await loadFiles();
       }
     } catch (err: unknown) {
+      if (err instanceof UnauthorizedError) {
+        clearToken();
+        onLogout();
+        return;
+      }
       setUploadError(err instanceof Error ? err.message : "Erro durante o upload.");
     } finally {
       setUploading(false);
     }
   }
 
-  /* Abrir arquivo em nova aba */
-  function handleOpen(file: KBFile) {
-    const url = kbFileUrl(token, file.path);
-    window.open(url, "_blank", "noopener,noreferrer");
+  /* Abre o preview no front: baixa os bytes com o header de auth e renderiza aqui */
+  async function handleOpen(file: KBFile) {
+    setPreviewError(null);
+    setPreviewLoading(file.path);
+
+    try {
+      const { blob, contentType } = await kbFile(token, file.path);
+      const kind = previewKind(file.path, contentType);
+      setPreview({
+        file,
+        kind,
+        contentType,
+        size: blob.size,
+        objectUrl: URL.createObjectURL(blob),
+        text: kind === "markdown" || kind === "text" ? await blob.text() : undefined,
+      });
+    } catch (err: unknown) {
+      if (err instanceof UnauthorizedError) {
+        clearToken();
+        onLogout();
+        return;
+      }
+      setPreviewError(err instanceof Error ? err.message : "Erro ao abrir o arquivo.");
+    } finally {
+      setPreviewLoading(null);
+    }
+  }
+
+  /* Fecha o preview (a object URL é revogada no efeito de limpeza) */
+  function closePreview() {
+    setPreview(null);
+  }
+
+  /* Baixa o arquivo aberto usando a object URL já carregada */
+  function handleDownload() {
+    if (!preview) return;
+    const link = document.createElement("a");
+    link.href = preview.objectUrl;
+    link.download = preview.file.path.split("/").pop() || "documento";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
   }
 
   /* Remoção */
@@ -382,6 +523,11 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
       /* Atualiza a lista após remoção bem-sucedida */
       await loadFiles();
     } catch (err: unknown) {
+      if (err instanceof UnauthorizedError) {
+        clearToken();
+        onLogout();
+        return;
+      }
       setDeleteError(err instanceof Error ? err.message : "Erro ao remover o arquivo.");
     } finally {
       setDeleting(false);
@@ -393,6 +539,15 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
     setShowChatConfirm(false);
     onStartChat();
   }
+
+  /* Seções já existentes na base (primeiro segmento dos caminhos) */
+  const sections = Array.from(
+    new Set(
+      files
+        .filter((file) => file.path.includes("/"))
+        .map((file) => file.path.split("/")[0]),
+    ),
+  ).sort();
 
   return (
     <div className="kbe-root">
@@ -456,6 +611,18 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
           <div className="kbe-alert kbe-alert--info" role="status">
             <div className="kbe-spinner" aria-hidden="true" />
             Removendo arquivo…
+          </div>
+        )}
+        {previewLoading && (
+          <div className="kbe-alert kbe-alert--info" role="status">
+            <div className="kbe-spinner" aria-hidden="true" />
+            Abrindo {previewLoading}…
+          </div>
+        )}
+        {previewError && (
+          <div className="kbe-alert kbe-alert--error" role="alert">
+            <XCircle size={15} style={{ flexShrink: 0, marginTop: 1 }} aria-hidden="true" />
+            {previewError}
           </div>
         )}
         {uploading && (
@@ -590,7 +757,8 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
                             <button
                               type="button"
                               className="kbe-icon-btn"
-                              onClick={() => handleOpen(file)}
+                              onClick={() => { void handleOpen(file); }}
+                              disabled={previewLoading === file.path}
                               aria-label={`Abrir ${file.name}`}
                               title="Abrir / visualizar"
                             >
@@ -634,6 +802,137 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
           )}
         </div>
       </main>
+
+      {/* Modal: destino do upload */}
+      {pendingFiles && (
+        <ConfirmModal
+          icon="upload"
+          title={
+            pendingFiles.length > 1
+              ? `Enviar ${pendingFiles.length} arquivos?`
+              : "Enviar arquivo?"
+          }
+          confirmLabel="Enviar"
+          confirmDisabled={!uploadSection.trim()}
+          onConfirm={handleUploadConfirm}
+          onCancel={() => setPendingFiles(null)}
+          body={
+            <>
+              <ul className="kbe-upload-file-list">
+                {pendingFiles.map((file) => (
+                  <li key={`${file.name}-${file.size}-${file.lastModified}`}>
+                    {file.name}
+                  </li>
+                ))}
+              </ul>
+              <label htmlFor="kbe-upload-section" className="kbe-upload-label">
+                Seção de destino
+              </label>
+              <input
+                id="kbe-upload-section"
+                className="kbe-upload-input"
+                type="text"
+                list="kbe-upload-sections"
+                placeholder="ex.: editais"
+                value={uploadSection}
+                onChange={(e) => setUploadSection(e.target.value)}
+              />
+              <datalist id="kbe-upload-sections">
+                {sections.map((section) => (
+                  <option key={section} value={section} />
+                ))}
+              </datalist>
+              <p className="kbe-upload-hint">
+                Cada arquivo vira um conceito <code>&lt;seção&gt;/&lt;nome&gt;.md</code> num
+                único commit no branch <code>data</code>; o original não é preservado.
+              </p>
+            </>
+          }
+        />
+      )}
+
+      {/* Modal: preview do documento renderizado no front */}
+      {preview && (
+        <div
+          className="kbe-modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="kbe-preview-title"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closePreview();
+          }}
+        >
+          <div className="kbe-modal kbe-modal--preview">
+            <div className="kbe-modal-header">
+              <span className="kbe-modal-header-icon kbe-modal-header-icon--chat" aria-hidden="true">
+                <FileText size={18} />
+              </span>
+              <div className="kbe-preview-heading">
+                <h3 id="kbe-preview-title">{preview.file.name.replace(/-/g, " ")}</h3>
+                <p className="kbe-preview-sub">{preview.file.path}</p>
+              </div>
+              <button
+                type="button"
+                className="kbe-icon-btn"
+                onClick={closePreview}
+                aria-label="Fechar visualização"
+                title="Fechar"
+              >
+                <XCircle size={18} aria-hidden="true" />
+              </button>
+            </div>
+
+            <div className="kbe-preview-body">
+              {preview.kind === "markdown" && (
+                <div className="kbe-preview-markdown">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{preview.text ?? ""}</ReactMarkdown>
+                </div>
+              )}
+
+              {preview.kind === "text" && (
+                <pre className="kbe-preview-text">{preview.text ?? ""}</pre>
+              )}
+
+              {preview.kind === "image" && (
+                <img className="kbe-preview-image" src={preview.objectUrl} alt={preview.file.name} />
+              )}
+
+              {preview.kind === "pdf" && (
+                <iframe
+                  className="kbe-preview-pdf"
+                  src={preview.objectUrl}
+                  title={preview.file.name}
+                />
+              )}
+
+              {preview.kind === "binary" && (
+                <div className="kbe-preview-binary">
+                  <FileText size={30} aria-hidden="true" />
+                  <p>Este formato não pode ser exibido no navegador.</p>
+                  <p className="kbe-preview-meta">
+                    {preview.contentType} · {formatBytes(preview.size)}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="kbe-modal-footer">
+              <button type="button" className="kbe-btn kbe-btn--ghost" onClick={closePreview}>
+                Fechar
+              </button>
+              <button
+                id="kbe-preview-download"
+                type="button"
+                className="kbe-btn kbe-btn--primary"
+                onClick={handleDownload}
+              >
+                <Download size={14} aria-hidden="true" />
+                Baixar original
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal: confirmação de remoção */}
       {deleteTarget && (
