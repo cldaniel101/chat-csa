@@ -61,6 +61,11 @@ jobs:
   deploy:
     name: Deploy ${{ matrix.name }}
     needs: checks
+    # `STAGING_READY` fica falso enquanto os secrets do par de staging não
+    # existirem: o passo de staging é pulado com aviso, em vez de falhar com
+    # erro de autenticação incompreensível.
+    env:
+      STAGING_READY: ${{ secrets.VERCEL_TOKEN_API_PREVIEW != '' && secrets.VERCEL_TOKEN_FRONTEND_PREVIEW != '' }}
     # PRs de fork não recebem secrets do repo — por isso o deploy de PR é
     # restrito a PRs vindas do próprio repositório.
     if: |
@@ -106,11 +111,16 @@ jobs:
         timeout-minutes: 30
         run: npx vercel@59 deploy --prod --yes --token "${{ secrets[matrix.token_secret] }}"
 
+      - name: "Aviso: staging sem token"
+        if: github.ref == 'refs/heads/development' && env.STAGING_READY != 'true'
+        run: |
+          echo "::warning::Secrets VERCEL_TOKEN_API_PREVIEW/VERCEL_TOKEN_FRONTEND_PREVIEW ausentes — deploy de staging pulado. Crie os tokens project-scoped (docs/deploy.md, 'Bootstrap')."
+
       # `development` publica no par de staging com --prod: cada projeto tem a
       # própria URL fixa (chat-csa-api-preview / chat-csa-web-preview), como uma
       # produção paralela usada só como preview.
       - name: Deploy de staging (`development`)
-        if: github.ref == 'refs/heads/development'
+        if: github.ref == 'refs/heads/development' && env.STAGING_READY == 'true'
         working-directory: ${{ matrix.workdir }}
         env:
           VERCEL_ORG_ID: ${{ secrets[matrix.org_secret] }}

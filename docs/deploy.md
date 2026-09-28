@@ -67,6 +67,17 @@ Os previews de PR continuam no par principal, com URL descartável; o site usa o
 
 Em qualquer URL de preview, dá para apontar o site para uma API específica na hora: `?consumerUrl=https://<deployment-da-api>.vercel.app` (lido por `runtimeConsumerUrl()` em `frontend/src/api/client.ts`).
 
+### Bootstrap: subir os ambientes do zero
+
+1. Criar os quatro projetos no time (`dev-davmg`) — `chat-csa-api` e `chat-csa-api-preview` a partir da raiz do repo, `chat-csa-web` e `chat-csa-web-preview` a partir de `frontend/` (`npx vercel link` em cada diretório cria o link local).
+2. Criar em **Account Settings → Tokens** um token **project-scoped** por projeto (mesmo caminho usado para os tokens atuais) e registrá-los no GitHub: `VERCEL_TOKEN_API`, `VERCEL_TOKEN_FRONTEND`, `VERCEL_TOKEN_API_PREVIEW`, `VERCEL_TOKEN_FRONTEND_PREVIEW`.
+3. Registrar os ids: `VERCEL_ORG_ID_API`/`VERCEL_ORG_ID_FRONTEND` (o id do time — os quatro projetos vivem nele) e `VERCEL_PROJECT_ID_*` (um por projeto, copiado do `.vercel/project.json`).
+4. Apontar os sites para as APIs: `chat-csa-web-preview` → **Production** → `VITE_CONSUMER_URL=https://chat-csa-api-preview.vercel.app`; `chat-csa-web` → **Preview** → mesma URL (previews de PR).
+5. Rodar **Sync Vercel env** (`workflow_dispatch`, input `production`) para os dois projetos de API; para QA no par principal, rodar também com `preview`.
+6. Push em `development` (staging) e em `main` (produção).
+
+Os valores de `LLM_*`/`KB_*` vivem nos secrets do GitHub; os **ids não são segredos** (já estão versionados nos `project.json`) e os tokens são.
+
 ## Sincronização de ambiente (`env-sync.yml`)
 
 Execução manual: **Actions → "Sync Vercel env" → Run workflow**, escolhendo `production`, `preview` ou `development`. O workflow instala o CLI, monta um `.env` temporário apenas com os secrets definidos (pulando ausentes) e chama `scripts/sync-vercel-env.sh <ambiente>`. Antes disso, descarta o `.vercel/project.json` versionado — link antigo de escopo de time que tokens project-scoped não conseguem usar; o projeto é identificado por `VERCEL_ORG_ID`/`VERCEL_PROJECT_ID`.
@@ -74,6 +85,21 @@ Execução manual: **Actions → "Sync Vercel env" → Run workflow**, escolhend
 O script aplica uma allowlist (`LLM_PROVIDER`, `LLM_MODEL`, `OLLAMA_MODEL`, `OLLAMA_BASE_URL`, `OLLAMA_API_KEY` + `KB_BACKEND`, `KB_REPO`, `KB_BRANCH`, `KB_ROOT`, `KB_TOKEN`, `KB_WRITE_TOKEN`, `KB_CACHE_TTL`) e **não imprime valores**. É idempotente nos dois caminhos: com `VERCEL_TOKEN` + `VERCEL_PROJECT_ID` definidos (CI), usa a API REST — remove as entradas anteriores do alvo com `DELETE` e grava com `POST` em `api.vercel.com` —, porque tokens project-scoped não conseguem rodar `vercel env`; localmente, cai para o CLI (`vercel env rm` + `vercel env add`). Em `production`, ele força `OLLAMA_BASE_URL=https://ollama.com` porque o `localhost` do `.env` local só vale para desenvolvimento; fora de `development`, força `KB_BACKEND=github`.
 
 Para o preview da Vercel, configure ao menos `KB_BACKEND=github`, `KB_REPO`, `KB_BRANCH=data` e `KB_TOKEN` (leitura); `KB_WRITE_TOKEN` habilita o upload admin nesse ambiente.
+
+O par de staging é sincronizado **sempre** no alvo `production` do próprio projeto, porque `development` publica com `--prod` — o input do workflow vale só para o projeto principal.
+
+Enquanto os secrets `VERCEL_TOKEN_API_PREVIEW`/`VERCEL_TOKEN_FRONTEND_PREVIEW` não existirem, o workflow **pula** o deploy de staging com um aviso (`::warning::`) em vez de falhar; ao criar os tokens, ele passa a publicar sozinho.
+
+**Mudar variável de ambiente exige novo deploy**: a Vercel injeta as variáveis na criação do deployment; um deployment antigo continua com as antigas. Foi o que aconteceu com o `chat-csa-api-preview`, que subiu sem `LLM_*`/`KB_*` e respondia 500 ("All connection attempts failed" no site) até ser reenviado depois do sync.
+
+### Como verificar depois de mexer
+
+```bash
+curl -s https://chat-csa-api-preview.vercel.app/health   # {"status":"ok",...}
+curl -s https://chat-csa-api-preview.vercel.app/openapi.json | jq '.paths | keys'   # inclui /kb/list, /kb/file, /kb/upload
+```
+
+Uma pergunta real no chat devolve `tool_steps` e a seção `Fontes:`; se a resposta vier vazia ou com erro de conexão, falta variável de ambiente (ou o deploy não foi refeito depois do sync).
 
 ## Scrape manual (`scrape-csa.yml`)
 
