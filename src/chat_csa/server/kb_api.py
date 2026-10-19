@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, Header, Response, UploadFile
@@ -32,6 +33,22 @@ from ..kb import (
 from ..kb_convert import DEFAULT_PAGES_PER_CALL, default_model_call
 from ..kb_upload import DEFAULT_MAX_UPLOAD_BYTES, BatchResult, process_upload
 from . import auth as auth_store
+
+_AUTHOR_RE = re.compile(r"^author:\s*[\"']?([^\r\n\"']+)[\"']?", re.M)
+_DATE_RE = re.compile(r"^(?:uploaded_at|timestamp):\s*[\"']?([^\r\n\"']+)[\"']?", re.M)
+
+
+def _extract_file_metadata(content: bytes) -> tuple[str, str]:
+    """Extrai author e uploaded_at/timestamp do frontmatter YAML."""
+    try:
+        text = content[:800].decode("utf-8", errors="ignore")
+        author_m = _AUTHOR_RE.search(text)
+        date_m = _DATE_RE.search(text)
+        author = author_m.group(1).strip() if author_m else "admin"
+        uploaded_at = date_m.group(1).strip() if date_m else ""
+        return author, uploaded_at
+    except Exception:
+        return "admin", ""
 
 router = APIRouter(prefix="/kb", tags=["kb"])
 
@@ -57,12 +74,35 @@ def _error_response(exc: KBError) -> JSONResponse:
 
 @router.get("/list")
 async def kb_list_route(prefix: str = "", _user: Annotated[dict, Depends(require_admin)] = None):
-    """Caminhos disponíveis na base (relativos à raiz), filtrados pelo prefixo."""
+    """Caminhos disponíveis na base com metadados de autor e data de adição."""
     try:
-        paths = get_kb().list(prefix)
+        kb = get_kb()
+        paths = kb.list(prefix)
+        files_meta = []
+        for p in paths:
+            author = "admin"
+            uploaded_at = ""
+            if p.endswith(".md"):
+                try:
+                    f = kb.read(p)
+                    author, uploaded_at = _extract_file_metadata(f.content)
+                except Exception:
+                    pass
+            files_meta.append({"path": p, "author": author, "uploaded_at": uploaded_at})
     except KBError as exc:
         return _error_response(exc)
-    return {"prefix": prefix, "paths": paths}
+    return {"prefix": prefix, "paths": paths, "files": files_meta}
+
+
+@router.get("/metadata")
+async def kb_metadata_route(path: str, _user: Annotated[dict, Depends(require_admin)] = None):
+    """Metadados de autor e data de adição de um arquivo específico."""
+    try:
+        f = get_kb().read(path)
+        author, uploaded_at = _extract_file_metadata(f.content)
+    except KBError as exc:
+        return _error_response(exc)
+    return {"path": path, "author": author, "uploaded_at": uploaded_at}
 
 
 @router.get("/file")
@@ -210,6 +250,7 @@ def _run_upload(
     payload: list[tuple[str, bytes]],
     sources: dict[str, str] | None,
     message: str,
+    author: str = "admin",
 ) -> BatchResult:
     """Converte e commita o lote — roda fora do event loop."""
     return process_upload(
@@ -218,6 +259,7 @@ def _run_upload(
         model_call=default_model_call(),
         sources=sources,
         message=message,
+        author=author,
         pages_per_call=_env_int("KB_CONVERT_PAGES_PER_CALL", DEFAULT_PAGES_PER_CALL),
         max_bytes=_env_int("KB_UPLOAD_MAX_BYTES", DEFAULT_MAX_UPLOAD_BYTES),
     )
@@ -263,8 +305,10 @@ async def kb_upload_route(
             )
         source_map = parsed
 
+    author = _user.get("username", "admin") if _user else "admin"
+
     try:
-        result = await run_in_threadpool(_run_upload, payload, source_map, message)
+        result = await run_in_threadpool(_run_upload, payload, source_map, message, author)
     except KBError as exc:
         body = {
             "ok": False,
