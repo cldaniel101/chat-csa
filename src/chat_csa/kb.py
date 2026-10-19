@@ -216,6 +216,12 @@ class _Backend:
     def delete(self, path: str, message: str) -> KBCommit:  # pragma: no cover - interface
         raise NotImplementedError
 
+    def delete_bulk(self, paths: list[str], message: str) -> KBCommit:  # pragma: no cover - interface
+        raise NotImplementedError
+
+    def move(self, source: str, target: str, message: str) -> KBCommit:  # pragma: no cover - interface
+        raise NotImplementedError
+
 
 class _GithubBackend(_Backend):
     """Backend de produção: GitHub Contents API + Git Data API.
@@ -478,6 +484,102 @@ class _GithubBackend(_Backend):
         self._check(ref_resp, f"atualizar o branch {branch!r}")
         return KBCommit(sha=sha, paths=(path,))
 
+    def delete_bulk(self, paths: list[str], message: str) -> KBCommit:
+        """Remove múltiplos arquivos do branch via commit atômico."""
+        if not paths:
+            return KBCommit(sha="", paths=())
+        repo, branch, root = self._settings.repo, self._settings.branch, self._settings.root
+        token = self._settings.write_token
+        if not token:
+            raise KBConfigError(
+                "KB_WRITE_TOKEN (ou KB_TOKEN com escopo de escrita) não configurado; "
+                "a base é somente leitura."
+            )
+        base_commit = self._ref_commit_sha(token)
+        commit_resp = self._request("GET", f"/repos/{repo}/git/commits/{base_commit}", token=token)
+        self._check(commit_resp, "ler o commit base do branch")
+        base_tree = commit_resp.json()["tree"]["sha"]
+
+        tree_entries = [
+            {"path": _join_root(p, root), "mode": "100644", "type": "blob", "sha": None}
+            for p in paths
+        ]
+        tree_resp = self._request(
+            "POST",
+            f"/repos/{repo}/git/trees",
+            token=token,
+            json={"base_tree": base_tree, "tree": tree_entries},
+        )
+        self._check(tree_resp, "criar tree de remoção em lote")
+        new_commit_resp = self._request(
+            "POST",
+            f"/repos/{repo}/git/commits",
+            token=token,
+            json={"message": message, "tree": tree_resp.json()["sha"], "parents": [base_commit]},
+        )
+        self._check(new_commit_resp, "criar commit de remoção em lote")
+        sha = new_commit_resp.json()["sha"]
+        ref_resp = self._request(
+            "PATCH",
+            f"/repos/{repo}/git/refs/heads/{branch}",
+            token=token,
+            json={"sha": sha, "force": False},
+        )
+        self._check(ref_resp, f"atualizar o branch {branch!r}")
+        return KBCommit(sha=sha, paths=tuple(paths))
+
+    def move(self, source: str, target: str, message: str) -> KBCommit:
+        """Move/renomeia um arquivo em um único commit atômico na tree."""
+        repo, branch, root = self._settings.repo, self._settings.branch, self._settings.root
+        token = self._settings.write_token
+        if not token:
+            raise KBConfigError(
+                "KB_WRITE_TOKEN (ou KB_TOKEN com escopo de escrita) não configurado; "
+                "a base é somente leitura."
+            )
+        source_file = self.read(source)
+        blob_resp = self._request(
+            "POST",
+            f"/repos/{repo}/git/blobs",
+            token=token,
+            json={"content": base64.b64encode(source_file.content).decode("ascii"), "encoding": "base64"},
+        )
+        self._check(blob_resp, f"criar blob do arquivo {target!r}")
+        target_blob_sha = blob_resp.json()["sha"]
+
+        base_commit = self._ref_commit_sha(token)
+        commit_resp = self._request("GET", f"/repos/{repo}/git/commits/{base_commit}", token=token)
+        self._check(commit_resp, "ler o commit base do branch")
+        base_tree = commit_resp.json()["tree"]["sha"]
+
+        tree_entries = [
+            {"path": _join_root(target, root), "mode": "100644", "type": "blob", "sha": target_blob_sha},
+            {"path": _join_root(source, root), "mode": "100644", "type": "blob", "sha": None},
+        ]
+        tree_resp = self._request(
+            "POST",
+            f"/repos/{repo}/git/trees",
+            token=token,
+            json={"base_tree": base_tree, "tree": tree_entries},
+        )
+        self._check(tree_resp, f"criar tree de movimentação de {source!r} para {target!r}")
+        new_commit_resp = self._request(
+            "POST",
+            f"/repos/{repo}/git/commits",
+            token=token,
+            json={"message": message, "tree": tree_resp.json()["sha"], "parents": [base_commit]},
+        )
+        self._check(new_commit_resp, "criar commit de movimentação")
+        sha = new_commit_resp.json()["sha"]
+        ref_resp = self._request(
+            "PATCH",
+            f"/repos/{repo}/git/refs/heads/{branch}",
+            token=token,
+            json={"sha": sha, "force": False},
+        )
+        self._check(ref_resp, f"atualizar o branch {branch!r}")
+        return KBCommit(sha=sha, paths=(source, target))
+
 
 class _LocalBackend(_Backend):
     """Backend de dev/testes: mesmas operações sobre KB_LOCAL_PATH."""
@@ -524,6 +626,28 @@ class _LocalBackend(_Backend):
             raise KBNotFoundError(f"Arquivo não encontrado na base: {path!r}.")
         target.unlink()
         return KBCommit(sha="", paths=(path,))
+
+    def delete_bulk(self, paths: list[str], message: str) -> KBCommit:
+        """Remove múltiplos arquivos do disco local."""
+        base = self._dir()
+        deleted = []
+        for rel in paths:
+            target = base / rel
+            if target.is_file():
+                target.unlink()
+                deleted.append(rel)
+        return KBCommit(sha="", paths=tuple(deleted))
+
+    def move(self, source: str, target: str, message: str) -> KBCommit:
+        """Move/renomeia um arquivo no disco local."""
+        base = self._dir()
+        src = base / source
+        if not src.is_file():
+            raise KBNotFoundError(f"Arquivo não encontrado na base: {source!r}.")
+        dst = base / target
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        src.rename(dst)
+        return KBCommit(sha="", paths=(source, target))
 
 
 def _make_backend(settings: KBSettings) -> _Backend:
@@ -630,6 +754,51 @@ class KnowledgeBase:
         self._cache.invalidate_reads([rel])
         self._cache.invalidate_lists()
         return commit
+
+    def move(self, source: str, target: str, message: str = "") -> KBCommit:
+        """Move/renomeia um arquivo na base e invalida os caches afetados."""
+        src = _normalize_path(source)
+        dst = _normalize_path(target)
+        commit = self._backend.move(src, dst, message or f"kb: move {src} -> {dst}")
+        self._cache.invalidate_reads([src, dst])
+        self._cache.invalidate_lists()
+        return commit
+
+    def delete_bulk(self, paths: Sequence[str], message: str = "") -> KBCommit:
+        """Remove múltiplos arquivos em lote e invalida os caches afetados."""
+        normalized = [_normalize_path(p) for p in paths]
+        commit = self._backend.delete_bulk(normalized, message or f"kb: remove {len(normalized)} arquivos")
+        self._cache.invalidate_reads(normalized)
+        self._cache.invalidate_lists()
+        return commit
+
+    def create_folder(self, path: str, message: str = "") -> KBCommit:
+        """Cria um diretório vazio com .gitkeep na base."""
+        rel = _normalize_path(path).strip("/")
+        keep_path = f"{rel}/.gitkeep"
+        return self.write({keep_path: ""}, message or f"kb: cria pasta {rel}")
+
+    def delete_folder(self, path: str, message: str = "") -> KBCommit:
+        """Remove todos os arquivos sob o prefixo do diretório."""
+        rel = _normalize_path(path).strip("/")
+        prefix = f"{rel}/"
+        files = [p for p in self.list() if p.startswith(prefix)]
+        if not files:
+            raise KBNotFoundError(f"Pasta vazia ou inexistente: {rel!r}.")
+        return self.delete_bulk(files, message or f"kb: remove pasta {rel}")
+
+    def soft_delete(self, path: str, message: str = "") -> KBCommit:
+        """Move o arquivo para a lixeira (.trash/<caminho>)."""
+        rel = _normalize_path(path)
+        trash_path = f".trash/{rel}"
+        return self.move(rel, trash_path, message or f"kb: move {rel} para lixeira")
+
+    def restore(self, path: str, message: str = "") -> KBCommit:
+        """Restaura o arquivo da lixeira de volta ao caminho original."""
+        rel = _normalize_path(path)
+        trash_path = rel if rel.startswith(".trash/") else f".trash/{rel}"
+        orig_path = rel.removeprefix(".trash/")
+        return self.move(trash_path, orig_path, message or f"kb: restaura {orig_path} da lixeira")
 
     def render(self, path: str) -> str:
         """Atalho: lê e renderiza como texto (usado pelas tools e pelo qa_cache)."""

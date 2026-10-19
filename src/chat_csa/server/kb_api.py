@@ -14,10 +14,12 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, Header, Response, UploadFile
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
 from ..kb import (
@@ -31,6 +33,22 @@ from ..kb import (
 from ..kb_convert import DEFAULT_PAGES_PER_CALL, default_model_call
 from ..kb_upload import DEFAULT_MAX_UPLOAD_BYTES, BatchResult, process_upload
 from . import auth as auth_store
+
+_AUTHOR_RE = re.compile(r"^author:\s*[\"']?([^\r\n\"']+)[\"']?", re.M)
+_DATE_RE = re.compile(r"^(?:uploaded_at|timestamp):\s*[\"']?([^\r\n\"']+)[\"']?", re.M)
+
+
+def _extract_file_metadata(content: bytes) -> tuple[str, str]:
+    """Extrai author e uploaded_at/timestamp do frontmatter YAML."""
+    try:
+        text = content[:800].decode("utf-8", errors="ignore")
+        author_m = _AUTHOR_RE.search(text)
+        date_m = _DATE_RE.search(text)
+        author = author_m.group(1).strip() if author_m else "admin"
+        uploaded_at = date_m.group(1).strip() if date_m else ""
+        return author, uploaded_at
+    except Exception:
+        return "admin", ""
 
 router = APIRouter(prefix="/kb", tags=["kb"])
 
@@ -55,13 +73,49 @@ def _error_response(exc: KBError) -> JSONResponse:
 
 
 @router.get("/list")
-async def kb_list_route(prefix: str = "", _user: Annotated[dict, Depends(require_admin)] = None):
-    """Caminhos disponíveis na base (relativos à raiz), filtrados pelo prefixo."""
+async def kb_list_route(
+    prefix: str = "",
+    trash: bool = False,
+    _user: Annotated[dict, Depends(require_admin)] = None,
+):
+    """Caminhos disponíveis na base com metadados de autor e data de adição.
+
+    Se trash=False (padrão), lista apenas arquivos ativos (exclui .trash/).
+    Se trash=True, lista apenas arquivos removidos para a lixeira.
+    """
     try:
-        paths = get_kb().list(prefix)
+        kb = get_kb()
+        all_paths = kb.list(prefix)
+        if trash:
+            paths = [p for p in all_paths if p.startswith(".trash/")]
+        else:
+            paths = [p for p in all_paths if not p.startswith(".trash/")]
+
+        files_meta = []
+        for p in paths:
+            author = "admin"
+            uploaded_at = ""
+            if p.endswith(".md"):
+                try:
+                    f = kb.read(p)
+                    author, uploaded_at = _extract_file_metadata(f.content)
+                except Exception:
+                    pass
+            files_meta.append({"path": p, "author": author, "uploaded_at": uploaded_at})
     except KBError as exc:
         return _error_response(exc)
-    return {"prefix": prefix, "paths": paths}
+    return {"prefix": prefix, "paths": paths, "files": files_meta}
+
+
+@router.get("/metadata")
+async def kb_metadata_route(path: str, _user: Annotated[dict, Depends(require_admin)] = None):
+    """Metadados de autor e data de adição de um arquivo específico."""
+    try:
+        f = get_kb().read(path)
+        author, uploaded_at = _extract_file_metadata(f.content)
+    except KBError as exc:
+        return _error_response(exc)
+    return {"path": path, "author": author, "uploaded_at": uploaded_at}
 
 
 @router.get("/file")
@@ -75,17 +129,145 @@ async def kb_file_route(path: str, _user: Annotated[dict, Depends(require_admin)
 
 
 @router.delete("/file")
-async def kb_delete_route(path: str, _user: Annotated[dict, Depends(require_admin)] = None):
+async def kb_delete_route(
+    path: str,
+    permanent: bool = False,
+    _user: Annotated[dict, Depends(require_admin)] = None,
+):
     """Remove um arquivo da base via commit atômico no branch data.
 
-    Exige token admin e caminho relativo à raiz da base. Caminhos com `..`
-    são rejeitados pelo `kb.delete()` antes de qualquer operação de rede.
+    Por padrão (permanent=False), move para a lixeira (.trash/<path>).
+    Se permanent=True, exclui definitivamente.
     """
     try:
-        commit = await run_in_threadpool(get_kb().delete, path)
+        kb = get_kb()
+        if permanent:
+            commit = await run_in_threadpool(kb.delete, path)
+            return {"ok": True, "sha": commit.sha, "permanent": True, "path": path}
+        else:
+            commit = await run_in_threadpool(kb.soft_delete, path)
+            return {"ok": True, "sha": commit.sha, "trashed": True, "path": path}
     except KBError as exc:
         return _error_response(exc)
-    return {"ok": True, "sha": commit.sha}
+
+
+@router.post("/restore")
+async def kb_restore_route(
+    path: str,
+    _user: Annotated[dict, Depends(require_admin)] = None,
+):
+    """Restaura um documento da lixeira de volta para a base ativa."""
+    try:
+        commit = await run_in_threadpool(get_kb().restore, path)
+    except KBError as exc:
+        return _error_response(exc)
+    orig_path = path.removeprefix(".trash/")
+    return {"ok": True, "sha": commit.sha, "path": orig_path}
+
+
+class KBFileUpdateRequest(BaseModel):
+    path: str
+    content: str
+    message: str = ""
+
+
+class KBMoveRequest(BaseModel):
+    source: str
+    target: str
+    message: str = ""
+
+
+class KBBulkDeleteRequest(BaseModel):
+    paths: list[str] = Field(default_factory=list)
+    message: str = ""
+
+
+class KBFolderRequest(BaseModel):
+    path: str
+    message: str = ""
+
+
+@router.put("/file")
+async def kb_file_update_route(
+    req: KBFileUpdateRequest,
+    _user: Annotated[dict, Depends(require_admin)] = None,
+):
+    """Edição direta de texto em um arquivo da base em commit atômico."""
+    try:
+        commit = await run_in_threadpool(
+            get_kb().write,
+            {req.path: req.content},
+            req.message or f"kb: atualiza {req.path}",
+        )
+    except KBError as exc:
+        return _error_response(exc)
+    return {"ok": True, "sha": commit.sha, "path": req.path}
+
+
+@router.post("/move")
+@router.put("/rename")
+async def kb_move_route(
+    req: KBMoveRequest,
+    _user: Annotated[dict, Depends(require_admin)] = None,
+):
+    """Move ou renomeia um arquivo na base em commit atômico único."""
+    try:
+        commit = await run_in_threadpool(
+            get_kb().move,
+            req.source,
+            req.target,
+            req.message or f"kb: move {req.source} -> {req.target}",
+        )
+    except KBError as exc:
+        return _error_response(exc)
+    return {"ok": True, "sha": commit.sha, "source": req.source, "target": req.target}
+
+
+@router.delete("/bulk")
+@router.post("/bulk-delete")
+async def kb_bulk_delete_route(
+    req: KBBulkDeleteRequest,
+    _user: Annotated[dict, Depends(require_admin)] = None,
+):
+    """Remove múltiplos arquivos da base em um único commit atômico."""
+    if not req.paths:
+        return JSONResponse({"ok": False, "error": "Lista de arquivos vazia."}, status_code=400)
+    try:
+        commit = await run_in_threadpool(
+            get_kb().delete_bulk,
+            req.paths,
+            req.message or f"kb: remove {len(req.paths)} arquivos em lote",
+        )
+    except KBError as exc:
+        return _error_response(exc)
+    return {"ok": True, "sha": commit.sha, "paths": commit.paths}
+
+
+@router.post("/folder")
+async def kb_create_folder_route(
+    req: KBFolderRequest,
+    _user: Annotated[dict, Depends(require_admin)] = None,
+):
+    """Cria uma pasta vazia (com .gitkeep) na base."""
+    try:
+        commit = await run_in_threadpool(get_kb().create_folder, req.path, req.message)
+    except KBError as exc:
+        return _error_response(exc)
+    return {"ok": True, "sha": commit.sha, "path": req.path}
+
+
+@router.delete("/folder")
+async def kb_delete_folder_route(
+    path: str,
+    message: str = "",
+    _user: Annotated[dict, Depends(require_admin)] = None,
+):
+    """Remove uma pasta e todo o seu conteúdo sob o prefixo em commit único."""
+    try:
+        commit = await run_in_threadpool(get_kb().delete_folder, path, message)
+    except KBError as exc:
+        return _error_response(exc)
+    return {"ok": True, "sha": commit.sha, "path": path}
 
 
 def _env_int(name: str, default: int) -> int:
@@ -104,6 +286,7 @@ def _run_upload(
     payload: list[tuple[str, bytes]],
     sources: dict[str, str] | None,
     message: str,
+    author: str = "admin",
 ) -> BatchResult:
     """Converte e commita o lote — roda fora do event loop."""
     return process_upload(
@@ -112,6 +295,7 @@ def _run_upload(
         model_call=default_model_call(),
         sources=sources,
         message=message,
+        author=author,
         pages_per_call=_env_int("KB_CONVERT_PAGES_PER_CALL", DEFAULT_PAGES_PER_CALL),
         max_bytes=_env_int("KB_UPLOAD_MAX_BYTES", DEFAULT_MAX_UPLOAD_BYTES),
     )
@@ -157,8 +341,10 @@ async def kb_upload_route(
             )
         source_map = parsed
 
+    author = _user.get("username", "admin") if _user else "admin"
+
     try:
-        result = await run_in_threadpool(_run_upload, payload, source_map, message)
+        result = await run_in_threadpool(_run_upload, payload, source_map, message, author)
     except KBError as exc:
         body = {
             "ok": False,

@@ -52,6 +52,25 @@ async function responseErrorMessage(res: Response): Promise<string> {
   }
 }
 
+/** Erro de autenticação (HTTP 401) — o front deve voltar para o login. */
+export class UnauthorizedError extends Error {
+  constructor(message = "Sessão expirada. Faça login novamente.") {
+    super(message);
+    this.name = "UnauthorizedError";
+  }
+}
+
+/** Lança o erro adequado quando a resposta não é 2xx. */
+async function ensureOk(res: Response): Promise<void> {
+  if (res.ok) {
+    return;
+  }
+  if (res.status === 401) {
+    throw new UnauthorizedError();
+  }
+  throw new Error(await responseErrorMessage(res));
+}
+
 export type ChatCompletionMessage = {
   role: "user" | "assistant" | "system";
   content: string;
@@ -262,9 +281,16 @@ export async function authLogin(
 
 // ─── Base de conhecimento (/kb/*) ────────────────────────────────────────────
 
+export type KBFileMetadata = {
+  path: string;
+  author?: string;
+  uploaded_at?: string;
+};
+
 export type KBListResult = {
   prefix: string;
   paths: string[];
+  files?: KBFileMetadata[];
 };
 
 export type KBUploadFileResult = {
@@ -289,73 +315,321 @@ export type KBUploadResult = {
 export async function kbList(
   token: string,
   prefix = "",
+  trash = false,
 ): Promise<KBListResult> {
   const base = getConsumerUrl();
   let res: Response;
 
   try {
     res = await fetch(
-      `${base.replace(/\/$/, "")}/kb/list?prefix=${encodeURIComponent(prefix)}`,
+      `${base.replace(/\/$/, "")}/kb/list?prefix=${encodeURIComponent(prefix)}&trash=${trash ? "true" : "false"}`,
       { headers: { Authorization: `Bearer ${token}` } },
     );
   } catch {
     throw new Error(`Não foi possível conectar ao servidor em ${base}.`);
   }
 
-  if (!res.ok) throw new Error(await responseErrorMessage(res));
+  await ensureOk(res);
   return res.json();
 }
 
+export type KBFileResult = {
+  blob: Blob;
+  contentType: string;
+};
+
+export type KBFileOptions = {
+  signal?: AbortSignal;
+  timeoutMs?: number;
+};
+
 /**
- * Retorna a URL para download/visualização do arquivo original.
- * O endpoint devolve os bytes com o content-type correto.
+ * Baixa o arquivo original da base com o header `Authorization`.
+ *
+ * Suporta AbortSignal para cancelamento e timeout configurável (padrão: 15s).
  */
-export function kbFileUrl(token: string, path: string): string {
+export async function kbFile(
+  token: string,
+  path: string,
+  options?: KBFileOptions,
+): Promise<KBFileResult> {
   const base = getConsumerUrl();
-  // O token vai na query string para uso em <a href> / window.open
-  return `${base.replace(/\/$/, "")}/kb/file?path=${encodeURIComponent(path)}&token=${encodeURIComponent(token)}`;
+  const timeoutMs = options?.timeoutMs ?? 15000;
+  const controller = new AbortController();
+  const timer = setTimeout(() => {
+    controller.abort(new Error("Tempo limite excedido ao carregar o arquivo."));
+  }, timeoutMs);
+
+  if (options?.signal) {
+    if (options.signal.aborted) {
+      clearTimeout(timer);
+      controller.abort(options.signal.reason);
+    } else {
+      options.signal.addEventListener("abort", () => {
+        clearTimeout(timer);
+        controller.abort(options.signal?.reason);
+      });
+    }
+  }
+
+  let res: Response;
+
+  try {
+    res = await fetch(
+      `${base.replace(/\/$/, "")}/kb/file?path=${encodeURIComponent(path)}`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: controller.signal,
+      },
+    );
+  } catch (err: unknown) {
+    clearTimeout(timer);
+    if (err instanceof DOMException && err.name === "AbortError") {
+      if (controller.signal.reason instanceof Error) {
+        throw controller.signal.reason;
+      }
+      throw new Error("Carregamento do arquivo cancelado.");
+    }
+    if (err instanceof Error) {
+      throw err;
+    }
+    throw new Error(`Não foi possível conectar ao servidor em ${base}.`);
+  } finally {
+    clearTimeout(timer);
+  }
+
+  await ensureOk(res);
+
+  const blob = await res.blob();
+  return {
+    blob,
+    contentType:
+      res.headers.get("content-type") || blob.type || "application/octet-stream",
+  };
 }
 
 /**
  * Remove um arquivo da base de conhecimento via commit atômico.
  * Exige token admin obtido via `authLogin`.
  */
-export async function kbDelete(token: string, path: string): Promise<{ ok: boolean; sha?: string }> {
+export async function kbDelete(
+  token: string,
+  path: string,
+  permanent = false,
+): Promise<{ ok: boolean; sha?: string; trashed?: boolean; permanent?: boolean }> {
   const base = getConsumerUrl();
   let res: Response;
 
   try {
     res = await fetch(
-      `${base.replace(/\/$/, "")}/kb/file?path=${encodeURIComponent(path)}`,
+      `${base.replace(/\/$/, "")}/kb/file?path=${encodeURIComponent(path)}&permanent=${permanent ? "true" : "false"}`,
       { method: "DELETE", headers: { Authorization: `Bearer ${token}` } },
     );
   } catch {
     throw new Error(`Não foi possível conectar ao servidor em ${base}.`);
   }
 
-  if (!res.ok) throw new Error(await responseErrorMessage(res));
+  await ensureOk(res);
   return res.json();
 }
 
 /**
+ * Restaura um documento da lixeira (.trash/) para a base ativa.
+ */
+export async function kbRestore(
+  token: string,
+  path: string,
+): Promise<{ ok: boolean; sha?: string; path: string }> {
+  const base = getConsumerUrl();
+  let res: Response;
+
+  try {
+    res = await fetch(
+      `${base.replace(/\/$/, "")}/kb/restore?path=${encodeURIComponent(path)}`,
+      { method: "POST", headers: { Authorization: `Bearer ${token}` } },
+    );
+  } catch {
+    throw new Error(`Não foi possível conectar ao servidor em ${base}.`);
+  }
+
+  await ensureOk(res);
+  return res.json();
+}
+
+/**
+ * Atualiza o conteúdo textual de um arquivo existente na base em commit atômico.
+ */
+export async function kbFileUpdate(
+  token: string,
+  path: string,
+  content: string,
+  message = "",
+): Promise<{ ok: boolean; sha?: string; path: string }> {
+  const base = getConsumerUrl();
+  let res: Response;
+
+  try {
+    res = await fetch(`${base.replace(/\/$/, "")}/kb/file`, {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ path, content, message }),
+    });
+  } catch {
+    throw new Error(`Não foi possível conectar ao servidor em ${base}.`);
+  }
+
+  await ensureOk(res);
+  return res.json();
+}
+
+/**
+ * Move ou renomeia um arquivo na base em commit atômico único.
+ */
+export async function kbMove(
+  token: string,
+  source: string,
+  target: string,
+  message = "",
+): Promise<{ ok: boolean; sha?: string; source: string; target: string }> {
+  const base = getConsumerUrl();
+  let res: Response;
+
+  try {
+    res = await fetch(`${base.replace(/\/$/, "")}/kb/move`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ source, target, message }),
+    });
+  } catch {
+    throw new Error(`Não foi possível conectar ao servidor em ${base}.`);
+  }
+
+  await ensureOk(res);
+  return res.json();
+}
+
+/**
+ * Exclui múltiplos arquivos da base em lote com um único commit.
+ */
+export async function kbBulkDelete(
+  token: string,
+  paths: string[],
+  message = "",
+): Promise<{ ok: boolean; sha?: string; paths: string[] }> {
+  const base = getConsumerUrl();
+  let res: Response;
+
+  try {
+    res = await fetch(`${base.replace(/\/$/, "")}/kb/bulk`, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ paths, message }),
+    });
+  } catch {
+    throw new Error(`Não foi possível conectar ao servidor em ${base}.`);
+  }
+
+  await ensureOk(res);
+  return res.json();
+}
+
+/**
+ * Cria uma pasta na base com arquivo .gitkeep.
+ */
+export async function kbCreateFolder(
+  token: string,
+  path: string,
+  message = "",
+): Promise<{ ok: boolean; sha?: string; path: string }> {
+  const base = getConsumerUrl();
+  let res: Response;
+
+  try {
+    res = await fetch(`${base.replace(/\/$/, "")}/kb/folder`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ path, message }),
+    });
+  } catch {
+    throw new Error(`Não foi possível conectar ao servidor em ${base}.`);
+  }
+
+  await ensureOk(res);
+  return res.json();
+}
+
+/**
+ * Remove uma pasta e todo o seu conteúdo na base.
+ */
+export async function kbDeleteFolder(
+  token: string,
+  path: string,
+  message = "",
+): Promise<{ ok: boolean; sha?: string; path: string }> {
+  const base = getConsumerUrl();
+  let res: Response;
+
+  try {
+    res = await fetch(
+      `${base.replace(/\/$/, "")}/kb/folder?path=${encodeURIComponent(path)}&message=${encodeURIComponent(message)}`,
+      {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      },
+    );
+  } catch {
+    throw new Error(`Não foi possível conectar ao servidor em ${base}.`);
+  }
+
+  await ensureOk(res);
+  return res.json();
+}
+
+export type KBUploadOptions = {
+  /** Seção (pasta) de destino; o servidor exige ao menos uma. Ex.: "editais". */
+  section?: string;
+  /** Mensagem do commit (opcional). */
+  message?: string;
+};
+
+/**
  * Faz upload de um lote de arquivos para a base de conhecimento.
  * `files` é uma lista de File (selecionados via <input type="file">).
- * `message` é a mensagem do commit (opcional).
+ *
+ * O servidor exige que o caminho declarado tenha uma pasta de seção
+ * (`<seção>/<arquivo>`), que vai no filename da parte multipart.
  */
 export async function kbUpload(
   token: string,
   files: File[],
-  message?: string,
+  options: KBUploadOptions = {},
 ): Promise<KBUploadResult> {
   const base = getConsumerUrl();
   const formData = new FormData();
+  const section = (options.section ?? "")
+    .trim()
+    .replace(/^\/+|\/+$/g, "")
+    .replace(/\\/g, "/");
 
   for (const file of files) {
-    formData.append("files", file, file.name);
+    const declared = section ? `${section}/${file.name}` : file.name;
+    formData.append("files", file, declared);
   }
 
-  if (message) {
-    formData.append("message", message);
+  if (options.message) {
+    formData.append("message", options.message);
   }
 
   let res: Response;
@@ -369,6 +643,6 @@ export async function kbUpload(
     throw new Error(`Não foi possível conectar ao servidor em ${base}.`);
   }
 
-  if (!res.ok) throw new Error(await responseErrorMessage(res));
+  await ensureOk(res);
   return res.json();
 }

@@ -9,7 +9,7 @@
  *  1. Usuário faz login → token guardado em sessionStorage
  *  2. Lista de documentos carregada via GET /kb/list
  *  3. Upload via POST /kb/upload (multipart)
- *  4. Abertura via GET /kb/file (abre em nova aba)
+ *  4. Abertura via GET /kb/file com header de auth → preview renderizado no front
  *  5. Remoção: modal de confirmação → DELETE /kb/file → commit atômico no branch data
  *  6. Iniciar chatbot: modal de confirmação → callback para abrir o widget
  */
@@ -18,12 +18,23 @@ import { BsStars } from "react-icons/bs";
 import {
   AlertTriangle,
   CheckCircle,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Download,
   Eye,
   FileText,
+  Folder,
+  FolderInput,
   FolderOpen,
+  FolderTree,
+  List,
   LogOut,
   MessageCircle,
+  Pencil,
   RefreshCw,
+  RotateCcw,
+  Search,
   Trash2,
   Upload,
   XCircle,
@@ -33,16 +44,23 @@ import {
   type FormEvent,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   authLogin,
   getConsumerUrl,
   kbDelete,
-  kbFileUrl,
+  kbFile,
+  kbFileUpdate,
   kbList,
+  kbMove,
+  kbRestore,
   kbUpload,
+  UnauthorizedError,
   type KBUploadFileResult,
 } from "../../api/client";
 import "./KBExplorer.css";
@@ -70,6 +88,26 @@ function loadToken(): string | null {
 function clearToken() {
   try {
     sessionStorage.removeItem(SESSION_KEY);
+  } catch {
+    /* ignora */
+  }
+}
+
+// ─── Seção de destino do upload ───────────────────────────────────────────────
+
+const UPLOAD_SECTION_KEY = "kbe_upload_section";
+
+function loadUploadSection(): string {
+  try {
+    return localStorage.getItem(UPLOAD_SECTION_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function saveUploadSection(section: string) {
+  try {
+    localStorage.setItem(UPLOAD_SECTION_KEY, section);
   } catch {
     /* ignora */
   }
@@ -108,7 +146,135 @@ type KBFile = {
   path: string;
   name: string;
   category: string;
+  author: string;
+  uploaded_at: string;
 };
+
+type TreeNode = {
+  id: string;
+  name: string;
+  path: string;
+  isFolder: boolean;
+  children: TreeNode[];
+  file?: KBFile;
+};
+
+function buildFileTree(files: KBFile[]): TreeNode[] {
+  const rootNodes: TreeNode[] = [];
+  const folderMap = new Map<string, TreeNode>();
+
+  function getOrCreateFolder(folderPath: string, folderName: string): TreeNode {
+    let folder = folderMap.get(folderPath);
+    if (!folder) {
+      folder = {
+        id: folderPath,
+        name: folderName,
+        path: folderPath,
+        isFolder: true,
+        children: [],
+      };
+      folderMap.set(folderPath, folder);
+
+      const parentSlash = folderPath.lastIndexOf("/");
+      if (parentSlash !== -1) {
+        const parentPath = folderPath.slice(0, parentSlash);
+        const parentName = parentPath.split("/").pop() || parentPath;
+        const parentFolder = getOrCreateFolder(parentPath, parentName);
+        parentFolder.children.push(folder);
+      } else {
+        rootNodes.push(folder);
+      }
+    }
+    return folder;
+  }
+
+  for (const file of files) {
+    const slashIndex = file.path.lastIndexOf("/");
+    if (slashIndex === -1) {
+      rootNodes.push({
+        id: file.path,
+        name: file.name,
+        path: file.path,
+        isFolder: false,
+        children: [],
+        file,
+      });
+    } else {
+      const folderPath = file.path.slice(0, slashIndex);
+      const folderName = folderPath.split("/").pop() || folderPath;
+      const folder = getOrCreateFolder(folderPath, folderName);
+      folder.children.push({
+        id: file.path,
+        name: file.name,
+        path: file.path,
+        isFolder: false,
+        children: [],
+        file,
+      });
+    }
+  }
+
+  function sortTree(nodes: TreeNode[]) {
+    nodes.sort((a, b) => {
+      if (a.isFolder && !b.isFolder) return -1;
+      if (!a.isFolder && b.isFolder) return 1;
+      return a.name.localeCompare(b.name, "pt-BR");
+    });
+    for (const n of nodes) {
+      if (n.isFolder) sortTree(n.children);
+    }
+  }
+  sortTree(rootNodes);
+  return rootNodes;
+}
+
+/** Limites de segurança para evitar congelamento ao renderizar Markdown extenso. */
+const MAX_MARKDOWN_PREVIEW_LINES = 150;
+const MAX_MARKDOWN_PREVIEW_BYTES = 250 * 1024; // 250 KB
+
+/** Como o preview no front renderiza cada tipo de arquivo. */
+type PreviewKind = "markdown" | "text" | "image" | "pdf" | "binary";
+
+type PreviewState = {
+  file: KBFile;
+  kind: PreviewKind;
+  contentType: string;
+  size: number;
+  text?: string;
+  objectUrl: string;
+};
+
+/** Decide o modo de preview a partir da extensão/content-type. */
+function previewKind(path: string, contentType: string): PreviewKind {
+  const ext = path.split(".").pop()?.toLowerCase() ?? "";
+  if (ext === "md" || ext === "markdown" || contentType === "text/markdown") {
+    return "markdown";
+  }
+  if (contentType.startsWith("image/")) {
+    return "image";
+  }
+  if (contentType === "application/pdf" || ext === "pdf") {
+    return "pdf";
+  }
+  if (
+    contentType.startsWith("text/") ||
+    contentType === "application/json" ||
+    contentType.endsWith("+json") ||
+    contentType === "application/xml" ||
+    contentType.endsWith("+xml") ||
+    contentType === "application/javascript"
+  ) {
+    return "text";
+  }
+  return "binary";
+}
+
+/** Formata bytes para exibição no preview. */
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 type Screen = "login" | "explorer";
 
@@ -120,11 +286,12 @@ type KBExplorerProps = {
 // ─── Modal de confirmação genérico ────────────────────────────────────────────
 
 type ConfirmModalProps = {
-  icon: "chat" | "danger";
+  icon: "chat" | "danger" | "upload";
   title: string;
   body: React.ReactNode;
   confirmLabel: string;
   cancelLabel?: string;
+  confirmDisabled?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 };
@@ -135,6 +302,7 @@ function ConfirmModal({
   body,
   confirmLabel,
   cancelLabel = "Cancelar",
+  confirmDisabled = false,
   onConfirm,
   onCancel,
 }: ConfirmModalProps) {
@@ -151,7 +319,7 @@ function ConfirmModal({
       <div className="kbe-modal">
         <div className="kbe-modal-header">
           <span className={`kbe-modal-header-icon kbe-modal-header-icon--${icon}`} aria-hidden="true">
-            {icon === "chat" ? <MessageCircle size={20} /> : <AlertTriangle size={20} />}
+            {icon === "chat" ? <MessageCircle size={20} /> : icon === "upload" ? <Upload size={20} /> : <AlertTriangle size={20} />}
           </span>
           <h3 id="kbe-modal-title">{title}</h3>
         </div>
@@ -170,6 +338,7 @@ function ConfirmModal({
             type="button"
             className={`kbe-btn ${icon === "danger" ? "kbe-btn--danger" : "kbe-btn--primary"}`}
             onClick={onConfirm}
+            disabled={confirmDisabled}
           >
             {confirmLabel}
           </button>
@@ -285,45 +454,106 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
   const [uploading, setUploading] = useState(false);
   const [uploadResults, setUploadResults] = useState<KBUploadFileResult[] | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  /* Arquivos escolhidos aguardando a seção de destino */
+  const [pendingFiles, setPendingFiles] = useState<File[] | null>(null);
+  const [uploadSection, setUploadSection] = useState<string>(() => loadUploadSection());
 
   /* Remoção */
   const [deleteTarget, setDeleteTarget] = useState<KBFile | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
+  /* Busca, filtros de categoria e paginação */
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("all");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [viewMode, setViewMode] = useState<"tree" | "table">("tree");
+  const [trashView, setTrashView] = useState(false);
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(() => new Set(["editais", "resultados", "manuais", "matricula", "geral", ".okf", "testes-upload", ".trash"]));
+  const PAGE_SIZE = 15;
+
+  /* Edição inline */
+  const [editTarget, setEditTarget] = useState<KBFile | null>(null);
+  const [editContent, setEditContent] = useState("");
+  const [editLoading, setEditLoading] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
+  /* Renomeação e movimentação */
+  const [renameTarget, setRenameTarget] = useState<KBFile | null>(null);
+  const [renameNewPath, setRenameNewPath] = useState("");
+  const [renaming, setRenaming] = useState(false);
+  const [renameError, setRenameError] = useState<string | null>(null);
+
   /* Modal de confirmação para chatbot */
   const [showChatConfirm, setShowChatConfirm] = useState(false);
 
+  /* Preview do arquivo (renderizado no front, token no header) */
+  const [preview, setPreview] = useState<PreviewState | null>(null);
+  const [previewLoading, setPreviewLoading] = useState<string | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [lastOpenedFile, setLastOpenedFile] = useState<KBFile | null>(null);
+  const previewAbortControllerRef = useRef<AbortController | null>(null);
+
+  /* Truncamento e teto de segurança para evitar congelamento do renderer em Markdowns volumosos */
+  const markdownPreviewInfo = useMemo(() => {
+    if (!preview || preview.kind !== "markdown" || !preview.text) {
+      return null;
+    }
+    const lines = preview.text.split("\n");
+    const totalLines = lines.length;
+    const isTruncated = preview.size > MAX_MARKDOWN_PREVIEW_BYTES || totalLines > MAX_MARKDOWN_PREVIEW_LINES;
+    const content = isTruncated ? lines.slice(0, MAX_MARKDOWN_PREVIEW_LINES).join("\n") : preview.text;
+    return {
+      isTruncated,
+      totalLines,
+      content,
+    };
+  }, [preview]);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  /* Revoga a object URL do preview ao trocar/fechar o documento */
+  useEffect(() => {
+    return () => {
+      if (preview?.objectUrl) URL.revokeObjectURL(preview.objectUrl);
+    };
+  }, [preview]);
+
   /* Carrega lista de documentos */
-  const loadFiles = useCallback(async () => {
+  const loadFiles = useCallback(async (targetTrash?: boolean) => {
     setLoading(true);
     setError(null);
     setUploadResults(null);
     setUploadError(null);
+    const isTrash = targetTrash !== undefined ? targetTrash : trashView;
 
     try {
-      const result = await kbList(token);
-      const parsed: KBFile[] = result.paths.map((p) => ({
-        path: p,
-        name: pathToName(p),
-        category: formatCategory(pathToCategory(p)),
-      }));
+      const result = await kbList(token, "", isTrash);
+      const metaMap = new Map((result.files ?? []).map((f) => [f.path, f]));
+      const parsed: KBFile[] = result.paths.map((p) => {
+        const meta = metaMap.get(p);
+        return {
+          path: p,
+          name: pathToName(p),
+          category: formatCategory(pathToCategory(p)),
+          author: meta?.author || "admin",
+          uploaded_at: meta?.uploaded_at || "–",
+        };
+      });
       setFiles(parsed);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Erro ao carregar a lista.";
-      /* Token expirado ou inválido */
-      if (msg.toLowerCase().includes("401") || msg.toLowerCase().includes("não autorizado")) {
+      /* Token expirado ou inválido → volta para o login */
+      if (err instanceof UnauthorizedError) {
         clearToken();
         onLogout();
         return;
       }
-      setError(msg);
+      setError(err instanceof Error ? err.message : "Erro ao carregar a lista.");
     } finally {
       setLoading(false);
     }
-  }, [token, onLogout]);
+  }, [token, onLogout, trashView]);
 
   useEffect(() => {
     // oxlint-disable-next-line react/set-state-in-effect -- carregamento assíncrono de dados externos é o padrão correto aqui
@@ -334,34 +564,113 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
   function handleFileInputChange(e: ChangeEvent<HTMLInputElement>) {
     const selected = Array.from(e.target.files ?? []);
     if (!selected.length) return;
-    void doUpload(selected);
+    /* Abre o modal para declarar a seção antes de enviar */
+    setPendingFiles(selected);
     /* Limpa o input para permitir reenvio do mesmo arquivo */
     e.target.value = "";
   }
 
-  async function doUpload(selected: File[]) {
+  /* Envia o lote com o caminho `<seção>/<arquivo>` exigido pelo servidor */
+  function handleUploadConfirm() {
+    if (!pendingFiles) return;
+    const section = uploadSection.trim().replace(/^\/+|\/+$/g, "");
+    if (!section) return;
+    saveUploadSection(section);
+    setUploadSection(section);
+    const selected = pendingFiles;
+    setPendingFiles(null);
+    void doUpload(selected, section);
+  }
+
+  async function doUpload(selected: File[], section: string) {
     setUploading(true);
     setUploadResults(null);
     setUploadError(null);
 
     try {
-      const result = await kbUpload(token, selected);
+      const result = await kbUpload(token, selected, { section });
       setUploadResults(result.files);
       /* Recarrega a lista após upload bem-sucedido */
       if (result.ok) {
         await loadFiles();
       }
     } catch (err: unknown) {
+      if (err instanceof UnauthorizedError) {
+        clearToken();
+        onLogout();
+        return;
+      }
       setUploadError(err instanceof Error ? err.message : "Erro durante o upload.");
     } finally {
       setUploading(false);
     }
   }
 
-  /* Abrir arquivo em nova aba */
-  function handleOpen(file: KBFile) {
-    const url = kbFileUrl(token, file.path);
-    window.open(url, "_blank", "noopener,noreferrer");
+  /* Abre o preview no front: baixa os bytes com o header de auth e renderiza aqui */
+  async function handleOpen(file: KBFile) {
+    if (previewAbortControllerRef.current) {
+      previewAbortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    previewAbortControllerRef.current = controller;
+    setLastOpenedFile(file);
+    setPreviewError(null);
+    setPreviewLoading(file.path);
+
+    try {
+      const { blob, contentType } = await kbFile(token, file.path, {
+        signal: controller.signal,
+        timeoutMs: 15000,
+      });
+      const kind = previewKind(file.path, contentType);
+      setPreview({
+        file,
+        kind,
+        contentType,
+        size: blob.size,
+        objectUrl: URL.createObjectURL(blob),
+        text: kind === "markdown" || kind === "text" ? await blob.text() : undefined,
+      });
+    } catch (err: unknown) {
+      if (err instanceof UnauthorizedError) {
+        clearToken();
+        onLogout();
+        return;
+      }
+      if (err instanceof Error && err.message === "Carregamento do arquivo cancelado.") {
+        return;
+      }
+      setPreviewError(err instanceof Error ? err.message : "Erro ao abrir o arquivo.");
+    } finally {
+      if (previewAbortControllerRef.current === controller) {
+        previewAbortControllerRef.current = null;
+      }
+      setPreviewLoading(null);
+    }
+  }
+
+  function handleCancelPreview() {
+    if (previewAbortControllerRef.current) {
+      previewAbortControllerRef.current.abort();
+      previewAbortControllerRef.current = null;
+    }
+    setPreviewLoading(null);
+  }
+
+  /* Fecha o preview (a object URL é revogada no efeito de limpeza) */
+  function closePreview() {
+    setPreview(null);
+  }
+
+  /* Baixa o arquivo aberto usando a object URL já carregada */
+  function handleDownload() {
+    if (!preview) return;
+    const link = document.createElement("a");
+    link.href = preview.objectUrl;
+    link.download = preview.file.path.split("/").pop() || "documento";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
   }
 
   /* Remoção */
@@ -378,13 +687,32 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
     setDeleteTarget(null);
 
     try {
-      await kbDelete(token, target.path);
+      await kbDelete(token, target.path, trashView);
       /* Atualiza a lista após remoção bem-sucedida */
-      await loadFiles();
+      await loadFiles(trashView);
     } catch (err: unknown) {
+      if (err instanceof UnauthorizedError) {
+        clearToken();
+        onLogout();
+        return;
+      }
       setDeleteError(err instanceof Error ? err.message : "Erro ao remover o arquivo.");
     } finally {
       setDeleting(false);
+    }
+  }
+
+  async function handleRestore(file: KBFile) {
+    try {
+      await kbRestore(token, file.path);
+      await loadFiles(true);
+    } catch (err: unknown) {
+      if (err instanceof UnauthorizedError) {
+        clearToken();
+        onLogout();
+        return;
+      }
+      setError(err instanceof Error ? err.message : "Erro ao restaurar documento.");
     }
   }
 
@@ -393,6 +721,257 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
     setShowChatConfirm(false);
     onStartChat();
   }
+
+  /* Busca e filtros de categoria */
+  const categories = useMemo(() => {
+    const set = new Set(files.map((f) => f.category));
+    return Array.from(set).sort();
+  }, [files]);
+
+  const filteredFiles = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return files.filter((f) => {
+      const matchesCategory = selectedCategory === "all" || f.category === selectedCategory;
+      const matchesSearch =
+        !q || f.path.toLowerCase().includes(q) || f.name.toLowerCase().includes(q);
+      return matchesCategory && matchesSearch;
+    });
+  }, [files, searchQuery, selectedCategory]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredFiles.length / PAGE_SIZE));
+  const paginatedFiles = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return filteredFiles.slice(start, start + PAGE_SIZE);
+  }, [filteredFiles, currentPage]);
+
+  const fileTree = useMemo(() => {
+    return buildFileTree(filteredFiles);
+  }, [filteredFiles]);
+
+  function toggleFolder(folderPath: string) {
+    setExpandedFolders((prev) => {
+      const next = new Set(prev);
+      if (next.has(folderPath)) {
+        next.delete(folderPath);
+      } else {
+        next.add(folderPath);
+      }
+      return next;
+    });
+  }
+
+  function handleSearchChange(value: string) {
+    setSearchQuery(value);
+    setCurrentPage(1);
+  }
+
+  function handleCategoryChange(value: string) {
+    setSelectedCategory(value);
+    setCurrentPage(1);
+  }
+
+  /* Edição inline */
+  async function handleOpenEdit(file: KBFile) {
+    setEditError(null);
+    setEditLoading(true);
+    setEditTarget(file);
+    try {
+      const { blob } = await kbFile(token, file.path);
+      const text = await blob.text();
+      setEditContent(text);
+    } catch (err: unknown) {
+      setEditError(err instanceof Error ? err.message : "Erro ao carregar conteúdo do arquivo.");
+    } finally {
+      setEditLoading(false);
+    }
+  }
+
+  async function handleSaveEdit() {
+    if (!editTarget) return;
+    setEditSaving(true);
+    setEditError(null);
+    try {
+      await kbFileUpdate(token, editTarget.path, editContent);
+      setEditTarget(null);
+      await loadFiles();
+    } catch (err: unknown) {
+      if (err instanceof UnauthorizedError) {
+        clearToken();
+        onLogout();
+        return;
+      }
+      setEditError(err instanceof Error ? err.message : "Erro ao salvar alterações.");
+    } finally {
+      setEditSaving(false);
+    }
+  }
+
+  /* Renomeação / Mover */
+  function handleOpenRename(file: KBFile) {
+    setRenameError(null);
+    setRenameTarget(file);
+    setRenameNewPath(file.path);
+  }
+
+  async function handleConfirmRename() {
+    if (!renameTarget) return;
+    const trimmed = renameNewPath.trim();
+    if (!trimmed || trimmed === renameTarget.path) {
+      setRenameTarget(null);
+      return;
+    }
+    setRenaming(true);
+    setRenameError(null);
+    try {
+      await kbMove(token, renameTarget.path, trimmed);
+      setRenameTarget(null);
+      await loadFiles();
+    } catch (err: unknown) {
+      if (err instanceof UnauthorizedError) {
+        clearToken();
+        onLogout();
+        return;
+      }
+      setRenameError(err instanceof Error ? err.message : "Erro ao renomear arquivo.");
+    } finally {
+      setRenaming(false);
+    }
+  }
+
+  function renderTreeNodes(nodes: TreeNode[], level = 0): React.ReactNode {
+    return nodes.map((node) => {
+      const isExpanded = expandedFolders.has(node.path);
+      if (node.isFolder) {
+        return (
+          <div key={node.id} className="kbe-tree-group">
+            <div
+              className="kbe-tree-node kbe-tree-node--folder"
+              style={{ paddingLeft: `${level * 20 + 8}px` }}
+            >
+              <div
+                className="kbe-tree-node-info"
+                onClick={() => toggleFolder(node.path)}
+                role="button"
+                tabIndex={0}
+                aria-expanded={isExpanded}
+              >
+                <span className="kbe-tree-toggle-btn" aria-hidden="true">
+                  {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                </span>
+                <span className="kbe-tree-folder-icon" aria-hidden="true">
+                  {isExpanded ? <FolderOpen size={16} /> : <Folder size={16} />}
+                </span>
+                <span className="kbe-tree-label"><strong>{node.name}</strong></span>
+                <span className="kbe-tree-count" style={{ fontSize: 11, color: "var(--c-muted)" }}>
+                  ({node.children.length})
+                </span>
+              </div>
+            </div>
+            {isExpanded && renderTreeNodes(node.children, level + 1)}
+          </div>
+        );
+      }
+
+      const file = node.file!;
+      return (
+        <div
+          key={node.id}
+          className="kbe-tree-node kbe-tree-node--file"
+          style={{ paddingLeft: `${level * 20 + 28}px` }}
+        >
+          <div className="kbe-tree-node-info" onClick={() => { void handleOpen(file); }}>
+            <span className="kbe-tree-file-icon" aria-hidden="true">
+              <FileText size={15} />
+            </span>
+            <span className="kbe-tree-label">{file.name.replace(/-/g, " ")}</span>
+          </div>
+
+          <div className="kbe-tree-node-meta">
+            <span className="kbe-file-author">{file.author}</span>
+            <span className="kbe-file-date">{file.uploaded_at}</span>
+          </div>
+
+          <div className="kbe-row-actions">
+            {trashView ? (
+              <>
+                <button
+                  type="button"
+                  className="kbe-icon-btn"
+                  onClick={() => { void handleRestore(file); }}
+                  aria-label={`Restaurar ${file.name}`}
+                  title="Restaurar documento da lixeira"
+                >
+                  <RotateCcw size={15} aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  className="kbe-icon-btn kbe-icon-btn--danger"
+                  onClick={() => handleDeleteRequest(file)}
+                  disabled={deleting || uploading}
+                  aria-label={`Excluir definitivamente ${file.name}`}
+                  title="Excluir definitivamente"
+                >
+                  <Trash2 size={15} aria-hidden="true" />
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="kbe-icon-btn"
+                  onClick={() => { void handleOpen(file); }}
+                  disabled={previewLoading === file.path}
+                  aria-label={`Abrir ${file.name}`}
+                  title="Abrir / visualizar"
+                >
+                  <Eye size={15} aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  className="kbe-icon-btn"
+                  onClick={() => { void handleOpenEdit(file); }}
+                  disabled={editLoading || editSaving}
+                  aria-label={`Editar ${file.name}`}
+                  title="Editar texto inline"
+                >
+                  <Pencil size={15} aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  className="kbe-icon-btn"
+                  onClick={() => handleOpenRename(file)}
+                  disabled={renaming}
+                  aria-label={`Renomear ${file.name}`}
+                  title="Renomear ou mover arquivo"
+                >
+                  <FolderInput size={15} aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  className="kbe-icon-btn kbe-icon-btn--danger"
+                  onClick={() => handleDeleteRequest(file)}
+                  disabled={deleting || uploading}
+                  aria-label={`Remover ${file.name}`}
+                  title="Mover para lixeira"
+                >
+                  <Trash2 size={15} aria-hidden="true" />
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      );
+    });
+  }
+
+  /* Seções já existentes na base (primeiro segmento dos caminhos) */
+  const sections = Array.from(
+    new Set(
+      files
+        .filter((file) => file.path.includes("/"))
+        .map((file) => file.path.split("/")[0]),
+    ),
+  ).sort();
 
   return (
     <div className="kbe-root">
@@ -458,6 +1037,61 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
             Removendo arquivo…
           </div>
         )}
+        {previewLoading && (
+          <div
+            className="kbe-alert kbe-alert--info"
+            role="status"
+            style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-sm)" }}>
+              <div className="kbe-spinner" aria-hidden="true" />
+              <span>Abrindo <strong>{previewLoading}</strong>…</span>
+            </div>
+            <button
+              id="kbe-cancel-preview-btn"
+              type="button"
+              className="kbe-btn kbe-btn--ghost"
+              style={{ padding: "4px 10px", fontSize: 12 }}
+              onClick={handleCancelPreview}
+            >
+              Cancelar
+            </button>
+          </div>
+        )}
+        {previewError && (
+          <div
+            className="kbe-alert kbe-alert--error"
+            role="alert"
+            style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-sm)" }}>
+              <XCircle size={15} style={{ flexShrink: 0, marginTop: 1 }} aria-hidden="true" />
+              <span>{previewError}</span>
+            </div>
+            <div style={{ display: "flex", gap: "var(--sp-xs)" }}>
+              {lastOpenedFile && (
+                <button
+                  id="kbe-retry-preview-btn"
+                  type="button"
+                  className="kbe-btn kbe-btn--ghost"
+                  style={{ padding: "4px 10px", fontSize: 12 }}
+                  onClick={() => { void handleOpen(lastOpenedFile); }}
+                >
+                  Tentar novamente
+                </button>
+              )}
+              <button
+                type="button"
+                className="kbe-icon-btn"
+                onClick={() => setPreviewError(null)}
+                aria-label="Dispensar aviso"
+                title="Dispensar"
+              >
+                <XCircle size={14} aria-hidden="true" />
+              </button>
+            </div>
+          </div>
+        )}
         {uploading && (
           <div className="kbe-alert kbe-alert--info" role="status">
             <div className="kbe-spinner" aria-hidden="true" />
@@ -494,17 +1128,43 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
           {/* Toolbar */}
           <div className="kbe-toolbar">
             <h2 className="kbe-toolbar-title">
-              Documentos
+              {trashView ? "Lixeira" : "Documentos"}
               {!loading && !error && (
                 <span className="kbe-toolbar-count"> ({files.length})</span>
               )}
             </h2>
 
+            {/* Abas: Ativos vs Lixeira */}
+            <div className="kbe-tabs" role="tablist" aria-label="Filtro de documentos ativos ou lixeira">
+              <button
+                id="kbe-tab-active"
+                type="button"
+                className={`kbe-tab ${!trashView ? "kbe-tab--active" : ""}`}
+                onClick={() => { setTrashView(false); void loadFiles(false); }}
+                role="tab"
+                aria-selected={!trashView}
+              >
+                <FileText size={14} aria-hidden="true" />
+                Ativos
+              </button>
+              <button
+                id="kbe-tab-trash"
+                type="button"
+                className={`kbe-tab ${trashView ? "kbe-tab--active" : ""}`}
+                onClick={() => { setTrashView(true); void loadFiles(true); }}
+                role="tab"
+                aria-selected={trashView}
+              >
+                <Trash2 size={14} aria-hidden="true" />
+                Lixeira
+              </button>
+            </div>
+
             <button
               id="kbe-refresh-btn"
               type="button"
               className="kbe-btn kbe-btn--ghost"
-              onClick={() => { void loadFiles(); }}
+              onClick={() => { void loadFiles(trashView); }}
               disabled={loading || uploading}
               aria-label="Recarregar lista de documentos"
               title="Recarregar"
@@ -512,6 +1172,32 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
               <RefreshCw size={14} aria-hidden="true" />
               Atualizar
             </button>
+
+            {/* Alternador de Modo de Visualização */}
+            <div className="kbe-view-mode-toggle" role="group" aria-label="Modo de visualização">
+              <button
+                id="kbe-view-tree-btn"
+                type="button"
+                className={`kbe-view-mode-btn ${viewMode === "tree" ? "kbe-view-mode-btn--active" : ""}`}
+                onClick={() => setViewMode("tree")}
+                aria-label="Visualização em árvore"
+                title="Árvore estilo Explorer"
+              >
+                <FolderTree size={14} aria-hidden="true" />
+                Árvore
+              </button>
+              <button
+                id="kbe-view-table-btn"
+                type="button"
+                className={`kbe-view-mode-btn ${viewMode === "table" ? "kbe-view-mode-btn--active" : ""}`}
+                onClick={() => setViewMode("table")}
+                aria-label="Visualização em tabela"
+                title="Tabela simples"
+              >
+                <List size={14} aria-hidden="true" />
+                Tabela
+              </button>
+            </div>
 
             {/* Input de arquivo oculto */}
             <input
@@ -536,6 +1222,39 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
             </button>
           </div>
 
+          {/* Barra de busca e filtros */}
+          {!loading && !error && files.length > 0 && (
+            <div className="kbe-filters-bar">
+              <div className="kbe-search-input-wrap">
+                <Search size={15} className="kbe-search-icon" aria-hidden="true" />
+                <input
+                  id="kbe-search-input"
+                  type="text"
+                  className="kbe-search-input"
+                  placeholder="Buscar por nome ou caminho…"
+                  value={searchQuery}
+                  onChange={(e) => handleSearchChange(e.target.value)}
+                  aria-label="Buscar documentos"
+                />
+              </div>
+
+              <select
+                id="kbe-category-select"
+                className="kbe-category-select"
+                value={selectedCategory}
+                onChange={(e) => handleCategoryChange(e.target.value)}
+                aria-label="Filtrar por categoria"
+              >
+                <option value="all">Todas as categorias ({files.length})</option>
+                {categories.map((cat) => (
+                  <option key={cat} value={cat}>
+                    {cat} ({files.filter((f) => f.category === cat).length})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {/* Conteúdo */}
           {loading ? (
             <div className="kbe-loading" role="status" aria-live="polite">
@@ -558,6 +1277,10 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
                 primeiro documento ao branch <code>data</code>.
               </p>
             </div>
+          ) : viewMode === "tree" ? (
+            <div className="kbe-tree-wrap">
+              {renderTreeNodes(fileTree)}
+            </div>
           ) : (
             <div className="kbe-table-wrap">
               <table className="kbe-table" aria-label="Lista de documentos da base de conhecimento">
@@ -565,13 +1288,13 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
                   <tr>
                     <th scope="col" className="kbe-col-name">Nome / Caminho</th>
                     <th scope="col" className="kbe-col-category">Categoria</th>
-                    <th scope="col" className="kbe-col-date">Tipo</th>
+                    <th scope="col" className="kbe-col-author">Enviado por</th>
+                    <th scope="col" className="kbe-col-date">Data de adição</th>
                     <th scope="col" className="kbe-col-actions">Ações</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {files.map((file) => {
-                    const ext = file.path.split(".").pop()?.toUpperCase() ?? "–";
+                  {paginatedFiles.map((file) => {
                     return (
                       <tr key={file.path}>
                         <td className="kbe-col-name">
@@ -581,33 +1304,87 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
                         <td className="kbe-col-category">
                           <span className="kbe-badge">{file.category}</span>
                         </td>
-                        <td className="kbe-col-date" style={{ fontFamily: "monospace", fontSize: 12 }}>
-                          {ext}
+                        <td className="kbe-col-author" style={{ fontSize: 13, color: "var(--c-muted)" }}>
+                          {file.author}
+                        </td>
+                        <td className="kbe-col-date" style={{ fontSize: 12, color: "var(--c-muted)" }}>
+                          {file.uploaded_at}
                         </td>
                         <td className="kbe-col-actions">
                           <div className="kbe-row-actions">
-                            {/* Abrir arquivo */}
-                            <button
-                              type="button"
-                              className="kbe-icon-btn"
-                              onClick={() => handleOpen(file)}
-                              aria-label={`Abrir ${file.name}`}
-                              title="Abrir / visualizar"
-                            >
-                              <Eye size={16} aria-hidden="true" />
-                            </button>
+                            {trashView ? (
+                              <>
+                                <button
+                                  type="button"
+                                  className="kbe-icon-btn"
+                                  onClick={() => { void handleRestore(file); }}
+                                  aria-label={`Restaurar ${file.name}`}
+                                  title="Restaurar documento da lixeira"
+                                >
+                                  <RotateCcw size={16} aria-hidden="true" />
+                                </button>
+                                <button
+                                  type="button"
+                                  className="kbe-icon-btn kbe-icon-btn--danger"
+                                  onClick={() => handleDeleteRequest(file)}
+                                  disabled={deleting || uploading}
+                                  aria-label={`Excluir definitivamente ${file.name}`}
+                                  title="Excluir definitivamente"
+                                >
+                                  <Trash2 size={15} aria-hidden="true" />
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                {/* Abrir arquivo */}
+                                <button
+                                  type="button"
+                                  className="kbe-icon-btn"
+                                  onClick={() => { void handleOpen(file); }}
+                                  disabled={previewLoading === file.path}
+                                  aria-label={`Abrir ${file.name}`}
+                                  title="Abrir / visualizar"
+                                >
+                                  <Eye size={16} aria-hidden="true" />
+                                </button>
 
-                            {/* Remover arquivo */}
-                            <button
-                              type="button"
-                              className="kbe-icon-btn kbe-icon-btn--danger"
-                              onClick={() => handleDeleteRequest(file)}
-                              disabled={deleting || uploading}
-                              aria-label={`Remover ${file.name}`}
-                              title="Remover documento"
-                            >
-                              <Trash2 size={15} aria-hidden="true" />
-                            </button>
+                                {/* Editar texto inline */}
+                                <button
+                                  type="button"
+                                  className="kbe-icon-btn"
+                                  onClick={() => { void handleOpenEdit(file); }}
+                                  disabled={editLoading || editSaving}
+                                  aria-label={`Editar ${file.name}`}
+                                  title="Editar texto inline"
+                                >
+                                  <Pencil size={15} aria-hidden="true" />
+                                </button>
+
+                                {/* Renomear / Mover */}
+                                <button
+                                  type="button"
+                                  className="kbe-icon-btn"
+                                  onClick={() => handleOpenRename(file)}
+                                  disabled={renaming}
+                                  aria-label={`Renomear ${file.name}`}
+                                  title="Renomear ou mover arquivo"
+                                >
+                                  <FolderInput size={15} aria-hidden="true" />
+                                </button>
+
+                                {/* Remover arquivo */}
+                                <button
+                                  type="button"
+                                  className="kbe-icon-btn kbe-icon-btn--danger"
+                                  onClick={() => handleDeleteRequest(file)}
+                                  disabled={deleting || uploading}
+                                  aria-label={`Remover ${file.name}`}
+                                  title="Mover para lixeira"
+                                >
+                                  <Trash2 size={15} aria-hidden="true" />
+                                </button>
+                              </>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -615,6 +1392,48 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
                   })}
                 </tbody>
               </table>
+
+              {/* Paginação */}
+              {totalPages > 1 && (
+                <div className="kbe-pagination">
+                  <div>
+                    Mostrando {(currentPage - 1) * PAGE_SIZE + 1}–
+                    {Math.min(currentPage * PAGE_SIZE, filteredFiles.length)} de {filteredFiles.length} documentos
+                  </div>
+                  <div className="kbe-pagination-controls">
+                    <button
+                      type="button"
+                      className="kbe-pagination-btn"
+                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                      aria-label="Página anterior"
+                    >
+                      <ChevronLeft size={16} aria-hidden="true" />
+                    </button>
+                    {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                      <button
+                        key={page}
+                        type="button"
+                        className={`kbe-pagination-btn ${page === currentPage ? "kbe-pagination-btn--active" : ""}`}
+                        onClick={() => setCurrentPage(page)}
+                        aria-label={`Página ${page}`}
+                        aria-current={page === currentPage ? "page" : undefined}
+                      >
+                        {page}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      className="kbe-pagination-btn"
+                      onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                      disabled={currentPage === totalPages}
+                      aria-label="Próxima página"
+                    >
+                      <ChevronRight size={16} aria-hidden="true" />
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -635,27 +1454,187 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
         </div>
       </main>
 
+      {/* Modal: destino do upload */}
+      {pendingFiles && (
+        <ConfirmModal
+          icon="upload"
+          title={
+            pendingFiles.length > 1
+              ? `Enviar ${pendingFiles.length} arquivos?`
+              : "Enviar arquivo?"
+          }
+          confirmLabel="Enviar"
+          confirmDisabled={!uploadSection.trim()}
+          onConfirm={handleUploadConfirm}
+          onCancel={() => setPendingFiles(null)}
+          body={
+            <>
+              <ul className="kbe-upload-file-list">
+                {pendingFiles.map((file) => (
+                  <li key={`${file.name}-${file.size}-${file.lastModified}`}>
+                    {file.name}
+                  </li>
+                ))}
+              </ul>
+              <label htmlFor="kbe-upload-section" className="kbe-upload-label">
+                Seção de destino
+              </label>
+              <input
+                id="kbe-upload-section"
+                className="kbe-upload-input"
+                type="text"
+                list="kbe-upload-sections"
+                placeholder="ex.: editais"
+                value={uploadSection}
+                onChange={(e) => setUploadSection(e.target.value)}
+              />
+              <datalist id="kbe-upload-sections">
+                {sections.map((section) => (
+                  <option key={section} value={section} />
+                ))}
+              </datalist>
+              <p className="kbe-upload-hint">
+                Cada arquivo vira um conceito <code>&lt;seção&gt;/&lt;nome&gt;.md</code> num
+                único commit no branch <code>data</code>; o original não é preservado.
+              </p>
+            </>
+          }
+        />
+      )}
+
+      {/* Modal: preview do documento renderizado no front */}
+      {preview && (
+        <div
+          className="kbe-modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="kbe-preview-title"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closePreview();
+          }}
+        >
+          <div className="kbe-modal kbe-modal--preview">
+            <div className="kbe-modal-header">
+              <span className="kbe-modal-header-icon kbe-modal-header-icon--chat" aria-hidden="true">
+                <FileText size={18} />
+              </span>
+              <div className="kbe-preview-heading">
+                <h3 id="kbe-preview-title">{preview.file.name.replace(/-/g, " ")}</h3>
+                <p className="kbe-preview-sub">{preview.file.path}</p>
+              </div>
+              <button
+                type="button"
+                className="kbe-icon-btn"
+                onClick={closePreview}
+                aria-label="Fechar visualização"
+                title="Fechar"
+              >
+                <XCircle size={18} aria-hidden="true" />
+              </button>
+            </div>
+
+            <div className="kbe-preview-body">
+              {preview.kind === "markdown" && (
+                <div className="kbe-preview-markdown">
+                  {markdownPreviewInfo?.isTruncated && (
+                    <div
+                      className="kbe-alert kbe-alert--info kbe-preview-truncated-alert"
+                      role="alert"
+                      style={{ marginBottom: "var(--sp-md)" }}
+                    >
+                      <AlertTriangle size={18} aria-hidden="true" style={{ flexShrink: 0 }} />
+                      <div style={{ flex: 1 }}>
+                        <strong>Documento extenso detectado ({markdownPreviewInfo.totalLines.toLocaleString("pt-BR")} linhas, {formatBytes(preview.size)}).</strong>
+                        <p style={{ margin: "4px 0 0" }}>
+                          Exibindo apenas os primeiros {MAX_MARKDOWN_PREVIEW_LINES} registros para evitar lentidão ou travamento do navegador. Baixe o documento para consultar o conteúdo completo.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        className="kbe-btn kbe-btn--ghost"
+                        onClick={handleDownload}
+                        style={{ alignSelf: "center", whiteSpace: "nowrap" }}
+                      >
+                        <Download size={14} aria-hidden="true" />
+                        Baixar original
+                      </button>
+                    </div>
+                  )}
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {markdownPreviewInfo ? markdownPreviewInfo.content : (preview.text ?? "")}
+                  </ReactMarkdown>
+                </div>
+              )}
+
+              {preview.kind === "text" && (
+                <pre className="kbe-preview-text">{preview.text ?? ""}</pre>
+              )}
+
+              {preview.kind === "image" && (
+                <img className="kbe-preview-image" src={preview.objectUrl} alt={preview.file.name} />
+              )}
+
+              {preview.kind === "pdf" && (
+                <iframe
+                  className="kbe-preview-pdf"
+                  src={preview.objectUrl}
+                  title={preview.file.name}
+                />
+              )}
+
+              {preview.kind === "binary" && (
+                <div className="kbe-preview-binary">
+                  <FileText size={30} aria-hidden="true" />
+                  <p>Este formato não pode ser exibido no navegador.</p>
+                  <p className="kbe-preview-meta">
+                    {preview.contentType} · {formatBytes(preview.size)}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="kbe-modal-footer">
+              <button type="button" className="kbe-btn kbe-btn--ghost" onClick={closePreview}>
+                Fechar
+              </button>
+              <button
+                id="kbe-preview-download"
+                type="button"
+                className="kbe-btn kbe-btn--primary"
+                onClick={handleDownload}
+              >
+                <Download size={14} aria-hidden="true" />
+                Baixar original
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal: confirmação de remoção */}
       {deleteTarget && (
         <ConfirmModal
           icon="danger"
-          title="Remover documento?"
+          title={trashView ? "Excluir permanentemente?" : "Mover para a lixeira?"}
           body={
             <>
               <p>
-                Tem certeza que deseja remover permanentemente o arquivo:
+                {trashView
+                  ? "Tem certeza que deseja excluir permanentemente o arquivo da lixeira?"
+                  : "Deseja mover o seguinte arquivo para a lixeira?"}
               </p>
               <p style={{ fontFamily: "monospace", fontSize: 12, wordBreak: "break-all" }}>
                 {deleteTarget.path}
               </p>
               <p style={{ color: "var(--c-muted)", fontSize: 12 }}>
                 <AlertTriangle size={12} style={{ verticalAlign: "middle", marginRight: 4 }} aria-hidden="true" />
-                Esta ação cria um commit no branch <code>data</code> e não pode ser desfeita
-                pelo painel.
+                {trashView
+                  ? "Esta ação excluirá o arquivo em definitivo no Git e não poderá ser desfeita."
+                  : "O arquivo poderá ser visualizado na aba Lixeira e restaurado a qualquer momento."}
               </p>
             </>
           }
-          confirmLabel="Sim, remover"
+          confirmLabel={trashView ? "Sim, excluir definitivamente" : "Sim, mover para lixeira"}
           onConfirm={() => { void handleDeleteConfirm(); }}
           onCancel={() => setDeleteTarget(null)}
         />
@@ -684,6 +1663,126 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
           confirmLabel="Sim, iniciar"
           onConfirm={handleChatConfirm}
           onCancel={() => setShowChatConfirm(false)}
+        />
+      )}
+
+      {/* Modal: Edição inline */}
+      {editTarget && (
+        <div
+          className="kbe-modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="kbe-edit-title"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !editSaving) setEditTarget(null);
+          }}
+        >
+          <div className="kbe-modal kbe-modal--preview">
+            <div className="kbe-modal-header">
+              <span className="kbe-modal-header-icon kbe-modal-header-icon--chat" aria-hidden="true">
+                <Pencil size={18} />
+              </span>
+              <div className="kbe-preview-heading">
+                <h3 id="kbe-edit-title">Editar documento</h3>
+                <p className="kbe-preview-sub">{editTarget.path}</p>
+              </div>
+              <button
+                type="button"
+                className="kbe-icon-btn"
+                onClick={() => setEditTarget(null)}
+                disabled={editSaving}
+                aria-label="Fechar edição"
+                title="Fechar"
+              >
+                <XCircle size={18} aria-hidden="true" />
+              </button>
+            </div>
+
+            <div className="kbe-preview-body" style={{ padding: "var(--sp-md)" }}>
+              {editError && (
+                <div className="kbe-alert kbe-alert--error" style={{ marginBottom: "var(--sp-sm)" }} role="alert">
+                  <XCircle size={15} style={{ flexShrink: 0, marginTop: 1 }} aria-hidden="true" />
+                  {editError}
+                </div>
+              )}
+              {editLoading ? (
+                <div className="kbe-loading">
+                  <div className="kbe-spinner" aria-hidden="true" />
+                  Carregando conteúdo…
+                </div>
+              ) : (
+                <textarea
+                  id="kbe-edit-textarea"
+                  className="kbe-edit-textarea"
+                  value={editContent}
+                  onChange={(e) => setEditContent(e.target.value)}
+                  rows={18}
+                  placeholder="Conteúdo do documento em Markdown ou texto…"
+                  disabled={editSaving}
+                />
+              )}
+            </div>
+
+            <div className="kbe-modal-footer">
+              <button
+                type="button"
+                className="kbe-btn kbe-btn--ghost"
+                onClick={() => setEditTarget(null)}
+                disabled={editSaving}
+              >
+                Cancelar
+              </button>
+              <button
+                id="kbe-save-edit-btn"
+                type="button"
+                className="kbe-btn kbe-btn--primary"
+                onClick={() => { void handleSaveEdit(); }}
+                disabled={editSaving || editLoading}
+              >
+                {editSaving ? "Salvando…" : "Salvar alterações"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Renomear ou Mover */}
+      {renameTarget && (
+        <ConfirmModal
+          icon="upload"
+          title="Renomear ou mover arquivo"
+          confirmLabel={renaming ? "Salvando…" : "Confirmar"}
+          confirmDisabled={renaming || !renameNewPath.trim() || renameNewPath.trim() === renameTarget.path}
+          onConfirm={() => { void handleConfirmRename(); }}
+          onCancel={() => { if (!renaming) setRenameTarget(null); }}
+          body={
+            <>
+              <p>
+                Altere o caminho para renomear ou mover o arquivo para outra categoria:
+              </p>
+              <div style={{ margin: "var(--sp-sm) 0" }}>
+                <label htmlFor="kbe-rename-input" style={{ display: "block", fontSize: 12, color: "var(--c-muted)", marginBottom: 4 }}>
+                  Novo caminho relativo à raiz da base:
+                </label>
+                <input
+                  id="kbe-rename-input"
+                  type="text"
+                  className="kbe-search-input"
+                  style={{ paddingLeft: 10 }}
+                  value={renameNewPath}
+                  onChange={(e) => setRenameNewPath(e.target.value)}
+                  placeholder="ex: editais/novo_nome.md"
+                  disabled={renaming}
+                />
+              </div>
+              {renameError && (
+                <div className="kbe-alert kbe-alert--error" role="alert" style={{ marginTop: "var(--sp-sm)" }}>
+                  <XCircle size={15} style={{ flexShrink: 0, marginTop: 1 }} aria-hidden="true" />
+                  {renameError}
+                </div>
+              )}
+            </>
+          }
         />
       )}
     </div>
