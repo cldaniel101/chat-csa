@@ -403,6 +403,8 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
   const [preview, setPreview] = useState<PreviewState | null>(null);
   const [previewLoading, setPreviewLoading] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  const [lastOpenedFile, setLastOpenedFile] = useState<KBFile | null>(null);
+  const previewAbortControllerRef = useRef<AbortController | null>(null);
 
   /* Truncamento e teto de segurança para evitar congelamento do renderer em Markdowns volumosos */
   const markdownPreviewInfo = useMemo(() => {
@@ -510,11 +512,20 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
 
   /* Abre o preview no front: baixa os bytes com o header de auth e renderiza aqui */
   async function handleOpen(file: KBFile) {
+    if (previewAbortControllerRef.current) {
+      previewAbortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    previewAbortControllerRef.current = controller;
+    setLastOpenedFile(file);
     setPreviewError(null);
     setPreviewLoading(file.path);
 
     try {
-      const { blob, contentType } = await kbFile(token, file.path);
+      const { blob, contentType } = await kbFile(token, file.path, {
+        signal: controller.signal,
+        timeoutMs: 15000,
+      });
       const kind = previewKind(file.path, contentType);
       setPreview({
         file,
@@ -530,10 +541,24 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
         onLogout();
         return;
       }
+      if (err instanceof Error && err.message === "Carregamento do arquivo cancelado.") {
+        return;
+      }
       setPreviewError(err instanceof Error ? err.message : "Erro ao abrir o arquivo.");
     } finally {
+      if (previewAbortControllerRef.current === controller) {
+        previewAbortControllerRef.current = null;
+      }
       setPreviewLoading(null);
     }
+  }
+
+  function handleCancelPreview() {
+    if (previewAbortControllerRef.current) {
+      previewAbortControllerRef.current.abort();
+      previewAbortControllerRef.current = null;
+    }
+    setPreviewLoading(null);
   }
 
   /* Fecha o preview (a object URL é revogada no efeito de limpeza) */
@@ -761,15 +786,58 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
           </div>
         )}
         {previewLoading && (
-          <div className="kbe-alert kbe-alert--info" role="status">
-            <div className="kbe-spinner" aria-hidden="true" />
-            Abrindo {previewLoading}…
+          <div
+            className="kbe-alert kbe-alert--info"
+            role="status"
+            style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-sm)" }}>
+              <div className="kbe-spinner" aria-hidden="true" />
+              <span>Abrindo <strong>{previewLoading}</strong>…</span>
+            </div>
+            <button
+              id="kbe-cancel-preview-btn"
+              type="button"
+              className="kbe-btn kbe-btn--ghost"
+              style={{ padding: "4px 10px", fontSize: 12 }}
+              onClick={handleCancelPreview}
+            >
+              Cancelar
+            </button>
           </div>
         )}
         {previewError && (
-          <div className="kbe-alert kbe-alert--error" role="alert">
-            <XCircle size={15} style={{ flexShrink: 0, marginTop: 1 }} aria-hidden="true" />
-            {previewError}
+          <div
+            className="kbe-alert kbe-alert--error"
+            role="alert"
+            style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-sm)" }}>
+              <XCircle size={15} style={{ flexShrink: 0, marginTop: 1 }} aria-hidden="true" />
+              <span>{previewError}</span>
+            </div>
+            <div style={{ display: "flex", gap: "var(--sp-xs)" }}>
+              {lastOpenedFile && (
+                <button
+                  id="kbe-retry-preview-btn"
+                  type="button"
+                  className="kbe-btn kbe-btn--ghost"
+                  style={{ padding: "4px 10px", fontSize: 12 }}
+                  onClick={() => { void handleOpen(lastOpenedFile); }}
+                >
+                  Tentar novamente
+                </button>
+              )}
+              <button
+                type="button"
+                className="kbe-icon-btn"
+                onClick={() => setPreviewError(null)}
+                aria-label="Dispensar aviso"
+                title="Dispensar"
+              >
+                <XCircle size={14} aria-hidden="true" />
+              </button>
+            </div>
           </div>
         )}
         {uploading && (

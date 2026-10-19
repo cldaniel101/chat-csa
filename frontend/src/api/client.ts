@@ -330,24 +330,64 @@ export type KBFileResult = {
   contentType: string;
 };
 
+export type KBFileOptions = {
+  signal?: AbortSignal;
+  timeoutMs?: number;
+};
+
 /**
  * Baixa o arquivo original da base com o header `Authorization`.
  *
- * O front renderiza o conteúdo (preview), em vez de redirecionar para a API:
- * navegações diretas (`window.open`/`<a href>`) não enviam o header de
- * autorização, o que resultava em 401.
+ * Suporta AbortSignal para cancelamento e timeout configurável (padrão: 15s).
  */
-export async function kbFile(token: string, path: string): Promise<KBFileResult> {
+export async function kbFile(
+  token: string,
+  path: string,
+  options?: KBFileOptions,
+): Promise<KBFileResult> {
   const base = getConsumerUrl();
+  const timeoutMs = options?.timeoutMs ?? 15000;
+  const controller = new AbortController();
+  const timer = setTimeout(() => {
+    controller.abort(new Error("Tempo limite excedido ao carregar o arquivo."));
+  }, timeoutMs);
+
+  if (options?.signal) {
+    if (options.signal.aborted) {
+      clearTimeout(timer);
+      controller.abort(options.signal.reason);
+    } else {
+      options.signal.addEventListener("abort", () => {
+        clearTimeout(timer);
+        controller.abort(options.signal?.reason);
+      });
+    }
+  }
+
   let res: Response;
 
   try {
     res = await fetch(
       `${base.replace(/\/$/, "")}/kb/file?path=${encodeURIComponent(path)}`,
-      { headers: { Authorization: `Bearer ${token}` } },
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: controller.signal,
+      },
     );
-  } catch {
+  } catch (err: unknown) {
+    clearTimeout(timer);
+    if (err instanceof DOMException && err.name === "AbortError") {
+      if (controller.signal.reason instanceof Error) {
+        throw controller.signal.reason;
+      }
+      throw new Error("Carregamento do arquivo cancelado.");
+    }
+    if (err instanceof Error) {
+      throw err;
+    }
     throw new Error(`Não foi possível conectar ao servidor em ${base}.`);
+  } finally {
+    clearTimeout(timer);
   }
 
   await ensureOk(res);
