@@ -315,13 +315,14 @@ export type KBUploadResult = {
 export async function kbList(
   token: string,
   prefix = "",
+  trash = false,
 ): Promise<KBListResult> {
   const base = getConsumerUrl();
   let res: Response;
 
   try {
     res = await fetch(
-      `${base.replace(/\/$/, "")}/kb/list?prefix=${encodeURIComponent(prefix)}`,
+      `${base.replace(/\/$/, "")}/kb/list?prefix=${encodeURIComponent(prefix)}&trash=${trash ? "true" : "false"}`,
       { headers: { Authorization: `Bearer ${token}` } },
     );
   } catch {
@@ -411,14 +412,41 @@ export async function kbFile(
  * Remove um arquivo da base de conhecimento via commit atômico.
  * Exige token admin obtido via `authLogin`.
  */
-export async function kbDelete(token: string, path: string): Promise<{ ok: boolean; sha?: string }> {
+export async function kbDelete(
+  token: string,
+  path: string,
+  permanent = false,
+): Promise<{ ok: boolean; sha?: string; trashed?: boolean; permanent?: boolean }> {
   const base = getConsumerUrl();
   let res: Response;
 
   try {
     res = await fetch(
-      `${base.replace(/\/$/, "")}/kb/file?path=${encodeURIComponent(path)}`,
+      `${base.replace(/\/$/, "")}/kb/file?path=${encodeURIComponent(path)}&permanent=${permanent ? "true" : "false"}`,
       { method: "DELETE", headers: { Authorization: `Bearer ${token}` } },
+    );
+  } catch {
+    throw new Error(`Não foi possível conectar ao servidor em ${base}.`);
+  }
+
+  await ensureOk(res);
+  return res.json();
+}
+
+/**
+ * Restaura um documento da lixeira (.trash/) para a base ativa.
+ */
+export async function kbRestore(
+  token: string,
+  path: string,
+): Promise<{ ok: boolean; sha?: string; path: string }> {
+  const base = getConsumerUrl();
+  let res: Response;
+
+  try {
+    res = await fetch(
+      `${base.replace(/\/$/, "")}/kb/restore?path=${encodeURIComponent(path)}`,
+      { method: "POST", headers: { Authorization: `Bearer ${token}` } },
     );
   } catch {
     throw new Error(`Não foi possível conectar ao servidor em ${base}.`);

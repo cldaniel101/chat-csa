@@ -33,6 +33,7 @@ import {
   MessageCircle,
   Pencil,
   RefreshCw,
+  RotateCcw,
   Search,
   Trash2,
   Upload,
@@ -57,6 +58,7 @@ import {
   kbFileUpdate,
   kbList,
   kbMove,
+  kbRestore,
   kbUpload,
   UnauthorizedError,
   type KBUploadFileResult,
@@ -466,7 +468,8 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
   const [viewMode, setViewMode] = useState<"tree" | "table">("tree");
-  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(() => new Set(["editais", "resultados", "manuais", "matricula", "geral", ".okf", "testes-upload"]));
+  const [trashView, setTrashView] = useState(false);
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(() => new Set(["editais", "resultados", "manuais", "matricula", "geral", ".okf", "testes-upload", ".trash"]));
   const PAGE_SIZE = 15;
 
   /* Edição inline */
@@ -518,14 +521,15 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
   }, [preview]);
 
   /* Carrega lista de documentos */
-  const loadFiles = useCallback(async () => {
+  const loadFiles = useCallback(async (targetTrash?: boolean) => {
     setLoading(true);
     setError(null);
     setUploadResults(null);
     setUploadError(null);
+    const isTrash = targetTrash !== undefined ? targetTrash : trashView;
 
     try {
-      const result = await kbList(token);
+      const result = await kbList(token, "", isTrash);
       const metaMap = new Map((result.files ?? []).map((f) => [f.path, f]));
       const parsed: KBFile[] = result.paths.map((p) => {
         const meta = metaMap.get(p);
@@ -549,7 +553,7 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
     } finally {
       setLoading(false);
     }
-  }, [token, onLogout]);
+  }, [token, onLogout, trashView]);
 
   useEffect(() => {
     // oxlint-disable-next-line react/set-state-in-effect -- carregamento assíncrono de dados externos é o padrão correto aqui
@@ -683,9 +687,9 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
     setDeleteTarget(null);
 
     try {
-      await kbDelete(token, target.path);
+      await kbDelete(token, target.path, trashView);
       /* Atualiza a lista após remoção bem-sucedida */
-      await loadFiles();
+      await loadFiles(trashView);
     } catch (err: unknown) {
       if (err instanceof UnauthorizedError) {
         clearToken();
@@ -695,6 +699,20 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
       setDeleteError(err instanceof Error ? err.message : "Erro ao remover o arquivo.");
     } finally {
       setDeleting(false);
+    }
+  }
+
+  async function handleRestore(file: KBFile) {
+    try {
+      await kbRestore(token, file.path);
+      await loadFiles(true);
+    } catch (err: unknown) {
+      if (err instanceof UnauthorizedError) {
+        clearToken();
+        onLogout();
+        return;
+      }
+      setError(err instanceof Error ? err.message : "Erro ao restaurar documento.");
     }
   }
 
@@ -874,46 +892,72 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
           </div>
 
           <div className="kbe-row-actions">
-            <button
-              type="button"
-              className="kbe-icon-btn"
-              onClick={() => { void handleOpen(file); }}
-              disabled={previewLoading === file.path}
-              aria-label={`Abrir ${file.name}`}
-              title="Abrir / visualizar"
-            >
-              <Eye size={15} aria-hidden="true" />
-            </button>
-            <button
-              type="button"
-              className="kbe-icon-btn"
-              onClick={() => { void handleOpenEdit(file); }}
-              disabled={editLoading || editSaving}
-              aria-label={`Editar ${file.name}`}
-              title="Editar texto inline"
-            >
-              <Pencil size={15} aria-hidden="true" />
-            </button>
-            <button
-              type="button"
-              className="kbe-icon-btn"
-              onClick={() => handleOpenRename(file)}
-              disabled={renaming}
-              aria-label={`Renomear ${file.name}`}
-              title="Renomear ou mover arquivo"
-            >
-              <FolderInput size={15} aria-hidden="true" />
-            </button>
-            <button
-              type="button"
-              className="kbe-icon-btn kbe-icon-btn--danger"
-              onClick={() => handleDeleteRequest(file)}
-              disabled={deleting || uploading}
-              aria-label={`Remover ${file.name}`}
-              title="Remover documento"
-            >
-              <Trash2 size={15} aria-hidden="true" />
-            </button>
+            {trashView ? (
+              <>
+                <button
+                  type="button"
+                  className="kbe-icon-btn"
+                  onClick={() => { void handleRestore(file); }}
+                  aria-label={`Restaurar ${file.name}`}
+                  title="Restaurar documento da lixeira"
+                >
+                  <RotateCcw size={15} aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  className="kbe-icon-btn kbe-icon-btn--danger"
+                  onClick={() => handleDeleteRequest(file)}
+                  disabled={deleting || uploading}
+                  aria-label={`Excluir definitivamente ${file.name}`}
+                  title="Excluir definitivamente"
+                >
+                  <Trash2 size={15} aria-hidden="true" />
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="kbe-icon-btn"
+                  onClick={() => { void handleOpen(file); }}
+                  disabled={previewLoading === file.path}
+                  aria-label={`Abrir ${file.name}`}
+                  title="Abrir / visualizar"
+                >
+                  <Eye size={15} aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  className="kbe-icon-btn"
+                  onClick={() => { void handleOpenEdit(file); }}
+                  disabled={editLoading || editSaving}
+                  aria-label={`Editar ${file.name}`}
+                  title="Editar texto inline"
+                >
+                  <Pencil size={15} aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  className="kbe-icon-btn"
+                  onClick={() => handleOpenRename(file)}
+                  disabled={renaming}
+                  aria-label={`Renomear ${file.name}`}
+                  title="Renomear ou mover arquivo"
+                >
+                  <FolderInput size={15} aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  className="kbe-icon-btn kbe-icon-btn--danger"
+                  onClick={() => handleDeleteRequest(file)}
+                  disabled={deleting || uploading}
+                  aria-label={`Remover ${file.name}`}
+                  title="Mover para lixeira"
+                >
+                  <Trash2 size={15} aria-hidden="true" />
+                </button>
+              </>
+            )}
           </div>
         </div>
       );
@@ -1084,17 +1128,43 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
           {/* Toolbar */}
           <div className="kbe-toolbar">
             <h2 className="kbe-toolbar-title">
-              Documentos
+              {trashView ? "Lixeira" : "Documentos"}
               {!loading && !error && (
                 <span className="kbe-toolbar-count"> ({files.length})</span>
               )}
             </h2>
 
+            {/* Abas: Ativos vs Lixeira */}
+            <div className="kbe-tabs" role="tablist" aria-label="Filtro de documentos ativos ou lixeira">
+              <button
+                id="kbe-tab-active"
+                type="button"
+                className={`kbe-tab ${!trashView ? "kbe-tab--active" : ""}`}
+                onClick={() => { setTrashView(false); void loadFiles(false); }}
+                role="tab"
+                aria-selected={!trashView}
+              >
+                <FileText size={14} aria-hidden="true" />
+                Ativos
+              </button>
+              <button
+                id="kbe-tab-trash"
+                type="button"
+                className={`kbe-tab ${trashView ? "kbe-tab--active" : ""}`}
+                onClick={() => { setTrashView(true); void loadFiles(true); }}
+                role="tab"
+                aria-selected={trashView}
+              >
+                <Trash2 size={14} aria-hidden="true" />
+                Lixeira
+              </button>
+            </div>
+
             <button
               id="kbe-refresh-btn"
               type="button"
               className="kbe-btn kbe-btn--ghost"
-              onClick={() => { void loadFiles(); }}
+              onClick={() => { void loadFiles(trashView); }}
               disabled={loading || uploading}
               aria-label="Recarregar lista de documentos"
               title="Recarregar"
@@ -1242,53 +1312,79 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
                         </td>
                         <td className="kbe-col-actions">
                           <div className="kbe-row-actions">
-                            {/* Abrir arquivo */}
-                            <button
-                              type="button"
-                              className="kbe-icon-btn"
-                              onClick={() => { void handleOpen(file); }}
-                              disabled={previewLoading === file.path}
-                              aria-label={`Abrir ${file.name}`}
-                              title="Abrir / visualizar"
-                            >
-                              <Eye size={16} aria-hidden="true" />
-                            </button>
+                            {trashView ? (
+                              <>
+                                <button
+                                  type="button"
+                                  className="kbe-icon-btn"
+                                  onClick={() => { void handleRestore(file); }}
+                                  aria-label={`Restaurar ${file.name}`}
+                                  title="Restaurar documento da lixeira"
+                                >
+                                  <RotateCcw size={16} aria-hidden="true" />
+                                </button>
+                                <button
+                                  type="button"
+                                  className="kbe-icon-btn kbe-icon-btn--danger"
+                                  onClick={() => handleDeleteRequest(file)}
+                                  disabled={deleting || uploading}
+                                  aria-label={`Excluir definitivamente ${file.name}`}
+                                  title="Excluir definitivamente"
+                                >
+                                  <Trash2 size={15} aria-hidden="true" />
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                {/* Abrir arquivo */}
+                                <button
+                                  type="button"
+                                  className="kbe-icon-btn"
+                                  onClick={() => { void handleOpen(file); }}
+                                  disabled={previewLoading === file.path}
+                                  aria-label={`Abrir ${file.name}`}
+                                  title="Abrir / visualizar"
+                                >
+                                  <Eye size={16} aria-hidden="true" />
+                                </button>
 
-                            {/* Editar texto inline */}
-                            <button
-                              type="button"
-                              className="kbe-icon-btn"
-                              onClick={() => { void handleOpenEdit(file); }}
-                              disabled={editLoading || editSaving}
-                              aria-label={`Editar ${file.name}`}
-                              title="Editar texto inline"
-                            >
-                              <Pencil size={15} aria-hidden="true" />
-                            </button>
+                                {/* Editar texto inline */}
+                                <button
+                                  type="button"
+                                  className="kbe-icon-btn"
+                                  onClick={() => { void handleOpenEdit(file); }}
+                                  disabled={editLoading || editSaving}
+                                  aria-label={`Editar ${file.name}`}
+                                  title="Editar texto inline"
+                                >
+                                  <Pencil size={15} aria-hidden="true" />
+                                </button>
 
-                            {/* Renomear / Mover */}
-                            <button
-                              type="button"
-                              className="kbe-icon-btn"
-                              onClick={() => handleOpenRename(file)}
-                              disabled={renaming}
-                              aria-label={`Renomear ${file.name}`}
-                              title="Renomear ou mover arquivo"
-                            >
-                              <FolderInput size={15} aria-hidden="true" />
-                            </button>
+                                {/* Renomear / Mover */}
+                                <button
+                                  type="button"
+                                  className="kbe-icon-btn"
+                                  onClick={() => handleOpenRename(file)}
+                                  disabled={renaming}
+                                  aria-label={`Renomear ${file.name}`}
+                                  title="Renomear ou mover arquivo"
+                                >
+                                  <FolderInput size={15} aria-hidden="true" />
+                                </button>
 
-                            {/* Remover arquivo */}
-                            <button
-                              type="button"
-                              className="kbe-icon-btn kbe-icon-btn--danger"
-                              onClick={() => handleDeleteRequest(file)}
-                              disabled={deleting || uploading}
-                              aria-label={`Remover ${file.name}`}
-                              title="Remover documento"
-                            >
-                              <Trash2 size={15} aria-hidden="true" />
-                            </button>
+                                {/* Remover arquivo */}
+                                <button
+                                  type="button"
+                                  className="kbe-icon-btn kbe-icon-btn--danger"
+                                  onClick={() => handleDeleteRequest(file)}
+                                  disabled={deleting || uploading}
+                                  aria-label={`Remover ${file.name}`}
+                                  title="Mover para lixeira"
+                                >
+                                  <Trash2 size={15} aria-hidden="true" />
+                                </button>
+                              </>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -1519,23 +1615,26 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
       {deleteTarget && (
         <ConfirmModal
           icon="danger"
-          title="Remover documento?"
+          title={trashView ? "Excluir permanentemente?" : "Mover para a lixeira?"}
           body={
             <>
               <p>
-                Tem certeza que deseja remover permanentemente o arquivo:
+                {trashView
+                  ? "Tem certeza que deseja excluir permanentemente o arquivo da lixeira?"
+                  : "Deseja mover o seguinte arquivo para a lixeira?"}
               </p>
               <p style={{ fontFamily: "monospace", fontSize: 12, wordBreak: "break-all" }}>
                 {deleteTarget.path}
               </p>
               <p style={{ color: "var(--c-muted)", fontSize: 12 }}>
                 <AlertTriangle size={12} style={{ verticalAlign: "middle", marginRight: 4 }} aria-hidden="true" />
-                Esta ação cria um commit no branch <code>data</code> e não pode ser desfeita
-                pelo painel.
+                {trashView
+                  ? "Esta ação excluirá o arquivo em definitivo no Git e não poderá ser desfeita."
+                  : "O arquivo poderá ser visualizado na aba Lixeira e restaurado a qualquer momento."}
               </p>
             </>
           }
-          confirmLabel="Sim, remover"
+          confirmLabel={trashView ? "Sim, excluir definitivamente" : "Sim, mover para lixeira"}
           onConfirm={() => { void handleDeleteConfirm(); }}
           onCancel={() => setDeleteTarget(null)}
         />

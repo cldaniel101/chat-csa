@@ -125,6 +125,43 @@
   font-weight: 400;
 }
 
+/* ─── Abas: Ativos vs Lixeira ─────────────────────────────────────────────── */
+
+.kbe-tabs {
+  display: inline-flex;
+  gap: var(--sp-xs);
+  background: rgba(0, 0, 0, 0.04);
+  padding: 3px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--c-border);
+}
+
+.kbe-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--c-muted);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 120ms ease;
+}
+
+.kbe-tab:hover:not(.kbe-tab--active) {
+  color: var(--c-on-surface);
+}
+
+.kbe-tab--active {
+  background: var(--c-surface);
+  color: var(--c-primary) !important;
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
 /* ─── Barra de busca e filtros ─────────────────────────────────────────────── */
 
 .kbe-filters-bar {
