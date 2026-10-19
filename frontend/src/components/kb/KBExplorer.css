@@ -238,6 +238,108 @@
   cursor: not-allowed;
 }
 
+/* ─── Visualização em Árvore (Tree Explorer) ──────────────────────────────── */
+
+.kbe-view-mode-toggle {
+  display: inline-flex;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--c-surface);
+}
+
+.kbe-view-mode-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: none;
+  background: transparent;
+  color: var(--c-muted);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 120ms ease;
+}
+
+.kbe-view-mode-btn:hover:not(.kbe-view-mode-btn--active) {
+  background: var(--c-hover);
+  color: var(--c-on-surface);
+}
+
+.kbe-view-mode-btn--active {
+  background: var(--c-primary);
+  color: #fff !important;
+  font-weight: 600;
+}
+
+.kbe-tree-wrap {
+  padding: var(--sp-md) var(--sp-lg);
+  font-family: var(--font-body);
+  font-size: 13px;
+}
+
+.kbe-tree-node {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  transition: background 120ms ease;
+}
+
+.kbe-tree-node:hover {
+  background: var(--c-hover, rgba(0, 0, 0, 0.03));
+}
+
+.kbe-tree-node-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  flex: 1;
+  min-width: 0;
+}
+
+.kbe-tree-toggle-btn {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--c-muted);
+  padding: 0;
+}
+
+.kbe-tree-folder-icon {
+  color: var(--c-primary);
+  flex-shrink: 0;
+}
+
+.kbe-tree-file-icon {
+  color: var(--c-muted);
+  flex-shrink: 0;
+}
+
+.kbe-tree-label {
+  font-weight: 500;
+  color: var(--c-on-surface);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.kbe-tree-node-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-md);
+  margin-right: var(--sp-md);
+  font-size: 12px;
+  color: var(--c-muted);
+}
+
 .kbe-edit-textarea {
   width: 100%;
   font-family: var(--font-mono, monospace);
