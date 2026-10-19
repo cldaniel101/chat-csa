@@ -13,7 +13,6 @@ import json
 import socket
 import sys
 import time
-from urllib.parse import urlparse
 
 import httpx
 
