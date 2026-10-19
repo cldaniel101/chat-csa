@@ -18,6 +18,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, Header, Response, UploadFile
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
 from ..kb import (
@@ -86,6 +87,111 @@ async def kb_delete_route(path: str, _user: Annotated[dict, Depends(require_admi
     except KBError as exc:
         return _error_response(exc)
     return {"ok": True, "sha": commit.sha}
+
+
+class KBFileUpdateRequest(BaseModel):
+    path: str
+    content: str
+    message: str = ""
+
+
+class KBMoveRequest(BaseModel):
+    source: str
+    target: str
+    message: str = ""
+
+
+class KBBulkDeleteRequest(BaseModel):
+    paths: list[str] = Field(default_factory=list)
+    message: str = ""
+
+
+class KBFolderRequest(BaseModel):
+    path: str
+    message: str = ""
+
+
+@router.put("/file")
+async def kb_file_update_route(
+    req: KBFileUpdateRequest,
+    _user: Annotated[dict, Depends(require_admin)] = None,
+):
+    """Edição direta de texto em um arquivo da base em commit atômico."""
+    try:
+        commit = await run_in_threadpool(
+            get_kb().write,
+            {req.path: req.content},
+            req.message or f"kb: atualiza {req.path}",
+        )
+    except KBError as exc:
+        return _error_response(exc)
+    return {"ok": True, "sha": commit.sha, "path": req.path}
+
+
+@router.post("/move")
+@router.put("/rename")
+async def kb_move_route(
+    req: KBMoveRequest,
+    _user: Annotated[dict, Depends(require_admin)] = None,
+):
+    """Move ou renomeia um arquivo na base em commit atômico único."""
+    try:
+        commit = await run_in_threadpool(
+            get_kb().move,
+            req.source,
+            req.target,
+            req.message or f"kb: move {req.source} -> {req.target}",
+        )
+    except KBError as exc:
+        return _error_response(exc)
+    return {"ok": True, "sha": commit.sha, "source": req.source, "target": req.target}
+
+
+@router.delete("/bulk")
+@router.post("/bulk-delete")
+async def kb_bulk_delete_route(
+    req: KBBulkDeleteRequest,
+    _user: Annotated[dict, Depends(require_admin)] = None,
+):
+    """Remove múltiplos arquivos da base em um único commit atômico."""
+    if not req.paths:
+        return JSONResponse({"ok": False, "error": "Lista de arquivos vazia."}, status_code=400)
+    try:
+        commit = await run_in_threadpool(
+            get_kb().delete_bulk,
+            req.paths,
+            req.message or f"kb: remove {len(req.paths)} arquivos em lote",
+        )
+    except KBError as exc:
+        return _error_response(exc)
+    return {"ok": True, "sha": commit.sha, "paths": commit.paths}
+
+
+@router.post("/folder")
+async def kb_create_folder_route(
+    req: KBFolderRequest,
+    _user: Annotated[dict, Depends(require_admin)] = None,
+):
+    """Cria uma pasta vazia (com .gitkeep) na base."""
+    try:
+        commit = await run_in_threadpool(get_kb().create_folder, req.path, req.message)
+    except KBError as exc:
+        return _error_response(exc)
+    return {"ok": True, "sha": commit.sha, "path": req.path}
+
+
+@router.delete("/folder")
+async def kb_delete_folder_route(
+    path: str,
+    message: str = "",
+    _user: Annotated[dict, Depends(require_admin)] = None,
+):
+    """Remove uma pasta e todo o seu conteúdo sob o prefixo em commit único."""
+    try:
+        commit = await run_in_threadpool(get_kb().delete_folder, path, message)
+    except KBError as exc:
+        return _error_response(exc)
+    return {"ok": True, "sha": commit.sha, "path": path}
 
 
 def _env_int(name: str, default: int) -> int:
