@@ -18,13 +18,18 @@ import { BsStars } from "react-icons/bs";
 import {
   AlertTriangle,
   CheckCircle,
+  ChevronLeft,
+  ChevronRight,
   Download,
   Eye,
   FileText,
+  FolderInput,
   FolderOpen,
   LogOut,
   MessageCircle,
+  Pencil,
   RefreshCw,
+  Search,
   Trash2,
   Upload,
   XCircle,
@@ -45,7 +50,9 @@ import {
   getConsumerUrl,
   kbDelete,
   kbFile,
+  kbFileUpdate,
   kbList,
+  kbMove,
   kbUpload,
   UnauthorizedError,
   type KBUploadFileResult,
@@ -370,6 +377,25 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
+  /* Busca, filtros de categoria e paginação */
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("all");
+  const [currentPage, setCurrentPage] = useState(1);
+  const PAGE_SIZE = 15;
+
+  /* Edição inline */
+  const [editTarget, setEditTarget] = useState<KBFile | null>(null);
+  const [editContent, setEditContent] = useState("");
+  const [editLoading, setEditLoading] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
+  /* Renomeação e movimentação */
+  const [renameTarget, setRenameTarget] = useState<KBFile | null>(null);
+  const [renameNewPath, setRenameNewPath] = useState("");
+  const [renaming, setRenaming] = useState(false);
+  const [renameError, setRenameError] = useState<string | null>(null);
+
   /* Modal de confirmação para chatbot */
   const [showChatConfirm, setShowChatConfirm] = useState(false);
 
@@ -561,6 +587,106 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
     onStartChat();
   }
 
+  /* Busca e filtros de categoria */
+  const categories = useMemo(() => {
+    const set = new Set(files.map((f) => f.category));
+    return Array.from(set).sort();
+  }, [files]);
+
+  const filteredFiles = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return files.filter((f) => {
+      const matchesCategory = selectedCategory === "all" || f.category === selectedCategory;
+      const matchesSearch =
+        !q || f.path.toLowerCase().includes(q) || f.name.toLowerCase().includes(q);
+      return matchesCategory && matchesSearch;
+    });
+  }, [files, searchQuery, selectedCategory]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredFiles.length / PAGE_SIZE));
+  const paginatedFiles = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return filteredFiles.slice(start, start + PAGE_SIZE);
+  }, [filteredFiles, currentPage]);
+
+  function handleSearchChange(value: string) {
+    setSearchQuery(value);
+    setCurrentPage(1);
+  }
+
+  function handleCategoryChange(value: string) {
+    setSelectedCategory(value);
+    setCurrentPage(1);
+  }
+
+  /* Edição inline */
+  async function handleOpenEdit(file: KBFile) {
+    setEditError(null);
+    setEditLoading(true);
+    setEditTarget(file);
+    try {
+      const { blob } = await kbFile(token, file.path);
+      const text = await blob.text();
+      setEditContent(text);
+    } catch (err: unknown) {
+      setEditError(err instanceof Error ? err.message : "Erro ao carregar conteúdo do arquivo.");
+    } finally {
+      setEditLoading(false);
+    }
+  }
+
+  async function handleSaveEdit() {
+    if (!editTarget) return;
+    setEditSaving(true);
+    setEditError(null);
+    try {
+      await kbFileUpdate(token, editTarget.path, editContent);
+      setEditTarget(null);
+      await loadFiles();
+    } catch (err: unknown) {
+      if (err instanceof UnauthorizedError) {
+        clearToken();
+        onLogout();
+        return;
+      }
+      setEditError(err instanceof Error ? err.message : "Erro ao salvar alterações.");
+    } finally {
+      setEditSaving(false);
+    }
+  }
+
+  /* Renomeação / Mover */
+  function handleOpenRename(file: KBFile) {
+    setRenameError(null);
+    setRenameTarget(file);
+    setRenameNewPath(file.path);
+  }
+
+  async function handleConfirmRename() {
+    if (!renameTarget) return;
+    const trimmed = renameNewPath.trim();
+    if (!trimmed || trimmed === renameTarget.path) {
+      setRenameTarget(null);
+      return;
+    }
+    setRenaming(true);
+    setRenameError(null);
+    try {
+      await kbMove(token, renameTarget.path, trimmed);
+      setRenameTarget(null);
+      await loadFiles();
+    } catch (err: unknown) {
+      if (err instanceof UnauthorizedError) {
+        clearToken();
+        onLogout();
+        return;
+      }
+      setRenameError(err instanceof Error ? err.message : "Erro ao renomear arquivo.");
+    } finally {
+      setRenaming(false);
+    }
+  }
+
   /* Seções já existentes na base (primeiro segmento dos caminhos) */
   const sections = Array.from(
     new Set(
@@ -724,6 +850,39 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
             </button>
           </div>
 
+          {/* Barra de busca e filtros */}
+          {!loading && !error && files.length > 0 && (
+            <div className="kbe-filters-bar">
+              <div className="kbe-search-input-wrap">
+                <Search size={15} className="kbe-search-icon" aria-hidden="true" />
+                <input
+                  id="kbe-search-input"
+                  type="text"
+                  className="kbe-search-input"
+                  placeholder="Buscar por nome ou caminho…"
+                  value={searchQuery}
+                  onChange={(e) => handleSearchChange(e.target.value)}
+                  aria-label="Buscar documentos"
+                />
+              </div>
+
+              <select
+                id="kbe-category-select"
+                className="kbe-category-select"
+                value={selectedCategory}
+                onChange={(e) => handleCategoryChange(e.target.value)}
+                aria-label="Filtrar por categoria"
+              >
+                <option value="all">Todas as categorias ({files.length})</option>
+                {categories.map((cat) => (
+                  <option key={cat} value={cat}>
+                    {cat} ({files.filter((f) => f.category === cat).length})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {/* Conteúdo */}
           {loading ? (
             <div className="kbe-loading" role="status" aria-live="polite">
@@ -758,7 +917,7 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
                   </tr>
                 </thead>
                 <tbody>
-                  {files.map((file) => {
+                  {paginatedFiles.map((file) => {
                     const ext = file.path.split(".").pop()?.toUpperCase() ?? "–";
                     return (
                       <tr key={file.path}>
@@ -786,6 +945,30 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
                               <Eye size={16} aria-hidden="true" />
                             </button>
 
+                            {/* Editar texto inline */}
+                            <button
+                              type="button"
+                              className="kbe-icon-btn"
+                              onClick={() => { void handleOpenEdit(file); }}
+                              disabled={editLoading || editSaving}
+                              aria-label={`Editar ${file.name}`}
+                              title="Editar texto inline"
+                            >
+                              <Pencil size={15} aria-hidden="true" />
+                            </button>
+
+                            {/* Renomear / Mover */}
+                            <button
+                              type="button"
+                              className="kbe-icon-btn"
+                              onClick={() => handleOpenRename(file)}
+                              disabled={renaming}
+                              aria-label={`Renomear ${file.name}`}
+                              title="Renomear ou mover arquivo"
+                            >
+                              <FolderInput size={15} aria-hidden="true" />
+                            </button>
+
                             {/* Remover arquivo */}
                             <button
                               type="button"
@@ -804,6 +987,48 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
                   })}
                 </tbody>
               </table>
+
+              {/* Paginação */}
+              {totalPages > 1 && (
+                <div className="kbe-pagination">
+                  <div>
+                    Mostrando {(currentPage - 1) * PAGE_SIZE + 1}–
+                    {Math.min(currentPage * PAGE_SIZE, filteredFiles.length)} de {filteredFiles.length} documentos
+                  </div>
+                  <div className="kbe-pagination-controls">
+                    <button
+                      type="button"
+                      className="kbe-pagination-btn"
+                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                      aria-label="Página anterior"
+                    >
+                      <ChevronLeft size={16} aria-hidden="true" />
+                    </button>
+                    {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                      <button
+                        key={page}
+                        type="button"
+                        className={`kbe-pagination-btn ${page === currentPage ? "kbe-pagination-btn--active" : ""}`}
+                        onClick={() => setCurrentPage(page)}
+                        aria-label={`Página ${page}`}
+                        aria-current={page === currentPage ? "page" : undefined}
+                      >
+                        {page}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      className="kbe-pagination-btn"
+                      onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                      disabled={currentPage === totalPages}
+                      aria-label="Próxima página"
+                    >
+                      <ChevronRight size={16} aria-hidden="true" />
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -1030,6 +1255,126 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
           confirmLabel="Sim, iniciar"
           onConfirm={handleChatConfirm}
           onCancel={() => setShowChatConfirm(false)}
+        />
+      )}
+
+      {/* Modal: Edição inline */}
+      {editTarget && (
+        <div
+          className="kbe-modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="kbe-edit-title"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !editSaving) setEditTarget(null);
+          }}
+        >
+          <div className="kbe-modal kbe-modal--preview">
+            <div className="kbe-modal-header">
+              <span className="kbe-modal-header-icon kbe-modal-header-icon--chat" aria-hidden="true">
+                <Pencil size={18} />
+              </span>
+              <div className="kbe-preview-heading">
+                <h3 id="kbe-edit-title">Editar documento</h3>
+                <p className="kbe-preview-sub">{editTarget.path}</p>
+              </div>
+              <button
+                type="button"
+                className="kbe-icon-btn"
+                onClick={() => setEditTarget(null)}
+                disabled={editSaving}
+                aria-label="Fechar edição"
+                title="Fechar"
+              >
+                <XCircle size={18} aria-hidden="true" />
+              </button>
+            </div>
+
+            <div className="kbe-preview-body" style={{ padding: "var(--sp-md)" }}>
+              {editError && (
+                <div className="kbe-alert kbe-alert--error" style={{ marginBottom: "var(--sp-sm)" }} role="alert">
+                  <XCircle size={15} style={{ flexShrink: 0, marginTop: 1 }} aria-hidden="true" />
+                  {editError}
+                </div>
+              )}
+              {editLoading ? (
+                <div className="kbe-loading">
+                  <div className="kbe-spinner" aria-hidden="true" />
+                  Carregando conteúdo…
+                </div>
+              ) : (
+                <textarea
+                  id="kbe-edit-textarea"
+                  className="kbe-edit-textarea"
+                  value={editContent}
+                  onChange={(e) => setEditContent(e.target.value)}
+                  rows={18}
+                  placeholder="Conteúdo do documento em Markdown ou texto…"
+                  disabled={editSaving}
+                />
+              )}
+            </div>
+
+            <div className="kbe-modal-footer">
+              <button
+                type="button"
+                className="kbe-btn kbe-btn--ghost"
+                onClick={() => setEditTarget(null)}
+                disabled={editSaving}
+              >
+                Cancelar
+              </button>
+              <button
+                id="kbe-save-edit-btn"
+                type="button"
+                className="kbe-btn kbe-btn--primary"
+                onClick={() => { void handleSaveEdit(); }}
+                disabled={editSaving || editLoading}
+              >
+                {editSaving ? "Salvando…" : "Salvar alterações"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Renomear ou Mover */}
+      {renameTarget && (
+        <ConfirmModal
+          icon="upload"
+          title="Renomear ou mover arquivo"
+          confirmLabel={renaming ? "Salvando…" : "Confirmar"}
+          confirmDisabled={renaming || !renameNewPath.trim() || renameNewPath.trim() === renameTarget.path}
+          onConfirm={() => { void handleConfirmRename(); }}
+          onCancel={() => { if (!renaming) setRenameTarget(null); }}
+          body={
+            <>
+              <p>
+                Altere o caminho para renomear ou mover o arquivo para outra categoria:
+              </p>
+              <div style={{ margin: "var(--sp-sm) 0" }}>
+                <label htmlFor="kbe-rename-input" style={{ display: "block", fontSize: 12, color: "var(--c-muted)", marginBottom: 4 }}>
+                  Novo caminho relativo à raiz da base:
+                </label>
+                <input
+                  id="kbe-rename-input"
+                  type="text"
+                  className="kbe-search-input"
+                  style={{ paddingLeft: 10 }}
+                  value={renameNewPath}
+                  onChange={(e) => setRenameNewPath(e.target.value)}
+                  placeholder="ex: editais/novo_nome.md"
+                  disabled={renaming}
+                />
+              </div>
+              {renameError && (
+                <div className="kbe-alert kbe-alert--error" role="alert" style={{ marginTop: "var(--sp-sm)" }}>
+                  <XCircle size={15} style={{ flexShrink: 0, marginTop: 1 }} aria-hidden="true" />
+                  {renameError}
+                </div>
+              )}
+            </>
+          }
         />
       )}
     </div>

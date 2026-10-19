@@ -125,6 +125,138 @@
   font-weight: 400;
 }
 
+/* ─── Barra de busca e filtros ─────────────────────────────────────────────── */
+
+.kbe-filters-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-md);
+  padding: var(--sp-md) var(--sp-lg);
+  background: var(--c-surface);
+  border-bottom: 1px solid var(--c-border-subtle);
+  flex-wrap: wrap;
+}
+
+.kbe-search-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 220px;
+}
+
+.kbe-search-icon {
+  position: absolute;
+  left: 10px;
+  color: var(--c-muted);
+  pointer-events: none;
+}
+
+.kbe-search-input {
+  width: 100%;
+  padding: 8px 12px 8px 34px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  color: var(--c-on-surface);
+  background: var(--c-surface);
+  outline: none;
+  transition: border-color 150ms ease;
+}
+
+.kbe-search-input:focus {
+  border-color: var(--c-primary);
+}
+
+.kbe-category-select {
+  padding: 8px 12px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  color: var(--c-on-surface);
+  background: var(--c-surface);
+  outline: none;
+  cursor: pointer;
+}
+
+.kbe-category-select:focus {
+  border-color: var(--c-primary);
+}
+
+/* ─── Paginação ───────────────────────────────────────────────────────────── */
+
+.kbe-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--sp-md) var(--sp-lg);
+  border-top: 1px solid var(--c-border-subtle);
+  background: var(--c-surface);
+  font-size: 13px;
+  color: var(--c-muted);
+  flex-wrap: wrap;
+  gap: var(--sp-sm);
+}
+
+.kbe-pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-xs);
+}
+
+.kbe-pagination-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  background: var(--c-surface);
+  color: var(--c-on-surface);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 120ms ease;
+}
+
+.kbe-pagination-btn:hover:not(:disabled) {
+  background: var(--c-hover);
+  border-color: var(--c-border-subtle);
+}
+
+.kbe-pagination-btn--active {
+  background: var(--c-primary);
+  border-color: var(--c-primary);
+  color: #fff !important;
+  font-weight: 700;
+}
+
+.kbe-pagination-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.kbe-edit-textarea {
+  width: 100%;
+  font-family: var(--font-mono, monospace);
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 12px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+  background: var(--c-surface);
+  color: var(--c-on-surface);
+  resize: vertical;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.kbe-edit-textarea:focus {
+  border-color: var(--c-primary);
+}
+
 /* ─── Botões ───────────────────────────────────────────────────────────────── */
 
 .kbe-btn {
