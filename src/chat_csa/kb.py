@@ -787,6 +787,19 @@ class KnowledgeBase:
             raise KBNotFoundError(f"Pasta vazia ou inexistente: {rel!r}.")
         return self.delete_bulk(files, message or f"kb: remove pasta {rel}")
 
+    def soft_delete(self, path: str, message: str = "") -> KBCommit:
+        """Move o arquivo para a lixeira (.trash/<caminho>)."""
+        rel = _normalize_path(path)
+        trash_path = f".trash/{rel}"
+        return self.move(rel, trash_path, message or f"kb: move {rel} para lixeira")
+
+    def restore(self, path: str, message: str = "") -> KBCommit:
+        """Restaura o arquivo da lixeira de volta ao caminho original."""
+        rel = _normalize_path(path)
+        trash_path = rel if rel.startswith(".trash/") else f".trash/{rel}"
+        orig_path = rel.removeprefix(".trash/")
+        return self.move(trash_path, orig_path, message or f"kb: restaura {orig_path} da lixeira")
+
     def render(self, path: str) -> str:
         """Atalho: lê e renderiza como texto (usado pelas tools e pelo qa_cache)."""
         return render_file(self.read(path))

@@ -73,11 +73,24 @@ def _error_response(exc: KBError) -> JSONResponse:
 
 
 @router.get("/list")
-async def kb_list_route(prefix: str = "", _user: Annotated[dict, Depends(require_admin)] = None):
-    """Caminhos disponíveis na base com metadados de autor e data de adição."""
+async def kb_list_route(
+    prefix: str = "",
+    trash: bool = False,
+    _user: Annotated[dict, Depends(require_admin)] = None,
+):
+    """Caminhos disponíveis na base com metadados de autor e data de adição.
+
+    Se trash=False (padrão), lista apenas arquivos ativos (exclui .trash/).
+    Se trash=True, lista apenas arquivos removidos para a lixeira.
+    """
     try:
         kb = get_kb()
-        paths = kb.list(prefix)
+        all_paths = kb.list(prefix)
+        if trash:
+            paths = [p for p in all_paths if p.startswith(".trash/")]
+        else:
+            paths = [p for p in all_paths if not p.startswith(".trash/")]
+
         files_meta = []
         for p in paths:
             author = "admin"
@@ -116,17 +129,40 @@ async def kb_file_route(path: str, _user: Annotated[dict, Depends(require_admin)
 
 
 @router.delete("/file")
-async def kb_delete_route(path: str, _user: Annotated[dict, Depends(require_admin)] = None):
+async def kb_delete_route(
+    path: str,
+    permanent: bool = False,
+    _user: Annotated[dict, Depends(require_admin)] = None,
+):
     """Remove um arquivo da base via commit atômico no branch data.
 
-    Exige token admin e caminho relativo à raiz da base. Caminhos com `..`
-    são rejeitados pelo `kb.delete()` antes de qualquer operação de rede.
+    Por padrão (permanent=False), move para a lixeira (.trash/<path>).
+    Se permanent=True, exclui definitivamente.
     """
     try:
-        commit = await run_in_threadpool(get_kb().delete, path)
+        kb = get_kb()
+        if permanent:
+            commit = await run_in_threadpool(kb.delete, path)
+            return {"ok": True, "sha": commit.sha, "permanent": True, "path": path}
+        else:
+            commit = await run_in_threadpool(kb.soft_delete, path)
+            return {"ok": True, "sha": commit.sha, "trashed": True, "path": path}
     except KBError as exc:
         return _error_response(exc)
-    return {"ok": True, "sha": commit.sha}
+
+
+@router.post("/restore")
+async def kb_restore_route(
+    path: str,
+    _user: Annotated[dict, Depends(require_admin)] = None,
+):
+    """Restaura um documento da lixeira de volta para a base ativa."""
+    try:
+        commit = await run_in_threadpool(get_kb().restore, path)
+    except KBError as exc:
+        return _error_response(exc)
+    orig_path = path.removeprefix(".trash/")
+    return {"ok": True, "sha": commit.sha, "path": orig_path}
 
 
 class KBFileUpdateRequest(BaseModel):

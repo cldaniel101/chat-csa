@@ -158,3 +158,40 @@ def test_kb_list_metadata_and_author(tmp_path: Path):
     assert res_meta.json()["author"] == "Sheila"
     assert res_meta.json()["uploaded_at"] == "2026-10-19"
     reset_kb()
+
+
+def test_kb_soft_delete_and_restore(tmp_path: Path):
+    client, headers = _make_client(tmp_path)
+
+    # 1. Soft-delete de editais/edital1.md (default permanent=False)
+    del_res = client.delete("/kb/file?path=editais/edital1.md", headers=headers)
+    assert del_res.status_code == 200
+    assert del_res.json()["ok"] is True
+    assert del_res.json().get("trashed") is True
+
+    # 2. Confere que não aparece na lista ativa
+    active_list = client.get("/kb/list", headers=headers)
+    assert "editais/edital1.md" not in active_list.json()["paths"]
+
+    # 3. Confere que aparece na lixeira (trash=True)
+    trash_list = client.get("/kb/list?trash=true", headers=headers)
+    assert ".trash/editais/edital1.md" in trash_list.json()["paths"]
+
+    # 4. Restaura o arquivo
+    restore_res = client.post("/kb/restore?path=.trash/editais/edital1.md", headers=headers)
+    assert restore_res.status_code == 200
+    assert restore_res.json()["ok"] is True
+
+    # 5. Confere que retornou à lista ativa
+    active_after = client.get("/kb/list", headers=headers)
+    assert "editais/edital1.md" in active_after.json()["paths"]
+
+    # 6. Exclusão permanente (permanent=True)
+    perm_res = client.delete("/kb/file?path=editais/edital1.md&permanent=true", headers=headers)
+    assert perm_res.status_code == 200
+    assert perm_res.json().get("permanent") is True
+
+    # Confere que não existe em ativa nem em lixeira
+    assert client.get("/kb/file?path=editais/edital1.md", headers=headers).status_code == 404
+    assert client.get("/kb/file?path=.trash/editais/edital1.md", headers=headers).status_code == 404
+    reset_kb()
