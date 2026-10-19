@@ -140,6 +140,8 @@ type KBFile = {
   path: string;
   name: string;
   category: string;
+  author: string;
+  uploaded_at: string;
 };
 
 /** Limites de segurança para evitar congelamento ao renderizar Markdown extenso. */
@@ -440,11 +442,17 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
 
     try {
       const result = await kbList(token);
-      const parsed: KBFile[] = result.paths.map((p) => ({
-        path: p,
-        name: pathToName(p),
-        category: formatCategory(pathToCategory(p)),
-      }));
+      const metaMap = new Map((result.files ?? []).map((f) => [f.path, f]));
+      const parsed: KBFile[] = result.paths.map((p) => {
+        const meta = metaMap.get(p);
+        return {
+          path: p,
+          name: pathToName(p),
+          category: formatCategory(pathToCategory(p)),
+          author: meta?.author || "admin",
+          uploaded_at: meta?.uploaded_at || "–",
+        };
+      });
       setFiles(parsed);
     } catch (err: unknown) {
       /* Token expirado ou inválido → volta para o login */
@@ -980,13 +988,13 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
                   <tr>
                     <th scope="col" className="kbe-col-name">Nome / Caminho</th>
                     <th scope="col" className="kbe-col-category">Categoria</th>
-                    <th scope="col" className="kbe-col-date">Tipo</th>
+                    <th scope="col" className="kbe-col-author">Enviado por</th>
+                    <th scope="col" className="kbe-col-date">Data de adição</th>
                     <th scope="col" className="kbe-col-actions">Ações</th>
                   </tr>
                 </thead>
                 <tbody>
                   {paginatedFiles.map((file) => {
-                    const ext = file.path.split(".").pop()?.toUpperCase() ?? "–";
                     return (
                       <tr key={file.path}>
                         <td className="kbe-col-name">
@@ -996,8 +1004,11 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
                         <td className="kbe-col-category">
                           <span className="kbe-badge">{file.category}</span>
                         </td>
-                        <td className="kbe-col-date" style={{ fontFamily: "monospace", fontSize: 12 }}>
-                          {ext}
+                        <td className="kbe-col-author" style={{ fontSize: 13, color: "var(--c-muted)" }}>
+                          {file.author}
+                        </td>
+                        <td className="kbe-col-date" style={{ fontSize: 12, color: "var(--c-muted)" }}>
+                          {file.uploaded_at}
                         </td>
                         <td className="kbe-col-actions">
                           <div className="kbe-row-actions">

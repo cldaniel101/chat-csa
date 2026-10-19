@@ -42,6 +42,8 @@ DEFAULT_FRONTMATTER_KEYS = (
     "source_page",
     "tags",
     "timestamp",
+    "author",
+    "uploaded_at",
 )
 
 _DOC_TYPES = {
@@ -120,9 +122,12 @@ def build_concept(
     source: str | None = None,
     template_text: str | None = None,
     timestamp: str | None = None,
+    author: str | None = None,
+    uploaded_at: str | None = None,
 ) -> str:
     """Monta o conceito OKF do arquivo declarado (`path` é o caminho de origem)."""
     title, description = concept_metadata(markdown, path)
+    current_date = date.today().isoformat()
     values = {
         "type": _yaml_scalar(doc_type_for(path)),
         "title": _yaml_scalar(title),
@@ -131,10 +136,17 @@ def build_concept(
         "url": _yaml_scalar(source) if source else None,
         "source_page": _yaml_scalar(source) if source else None,
         "tags": _tags_value(section_of(path)),
-        "timestamp": _yaml_scalar(timestamp or date.today().isoformat()),
+        "timestamp": _yaml_scalar(timestamp or current_date),
+        "author": _yaml_scalar(author) if author else None,
+        "uploaded_at": _yaml_scalar(uploaded_at or current_date),
     }
+    keys = list(frontmatter_keys(template_text))
+    for extra_key in ("author", "uploaded_at"):
+        if extra_key not in keys and values.get(extra_key) is not None:
+            keys.append(extra_key)
+
     lines = ["---"]
-    for key in frontmatter_keys(template_text):
+    for key in keys:
         rendered = values.get(key)
         if rendered is not None:
             lines.append(f"{key}: {rendered}")

@@ -281,9 +281,16 @@ export async function authLogin(
 
 // ─── Base de conhecimento (/kb/*) ────────────────────────────────────────────
 
+export type KBFileMetadata = {
+  path: string;
+  author?: string;
+  uploaded_at?: string;
+};
+
 export type KBListResult = {
   prefix: string;
   paths: string[];
+  files?: KBFileMetadata[];
 };
 
 export type KBUploadFileResult = {

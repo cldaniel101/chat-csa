@@ -127,3 +127,34 @@ def test_kb_folder_lifecycle(tmp_path: Path):
     # Confere que .gitkeep foi removido
     assert client.get("/kb/file?path=normas-2026/.gitkeep", headers=headers).status_code == 404
     reset_kb()
+
+
+def test_kb_list_metadata_and_author(tmp_path: Path):
+    client, headers = _make_client(tmp_path)
+
+    # Grava arquivo com autor e data
+    client.put(
+        "/kb/file",
+        json={
+            "path": "editais/com_autor.md",
+            "content": "---\nauthor: 'Sheila'\nuploaded_at: '2026-10-19'\n---\n# Documento de Teste",
+        },
+        headers=headers,
+    )
+
+    # Chama /kb/list
+    res_list = client.get("/kb/list", headers=headers)
+    assert res_list.status_code == 200
+    data = res_list.json()
+    assert "files" in data
+    match = next((f for f in data["files"] if f["path"] == "editais/com_autor.md"), None)
+    assert match is not None
+    assert match["author"] == "Sheila"
+    assert match["uploaded_at"] == "2026-10-19"
+
+    # Chama /kb/metadata
+    res_meta = client.get("/kb/metadata?path=editais/com_autor.md", headers=headers)
+    assert res_meta.status_code == 200
+    assert res_meta.json()["author"] == "Sheila"
+    assert res_meta.json()["uploaded_at"] == "2026-10-19"
+    reset_kb()

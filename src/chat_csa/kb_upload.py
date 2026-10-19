@@ -90,6 +90,8 @@ def process_upload(
     message: str = "",
     pages_per_call: int = DEFAULT_PAGES_PER_CALL,
     max_bytes: int = DEFAULT_MAX_UPLOAD_BYTES,
+    author: str = "admin",
+    uploaded_at: str | None = None,
 ) -> BatchResult:
     """Converte e commita o lote; devolve o resultado por arquivo e o sha."""
     results: list[FileResult | None] = [None] * len(payload)
@@ -151,6 +153,8 @@ def process_upload(
             path=declared,
             source=_declared_source(sources, declared, concept_path),
             template_text=template_text,
+            author=author,
+            uploaded_at=uploaded_at,
         )
         title, description = concept_metadata(markdown, declared)
         concepts.append(
@@ -167,7 +171,10 @@ def process_upload(
     items = _commit_items(kb, concepts)
     sha: str | None = None
     if items:
-        commit_message = message.strip() or f"kb: upload de {len(payload)} arquivo(s) via /kb/upload"
+        commit_message = (
+            message.strip()
+            or f"kb: upload de {len(payload)} arquivo(s) por {author} via /kb/upload"
+        )
         commit = kb.write(items, commit_message)
         sha = commit.sha or None
     return BatchResult(sha=sha, files=[result for result in results if result is not None])
