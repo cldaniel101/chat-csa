@@ -34,6 +34,7 @@ import {
   type FormEvent,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -133,6 +134,10 @@ type KBFile = {
   name: string;
   category: string;
 };
+
+/** Limites de segurança para evitar congelamento ao renderizar Markdown extenso. */
+const MAX_MARKDOWN_PREVIEW_LINES = 150;
+const MAX_MARKDOWN_PREVIEW_BYTES = 250 * 1024; // 250 KB
 
 /** Como o preview no front renderiza cada tipo de arquivo. */
 type PreviewKind = "markdown" | "text" | "image" | "pdf" | "binary";
@@ -372,6 +377,22 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
   const [preview, setPreview] = useState<PreviewState | null>(null);
   const [previewLoading, setPreviewLoading] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
+
+  /* Truncamento e teto de segurança para evitar congelamento do renderer em Markdowns volumosos */
+  const markdownPreviewInfo = useMemo(() => {
+    if (!preview || preview.kind !== "markdown" || !preview.text) {
+      return null;
+    }
+    const lines = preview.text.split("\n");
+    const totalLines = lines.length;
+    const isTruncated = preview.size > MAX_MARKDOWN_PREVIEW_BYTES || totalLines > MAX_MARKDOWN_PREVIEW_LINES;
+    const content = isTruncated ? lines.slice(0, MAX_MARKDOWN_PREVIEW_LINES).join("\n") : preview.text;
+    return {
+      isTruncated,
+      totalLines,
+      content,
+    };
+  }, [preview]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -885,7 +906,33 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
             <div className="kbe-preview-body">
               {preview.kind === "markdown" && (
                 <div className="kbe-preview-markdown">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{preview.text ?? ""}</ReactMarkdown>
+                  {markdownPreviewInfo?.isTruncated && (
+                    <div
+                      className="kbe-alert kbe-alert--info kbe-preview-truncated-alert"
+                      role="alert"
+                      style={{ marginBottom: "var(--sp-md)" }}
+                    >
+                      <AlertTriangle size={18} aria-hidden="true" style={{ flexShrink: 0 }} />
+                      <div style={{ flex: 1 }}>
+                        <strong>Documento extenso detectado ({markdownPreviewInfo.totalLines.toLocaleString("pt-BR")} linhas, {formatBytes(preview.size)}).</strong>
+                        <p style={{ margin: "4px 0 0" }}>
+                          Exibindo apenas os primeiros {MAX_MARKDOWN_PREVIEW_LINES} registros para evitar lentidão ou travamento do navegador. Baixe o documento para consultar o conteúdo completo.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        className="kbe-btn kbe-btn--ghost"
+                        onClick={handleDownload}
+                        style={{ alignSelf: "center", whiteSpace: "nowrap" }}
+                      >
+                        <Download size={14} aria-hidden="true" />
+                        Baixar original
+                      </button>
+                    </div>
+                  )}
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {markdownPreviewInfo ? markdownPreviewInfo.content : (preview.text ?? "")}
+                  </ReactMarkdown>
                 </div>
               )}
 
