@@ -18,13 +18,17 @@ import { BsStars } from "react-icons/bs";
 import {
   AlertTriangle,
   CheckCircle,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Download,
   Eye,
   FileText,
+  Folder,
   FolderInput,
   FolderOpen,
+  FolderTree,
+  List,
   LogOut,
   MessageCircle,
   Pencil,
@@ -143,6 +147,84 @@ type KBFile = {
   author: string;
   uploaded_at: string;
 };
+
+type TreeNode = {
+  id: string;
+  name: string;
+  path: string;
+  isFolder: boolean;
+  children: TreeNode[];
+  file?: KBFile;
+};
+
+function buildFileTree(files: KBFile[]): TreeNode[] {
+  const rootNodes: TreeNode[] = [];
+  const folderMap = new Map<string, TreeNode>();
+
+  function getOrCreateFolder(folderPath: string, folderName: string): TreeNode {
+    let folder = folderMap.get(folderPath);
+    if (!folder) {
+      folder = {
+        id: folderPath,
+        name: folderName,
+        path: folderPath,
+        isFolder: true,
+        children: [],
+      };
+      folderMap.set(folderPath, folder);
+
+      const parentSlash = folderPath.lastIndexOf("/");
+      if (parentSlash !== -1) {
+        const parentPath = folderPath.slice(0, parentSlash);
+        const parentName = parentPath.split("/").pop() || parentPath;
+        const parentFolder = getOrCreateFolder(parentPath, parentName);
+        parentFolder.children.push(folder);
+      } else {
+        rootNodes.push(folder);
+      }
+    }
+    return folder;
+  }
+
+  for (const file of files) {
+    const slashIndex = file.path.lastIndexOf("/");
+    if (slashIndex === -1) {
+      rootNodes.push({
+        id: file.path,
+        name: file.name,
+        path: file.path,
+        isFolder: false,
+        children: [],
+        file,
+      });
+    } else {
+      const folderPath = file.path.slice(0, slashIndex);
+      const folderName = folderPath.split("/").pop() || folderPath;
+      const folder = getOrCreateFolder(folderPath, folderName);
+      folder.children.push({
+        id: file.path,
+        name: file.name,
+        path: file.path,
+        isFolder: false,
+        children: [],
+        file,
+      });
+    }
+  }
+
+  function sortTree(nodes: TreeNode[]) {
+    nodes.sort((a, b) => {
+      if (a.isFolder && !b.isFolder) return -1;
+      if (!a.isFolder && b.isFolder) return 1;
+      return a.name.localeCompare(b.name, "pt-BR");
+    });
+    for (const n of nodes) {
+      if (n.isFolder) sortTree(n.children);
+    }
+  }
+  sortTree(rootNodes);
+  return rootNodes;
+}
 
 /** Limites de segurança para evitar congelamento ao renderizar Markdown extenso. */
 const MAX_MARKDOWN_PREVIEW_LINES = 150;
@@ -383,6 +465,8 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
+  const [viewMode, setViewMode] = useState<"tree" | "table">("tree");
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(() => new Set(["editais", "resultados", "manuais", "matricula", "geral", ".okf", "testes-upload"]));
   const PAGE_SIZE = 15;
 
   /* Edição inline */
@@ -642,6 +726,22 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
     return filteredFiles.slice(start, start + PAGE_SIZE);
   }, [filteredFiles, currentPage]);
 
+  const fileTree = useMemo(() => {
+    return buildFileTree(filteredFiles);
+  }, [filteredFiles]);
+
+  function toggleFolder(folderPath: string) {
+    setExpandedFolders((prev) => {
+      const next = new Set(prev);
+      if (next.has(folderPath)) {
+        next.delete(folderPath);
+      } else {
+        next.add(folderPath);
+      }
+      return next;
+    });
+  }
+
   function handleSearchChange(value: string) {
     setSearchQuery(value);
     setCurrentPage(1);
@@ -718,6 +818,106 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
     } finally {
       setRenaming(false);
     }
+  }
+
+  function renderTreeNodes(nodes: TreeNode[], level = 0): React.ReactNode {
+    return nodes.map((node) => {
+      const isExpanded = expandedFolders.has(node.path);
+      if (node.isFolder) {
+        return (
+          <div key={node.id} className="kbe-tree-group">
+            <div
+              className="kbe-tree-node kbe-tree-node--folder"
+              style={{ paddingLeft: `${level * 20 + 8}px` }}
+            >
+              <div
+                className="kbe-tree-node-info"
+                onClick={() => toggleFolder(node.path)}
+                role="button"
+                tabIndex={0}
+                aria-expanded={isExpanded}
+              >
+                <span className="kbe-tree-toggle-btn" aria-hidden="true">
+                  {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                </span>
+                <span className="kbe-tree-folder-icon" aria-hidden="true">
+                  {isExpanded ? <FolderOpen size={16} /> : <Folder size={16} />}
+                </span>
+                <span className="kbe-tree-label"><strong>{node.name}</strong></span>
+                <span className="kbe-tree-count" style={{ fontSize: 11, color: "var(--c-muted)" }}>
+                  ({node.children.length})
+                </span>
+              </div>
+            </div>
+            {isExpanded && renderTreeNodes(node.children, level + 1)}
+          </div>
+        );
+      }
+
+      const file = node.file!;
+      return (
+        <div
+          key={node.id}
+          className="kbe-tree-node kbe-tree-node--file"
+          style={{ paddingLeft: `${level * 20 + 28}px` }}
+        >
+          <div className="kbe-tree-node-info" onClick={() => { void handleOpen(file); }}>
+            <span className="kbe-tree-file-icon" aria-hidden="true">
+              <FileText size={15} />
+            </span>
+            <span className="kbe-tree-label">{file.name.replace(/-/g, " ")}</span>
+          </div>
+
+          <div className="kbe-tree-node-meta">
+            <span className="kbe-file-author">{file.author}</span>
+            <span className="kbe-file-date">{file.uploaded_at}</span>
+          </div>
+
+          <div className="kbe-row-actions">
+            <button
+              type="button"
+              className="kbe-icon-btn"
+              onClick={() => { void handleOpen(file); }}
+              disabled={previewLoading === file.path}
+              aria-label={`Abrir ${file.name}`}
+              title="Abrir / visualizar"
+            >
+              <Eye size={15} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              className="kbe-icon-btn"
+              onClick={() => { void handleOpenEdit(file); }}
+              disabled={editLoading || editSaving}
+              aria-label={`Editar ${file.name}`}
+              title="Editar texto inline"
+            >
+              <Pencil size={15} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              className="kbe-icon-btn"
+              onClick={() => handleOpenRename(file)}
+              disabled={renaming}
+              aria-label={`Renomear ${file.name}`}
+              title="Renomear ou mover arquivo"
+            >
+              <FolderInput size={15} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              className="kbe-icon-btn kbe-icon-btn--danger"
+              onClick={() => handleDeleteRequest(file)}
+              disabled={deleting || uploading}
+              aria-label={`Remover ${file.name}`}
+              title="Remover documento"
+            >
+              <Trash2 size={15} aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+      );
+    });
   }
 
   /* Seções já existentes na base (primeiro segmento dos caminhos) */
@@ -903,6 +1103,32 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
               Atualizar
             </button>
 
+            {/* Alternador de Modo de Visualização */}
+            <div className="kbe-view-mode-toggle" role="group" aria-label="Modo de visualização">
+              <button
+                id="kbe-view-tree-btn"
+                type="button"
+                className={`kbe-view-mode-btn ${viewMode === "tree" ? "kbe-view-mode-btn--active" : ""}`}
+                onClick={() => setViewMode("tree")}
+                aria-label="Visualização em árvore"
+                title="Árvore estilo Explorer"
+              >
+                <FolderTree size={14} aria-hidden="true" />
+                Árvore
+              </button>
+              <button
+                id="kbe-view-table-btn"
+                type="button"
+                className={`kbe-view-mode-btn ${viewMode === "table" ? "kbe-view-mode-btn--active" : ""}`}
+                onClick={() => setViewMode("table")}
+                aria-label="Visualização em tabela"
+                title="Tabela simples"
+              >
+                <List size={14} aria-hidden="true" />
+                Tabela
+              </button>
+            </div>
+
             {/* Input de arquivo oculto */}
             <input
               ref={fileInputRef}
@@ -980,6 +1206,10 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
                 Use o botão <strong>Adicionar arquivo</strong> para enviar o
                 primeiro documento ao branch <code>data</code>.
               </p>
+            </div>
+          ) : viewMode === "tree" ? (
+            <div className="kbe-tree-wrap">
+              {renderTreeNodes(fileTree)}
             </div>
           ) : (
             <div className="kbe-table-wrap">
