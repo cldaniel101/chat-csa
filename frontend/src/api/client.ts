@@ -381,6 +381,147 @@ export async function kbDelete(token: string, path: string): Promise<{ ok: boole
   return res.json();
 }
 
+/**
+ * Atualiza o conteúdo textual de um arquivo existente na base em commit atômico.
+ */
+export async function kbFileUpdate(
+  token: string,
+  path: string,
+  content: string,
+  message = "",
+): Promise<{ ok: boolean; sha?: string; path: string }> {
+  const base = getConsumerUrl();
+  let res: Response;
+
+  try {
+    res = await fetch(`${base.replace(/\/$/, "")}/kb/file`, {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ path, content, message }),
+    });
+  } catch {
+    throw new Error(`Não foi possível conectar ao servidor em ${base}.`);
+  }
+
+  await ensureOk(res);
+  return res.json();
+}
+
+/**
+ * Move ou renomeia um arquivo na base em commit atômico único.
+ */
+export async function kbMove(
+  token: string,
+  source: string,
+  target: string,
+  message = "",
+): Promise<{ ok: boolean; sha?: string; source: string; target: string }> {
+  const base = getConsumerUrl();
+  let res: Response;
+
+  try {
+    res = await fetch(`${base.replace(/\/$/, "")}/kb/move`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ source, target, message }),
+    });
+  } catch {
+    throw new Error(`Não foi possível conectar ao servidor em ${base}.`);
+  }
+
+  await ensureOk(res);
+  return res.json();
+}
+
+/**
+ * Exclui múltiplos arquivos da base em lote com um único commit.
+ */
+export async function kbBulkDelete(
+  token: string,
+  paths: string[],
+  message = "",
+): Promise<{ ok: boolean; sha?: string; paths: string[] }> {
+  const base = getConsumerUrl();
+  let res: Response;
+
+  try {
+    res = await fetch(`${base.replace(/\/$/, "")}/kb/bulk`, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ paths, message }),
+    });
+  } catch {
+    throw new Error(`Não foi possível conectar ao servidor em ${base}.`);
+  }
+
+  await ensureOk(res);
+  return res.json();
+}
+
+/**
+ * Cria uma pasta na base com arquivo .gitkeep.
+ */
+export async function kbCreateFolder(
+  token: string,
+  path: string,
+  message = "",
+): Promise<{ ok: boolean; sha?: string; path: string }> {
+  const base = getConsumerUrl();
+  let res: Response;
+
+  try {
+    res = await fetch(`${base.replace(/\/$/, "")}/kb/folder`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ path, message }),
+    });
+  } catch {
+    throw new Error(`Não foi possível conectar ao servidor em ${base}.`);
+  }
+
+  await ensureOk(res);
+  return res.json();
+}
+
+/**
+ * Remove uma pasta e todo o seu conteúdo na base.
+ */
+export async function kbDeleteFolder(
+  token: string,
+  path: string,
+  message = "",
+): Promise<{ ok: boolean; sha?: string; path: string }> {
+  const base = getConsumerUrl();
+  let res: Response;
+
+  try {
+    res = await fetch(
+      `${base.replace(/\/$/, "")}/kb/folder?path=${encodeURIComponent(path)}&message=${encodeURIComponent(message)}`,
+      {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      },
+    );
+  } catch {
+    throw new Error(`Não foi possível conectar ao servidor em ${base}.`);
+  }
+
+  await ensureOk(res);
+  return res.json();
+}
+
 export type KBUploadOptions = {
   /** Seção (pasta) de destino; o servidor exige ao menos uma. Ex.: "editais". */
   section?: string;
