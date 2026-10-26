@@ -56,6 +56,7 @@ import {
   kbDelete,
   kbFile,
   kbFileUpdate,
+  kbOriginal,
   kbList,
   kbMove,
   kbRestore,
@@ -492,6 +493,7 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
   const [preview, setPreview] = useState<PreviewState | null>(null);
   const [previewLoading, setPreviewLoading] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
   const [lastOpenedFile, setLastOpenedFile] = useState<KBFile | null>(null);
   const previewAbortControllerRef = useRef<AbortController | null>(null);
 
@@ -660,17 +662,41 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
   /* Fecha o preview (a object URL é revogada no efeito de limpeza) */
   function closePreview() {
     setPreview(null);
+    setDownloadError(null);
   }
 
-  /* Baixa o arquivo aberto usando a object URL já carregada */
-  function handleDownload() {
+  /* Baixa o original: para conceitos .md busca o arquivo enviado no upload; os demais já são o original */
+  async function handleDownload() {
     if (!preview) return;
+    setDownloadError(null);
+    let href = preview.objectUrl;
+    let filename = preview.file.path.split("/").pop() || "documento";
+    let tempUrl: string | null = null;
+    if (preview.file.path.toLowerCase().endsWith(".md")) {
+      try {
+        const original = await kbOriginal(token, preview.file.path);
+        tempUrl = URL.createObjectURL(original.blob);
+        href = tempUrl;
+        filename = original.filename;
+      } catch (err: unknown) {
+        if (err instanceof UnauthorizedError) {
+          clearToken();
+          onLogout();
+          return;
+        }
+        setDownloadError(
+          err instanceof Error ? err.message : "O arquivo original não está disponível.",
+        );
+        return;
+      }
+    }
     const link = document.createElement("a");
-    link.href = preview.objectUrl;
-    link.download = preview.file.path.split("/").pop() || "documento";
+    link.href = href;
+    link.download = filename;
     document.body.appendChild(link);
     link.click();
     link.remove();
+    if (tempUrl) URL.revokeObjectURL(tempUrl);
   }
 
   /* Remoção */
@@ -1593,6 +1619,11 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
               )}
             </div>
 
+            {downloadError && (
+              <p className="kbe-alert kbe-alert--error" role="alert" style={{ margin: "0 var(--sp-md)" }}>
+                <XCircle size={15} aria-hidden="true" /> {downloadError}
+              </p>
+            )}
             <div className="kbe-modal-footer">
               <button type="button" className="kbe-btn kbe-btn--ghost" onClick={closePreview}>
                 Fechar

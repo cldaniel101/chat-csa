@@ -132,11 +132,20 @@ function parseSourceEntries(sources: string): SourceEntry[] {
 }
 
 const markdownComponents = {
-  a: ({ children, href }: { children?: ReactNode; href?: string }) => (
-    <a href={href} target="_blank" rel="noreferrer">
-      {children}
-    </a>
-  ),
+  a: ({ children, href }: { children?: ReactNode; href?: string }) => {
+    // Download do original hospedado no Chat CSA (citado sem link oficial do CSA).
+    const hosted = Boolean(href?.startsWith("/kb/download?"));
+    return (
+      <a
+        href={hosted ? `${getConsumerUrl().replace(/\/$/, "")}${href}` : href}
+        target="_blank"
+        rel="noreferrer"
+        download={hosted ? "" : undefined}
+      >
+        {children}
+      </a>
+    );
+  },
   p: ({ children }: { children?: ReactNode }) => (
     <p>{renderMarkdownChildren(children)}</p>
   ),

@@ -206,10 +206,12 @@ def test_upload_endpoint_com_backend_github_falso(monkeypatch):
         "perguntas-frequentes/index.md",
         "cronogramas/index.md",
         "index.md",
+        ".originals/perguntas-frequentes/faq/faq.md",
+        ".originals/cronogramas/c/c.csv",
     ]
-    assert len(paths) == len(state["blobs"]) == 5
-    # O original não é preservado: só conceitos .md e índices.
-    assert all(path.endswith(".md") for path in paths)
+    assert len(paths) == len(state["blobs"]) == 7
+    # O original é preservado byte a byte ao lado do conceito convertido.
+    assert state["files"][".originals/cronogramas/c/c.csv"] == b"a,b\n1,2\n"
     # Conceito com frontmatter OKF e o saudação preservada no corpo.
     concept = state["files"]["perguntas-frequentes/faq.md"].decode("utf-8")
     assert concept.startswith("---\n")
@@ -271,6 +273,7 @@ def test_upload_endpoint_resposta_aditiva_sem_eco(monkeypatch):
         "editais/segredo.md",
         "editais/index.md",
         "index.md",
+        ".originals/editais/segredo/segredo.txt",
     ]
     ref_updates = [call for call in state["calls"] if call[0] == "PATCH"]
     assert ref_updates == [("PATCH", f"/repos/{REPO}/git/refs/heads/data")]

@@ -8,7 +8,8 @@ Fluxo (tudo dentro do request, antes do commit):
 4. atualiza o índice da seção e o índice raiz;
 5. grava conceitos + índices num único commit atômico.
 
-O arquivo original não é preservado — só o conceito `.md`.
+O arquivo original é preservado em `.originals/<pasta>/<slug>/<nome original>`,
+no mesmo commit, ao lado do conceito `.md` convertido.
 """
 
 from __future__ import annotations
@@ -38,6 +39,25 @@ from .kb_okf import (
 # Orçamento do corpo do request na runtime serverless (~4.5 MB).
 DEFAULT_MAX_UPLOAD_BYTES = 4_500_000
 ROOT_INDEX_PATH = "index.md"
+ORIGINALS_PREFIX = ".originals/"
+
+
+def original_dir_for(concept_path: str) -> str:
+    """Pasta do original de um conceito: `.originals/<pasta>/<slug>/`."""
+    return f"{ORIGINALS_PREFIX}{PurePosixPath(concept_path).with_suffix('')}/"
+
+
+def find_original(kb: KnowledgeBase, concept_path: str) -> str | None:
+    """Caminho do original hospedado para o conceito; None quando não existe.
+
+    Tolerante a documentos antigos (sem original): devolve None, nunca erro.
+    """
+    prefix = original_dir_for(concept_path)
+    try:
+        candidates = [p for p in kb.list(prefix) if "/" not in p[len(prefix) :]]
+    except KBNotFoundError:
+        return None
+    return sorted(candidates)[0] if candidates else None
 
 
 @dataclass(frozen=True)
@@ -96,6 +116,7 @@ def process_upload(
     """Converte e commita o lote; devolve o resultado por arquivo e o sha."""
     results: list[FileResult | None] = [None] * len(payload)
     accepted: list[tuple[int, str, str, bytes]] = []  # índice, declarado, conceito, bytes
+    originals: list[tuple[str, bytes]] = []
     seen: set[str] = set()
 
     for index, (path, content) in enumerate(payload):
@@ -166,11 +187,14 @@ def process_upload(
                 section=section_of(concept_path),
             )
         )
+        original_name = PurePosixPath(declared.replace("\\", "/")).name
+        originals.append((f"{original_dir_for(concept_path)}{original_name}", content))
         results[index] = FileResult(declared, ok=True, size=len(content), converted=True)
 
     items = _commit_items(kb, concepts)
     sha: str | None = None
     if items:
+        items.extend(originals)
         commit_message = (
             message.strip()
             or f"kb: upload de {len(payload)} arquivo(s) por {author} via /kb/upload"

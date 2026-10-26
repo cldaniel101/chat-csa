@@ -409,6 +409,30 @@ export async function kbFile(
 }
 
 /**
+ * Baixa o arquivo original enviado no upload do conceito `path` (não o Markdown).
+ *
+ * Lança Error com a mensagem do servidor quando o original não está disponível.
+ */
+export async function kbOriginal(
+  token: string,
+  path: string,
+): Promise<{ blob: Blob; filename: string }> {
+  const base = getConsumerUrl();
+  const res = await fetch(
+    `${base.replace(/\/$/, "")}/kb/original?path=${encodeURIComponent(path)}`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  await ensureOk(res);
+
+  const disposition = res.headers.get("content-disposition") || "";
+  const match = /filename\*=UTF-8''([^;]+)/i.exec(disposition);
+  return {
+    blob: await res.blob(),
+    filename: match ? decodeURIComponent(match[1]) : path.split("/").pop() || "documento",
+  };
+}
+
+/**
  * Remove um arquivo da base de conhecimento via commit atômico.
  * Exige token admin obtido via `authLogin`.
  */

@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 
 from chat_csa.kb import KBCommit, KBFile, KBNotFoundError
-from chat_csa.kb_upload import process_upload
+from chat_csa.kb_upload import find_original, process_upload
 
 TEMPLATE = """---
 type: Documento PDF
@@ -84,7 +84,7 @@ def test_process_upload_rejeita_invalido_e_duplicado_sem_commitar():
     assert not duplicado.ok and not duplicado.converted and "duplicado" in (duplicado.error or "")
 
     committed = [path for path, _ in kb.writes[-1][0]]
-    assert committed == ["editais/ok.md", "index.md"]
+    assert committed == ["editais/ok.md", "index.md", ".originals/editais/ok/ok.txt"]
 
 
 def test_process_upload_grava_no_caminho_normalizado():
@@ -97,7 +97,11 @@ def test_process_upload_grava_no_caminho_normalizado():
     )
 
     assert resultado.files[0].converted
-    assert [path for path, _ in kb.writes[-1][0]] == ["editais/Relatório-2026.md", "index.md"]
+    assert [path for path, _ in kb.writes[-1][0]] == [
+        "editais/Relatório-2026.md",
+        "index.md",
+        ".originals/editais/Relatório-2026/Relatório 2026.csv",
+    ]
     assert "editais/Relatório-2026.md" in kb.files
 
 
@@ -143,7 +147,7 @@ def test_process_upload_sem_conversao_nao_entra_no_commit():
     assert "modelo fora" in (falhou.error or "")
 
     committed = [path for path, _ in kb.writes[-1][0]]
-    assert committed == ["editais/ok.md", "index.md"]
+    assert committed == ["editais/ok.md", "index.md", ".originals/editais/ok/ok.txt"]
     assert "editais/foto.md" not in kb.files
     assert "editais/planilha.md" not in kb.files
     assert nao_suportado.as_dict()["converted"] is False
@@ -183,6 +187,9 @@ def test_process_upload_um_unico_commit_com_conceitos_e_indices():
         "novidades/c.md",
         "novidades/index.md",
         "index.md",
+        ".originals/editais/a/a.txt",
+        ".originals/editais/b/b.txt",
+        ".originals/novidades/c/c.txt",
     ]
     assert resultado.sha == "fake-sha"
     assert kb.writes[0][1] == "lote"
@@ -200,7 +207,36 @@ def test_process_upload_sobrescreve_conceito_e_atualiza_o_bullet():
     assert resultado.files[0].converted
     assert len(kb.writes) == 1
     committed = {path for path, _ in kb.writes[0][0]}
-    assert committed == {"editais/antigo.md", "index.md"}
+    assert committed == {
+        "editais/antigo.md",
+        "index.md",
+        ".originals/editais/antigo/antigo.txt",
+    }
     assert "novo." in kb.files["editais/antigo.md"]
     assert kb.files["index.md"].count("editais/antigo.md") == 1
     assert "* [Antigo](editais/antigo.md) - novo." in kb.files["index.md"]
+
+
+def test_process_upload_guarda_original_e_markdown_relacionados():
+    kb = _kb()
+    original = b"# Edital\n\nTexto do edital."
+
+    resultado = process_upload(
+        kb, [("editais/Edital 01.txt", original)], model_call=lambda prompt, images: "stub"
+    )
+
+    assert resultado.files[0].converted
+    # Markdown convertido e original (bytes idênticos, nome preservado) no mesmo commit.
+    assert "Texto do edital." in kb.files["editais/Edital-01.md"]
+    assert kb.files[".originals/editais/Edital-01/Edital 01.txt"] == original
+    assert find_original(kb, "editais/Edital-01.md") == ".originals/editais/Edital-01/Edital 01.txt"
+
+
+def test_find_original_ausente_e_nao_confunde_conceito_aninhado():
+    kb = _kb()
+    kb.files[".originals/editais/a/b/b.txt"] = "outro conceito"
+
+    assert find_original(kb, "editais/antigo.md") is None
+    # O original de editais/a/b.md não é do conceito editais/a.md.
+    assert find_original(kb, "editais/a.md") is None
+    assert find_original(kb, "editais/a/b.md") == ".originals/editais/a/b/b.txt"

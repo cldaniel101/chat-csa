@@ -14,9 +14,15 @@ ferramentas do pi.
 
 from __future__ import annotations
 
+import re
+from urllib.parse import quote
+
 from langchain_core.tools import tool
 
 from ..kb import KBError, get_kb, render_file
+from ..kb_upload import ORIGINALS_PREFIX, find_original
+
+_CSA_LINK_RE = re.compile(r"^(?:url|resource):\s*[\"']?https?://", re.M)
 
 MAX_BYTES = 50 * 1024
 MAX_LINES = 2000
@@ -37,6 +43,29 @@ def _truncate(text: str) -> str:
     return out
 
 
+def _link_note(path: str, file) -> str:
+    """Orienta qual link citar: o do CSA (frontmatter) ou o download do original."""
+    if not path.endswith(".md"):
+        return ""
+    head = file.content[:2000].decode("utf-8", errors="ignore")
+    if not head.lstrip().startswith("---") or _CSA_LINK_RE.search(head):
+        return ""
+    try:
+        has_original = find_original(get_kb(), path) is not None
+    except KBError:
+        has_original = False
+    if has_original:
+        return (
+            "\n\n[Sem link do CSA: cite em Fontes o link Markdown "
+            f"[título do documento](/kb/download?path={quote(path)}) "
+            "(download do original no Chat CSA), exatamente neste formato.]"
+        )
+    return (
+        "\n\n[Este documento não tem link do CSA nem original hospedado: "
+        "não cite link e informe que não há link disponível.]"
+    )
+
+
 @tool
 def kb_list(prefix: str = "") -> str:
     """Lista os caminhos disponíveis na base de conhecimento do Chat CSA.
@@ -54,6 +83,7 @@ def kb_list(prefix: str = "") -> str:
         paths = get_kb().list(prefix)
     except KBError as exc:
         return f"Error: {exc}"
+    paths = [p for p in paths if not p.startswith(ORIGINALS_PREFIX)]
     if not paths:
         return "(base vazia ou nenhum caminho para o prefixo informado)"
     return "\n".join(paths)
@@ -76,7 +106,7 @@ def kb_read(path: str) -> str:
         file = get_kb().read(path)
     except KBError as exc:
         return f"Error: {exc}"
-    return _truncate(render_file(file))
+    return _truncate(render_file(file)) + _link_note(path, file)
 
 
 @tool

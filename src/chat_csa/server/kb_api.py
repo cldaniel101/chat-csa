@@ -8,6 +8,8 @@ Rotas:
   GET  /kb/list?prefix=   caminhos disponíveis na base
   GET  /kb/file?path=     bytes originais com content-type adequado
   POST /kb/upload         converte o lote em conceitos OKF -> um commit atômico
+  GET  /kb/original?path= arquivo original enviado no upload do conceito (admin)
+  GET  /kb/download?path= mesmo original, público (só serve originais hospedados)
 """
 
 from __future__ import annotations
@@ -16,6 +18,7 @@ import json
 import os
 import re
 from typing import Annotated
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, Header, Response, UploadFile
 from fastapi.responses import JSONResponse
@@ -31,7 +34,7 @@ from ..kb import (
     get_kb,
 )
 from ..kb_convert import DEFAULT_PAGES_PER_CALL, default_model_call
-from ..kb_upload import DEFAULT_MAX_UPLOAD_BYTES, BatchResult, process_upload
+from ..kb_upload import DEFAULT_MAX_UPLOAD_BYTES, BatchResult, find_original, process_upload
 from . import auth as auth_store
 
 _AUTHOR_RE = re.compile(r"^author:\s*[\"']?([^\r\n\"']+)[\"']?", re.M)
@@ -89,7 +92,9 @@ async def kb_list_route(
         if trash:
             paths = [p for p in all_paths if p.startswith(".trash/")]
         else:
-            paths = [p for p in all_paths if not p.startswith(".trash/")]
+            paths = [
+                p for p in all_paths if not p.startswith((".trash/", ".originals/"))
+            ]
 
         files_meta = []
         for p in paths:
@@ -126,6 +131,42 @@ async def kb_file_route(path: str, _user: Annotated[dict, Depends(require_admin)
     except KBError as exc:
         return _error_response(exc)
     return Response(content=file.content, media_type=file.content_type)
+
+
+def _original_response(path: str) -> Response:
+    """Original enviado no upload do conceito `path` (nunca o Markdown convertido)."""
+    if not path.endswith(".md") or path.startswith((".", "/")) or ".." in path.split("/"):
+        return JSONResponse({"ok": False, "error": "Caminho inválido."}, status_code=400)
+    try:
+        kb = get_kb()
+        original = find_original(kb, path)
+        if original is None:
+            raise KBNotFoundError("O arquivo original deste documento não está disponível.")
+        file = kb.read(original)
+    except KBError as exc:
+        return _error_response(exc)
+    filename = original.rsplit("/", 1)[-1]
+    disposition = f"attachment; filename*=UTF-8''{quote(filename)}"
+    return Response(
+        content=file.content,
+        media_type=file.content_type,
+        headers={"Content-Disposition": disposition},
+    )
+
+
+@router.get("/original")
+async def kb_original_route(path: str, _user: Annotated[dict, Depends(require_admin)] = None):
+    """Baixa o arquivo original do upload (admin); 404 quando não foi guardado."""
+    return await run_in_threadpool(_original_response, path)
+
+
+@router.get("/download")
+async def kb_download_route(path: str):
+    """Download público do original hospedado, para o link citado ao estudante.
+
+    Só entrega arquivos de `.originals/` associados ao conceito `path`.
+    """
+    return await run_in_threadpool(_original_response, path)
 
 
 @router.delete("/file")
@@ -311,8 +352,8 @@ async def kb_upload_route(
     """Upload em lote: converte cada arquivo em conceito OKF e commita tudo.
 
     Cada arquivo vira `<pasta>/<slug>.md` (frontmatter do template OKF) e os
-    índices (seção e raiz) entram no mesmo commit atômico; o original não é
-    preservado. A resposta é aditiva: além de path/ok/size, marca `converted`
+    índices (seção e raiz) entram no mesmo commit atômico, junto com o
+    original em `.originals/`. A resposta é aditiva: além de path/ok/size, marca `converted`
     e, quando o arquivo não converte, `error` com o motivo.
 
     `sources` é um JSON opcional `{"caminho declarado": "URL da fonte"}`.
