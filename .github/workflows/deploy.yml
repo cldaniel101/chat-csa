@@ -1,27 +1,20 @@
-# Deploy automático para a Vercel via GitHub Actions + Vercel CLI (sem GitHub App).
+# Deploy automático para a Vercel via GitHub Actions + Vercel CLI.
 #
-# Estratégia (dois pares de projetos — produção e staging):
-#   - push em `main`            -> --prod no par principal      (chat-csa-api / chat-csa-web)
-#   - push em `development`     -> --prod no par de staging     (chat-csa-api-preview / chat-csa-web-preview)
-#   - pull request (mesmo repo) -> preview no par principal     (URL descartável, sem promoção)
+# Arquitetura simplificada (ADR-003):
+#   - 2 projetos principais na Vercel: `chat-csa-api` (raiz) e `chat-csa-web` (frontend/)
+#   - push em `main`        -> deploy com --prod (produção)
+#   - push em `development` -> deploy de preview (URL de branch determinística)
 #
-# Cada par tem seu próprio token project-scoped e a API de staging é a URL fixa
-# que o site de staging chama (ver docs/deploy.md, "Preview do site e da API").
-#
-# Secrets do repositório (GitHub):
-#   VERCEL_TOKEN_API / VERCEL_TOKEN_FRONTEND          -> tokens project-scoped do par principal
-#   VERCEL_TOKEN_API_PREVIEW / _FRONTEND_PREVIEW      -> tokens project-scoped do par de staging
-#   VERCEL_ORG_ID_API / VERCEL_ORG_ID_FRONTEND        -> id do escopo dono dos projetos
-#     (os quatro vivem no mesmo time: `dev-davmg`, id team_a1g9RHULTlOEdkqTUhGZwhGF;
-#     ver docs/deploy.md, "Escopo e propriedade")
-#   VERCEL_PROJECT_ID_API / _FRONTEND                 -> id de cada projeto do par principal
-#   VERCEL_PROJECT_ID_API_PREVIEW / _FRONTEND_PREVIEW -> id de cada projeto do par de staging
+# Segredos universais no GitHub:
+#   - VERCEL_TOKEN: Token de deploy com acesso a ambos os projetos
+#   - VERCEL_ORG_ID: ID do time proprietário dos projetos
+#   - VERCEL_PROJECT_ID_API: ID do projeto backend
+#   - VERCEL_PROJECT_ID_FRONTEND: ID do projeto frontend
 name: Deploy
 
 on:
   push:
     branches: [main, development]
-  pull_request:
 
 concurrency:
   group: deploy-${{ github.ref }}
@@ -31,111 +24,48 @@ permissions:
   contents: read
 
 jobs:
-  checks:
-    name: Lint e build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Instala dependências do frontend
-        working-directory: frontend
-        run: npm ci
-
-      - name: Lint do frontend (oxlint)
-        working-directory: frontend
-        run: npx oxlint src
-
-      - name: Build de produção (tsc + vite)
-        working-directory: frontend
-        run: npm run build
-
-      - name: Lint do backend (ruff)
-        run: pip install ruff && ruff check src
-
   deploy:
     name: Deploy ${{ matrix.name }}
-    needs: checks
-    # `STAGING_READY` fica falso enquanto os secrets do par de staging não
-    # existirem: o passo de staging é pulado com aviso, em vez de falhar com
-    # erro de autenticação incompreensível.
-    env:
-      STAGING_READY: ${{ secrets.VERCEL_TOKEN_API_PREVIEW != '' && secrets.VERCEL_TOKEN_FRONTEND_PREVIEW != '' }}
-    # PRs de fork não recebem secrets do repo — por isso o deploy de PR é
-    # restrito a PRs vindas do próprio repositório.
-    if: |
-      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) ||
-      github.ref == 'refs/heads/main' ||
-      github.ref == 'refs/heads/development'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
         include:
           - name: api
             workdir: .
-            token_secret: VERCEL_TOKEN_API
-            org_secret: VERCEL_ORG_ID_API
-            project_secret: VERCEL_PROJECT_ID_API
-            staging_token_secret: VERCEL_TOKEN_API_PREVIEW
-            staging_project_secret: VERCEL_PROJECT_ID_API_PREVIEW
+            project_id_secret: VERCEL_PROJECT_ID_API
           - name: frontend
             workdir: frontend
-            token_secret: VERCEL_TOKEN_FRONTEND
-            org_secret: VERCEL_ORG_ID_FRONTEND
-            project_secret: VERCEL_PROJECT_ID_FRONTEND
-            staging_token_secret: VERCEL_TOKEN_FRONTEND_PREVIEW
-            staging_project_secret: VERCEL_PROJECT_ID_FRONTEND_PREVIEW
+            project_id_secret: VERCEL_PROJECT_ID_FRONTEND
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout do código
+        uses: actions/checkout@v4
 
-      # O link direto (.vercel/project.json) não é usado aqui: com
-      # VERCEL_ORG_ID e VERCEL_PROJECT_ID definidos, o CLI identifica o projeto
-      # por eles (o link versionado serve ao deploy manual local). O org id
-      # precisa ser o do time dono dos projetos — um id de escopo pessoal falha
-      # com "Project not found" mesmo com token e project id válidos.
-      #
-      # Build remoto: a Vercel roda o build no próprio lado (Python/Node),
-      # então não usamos --prebuilt nem precisamos instalar toolchains aqui.
-      - name: Deploy de produção (`main`)
+      - name: Deploy de Produção (`main`)
         if: github.ref == 'refs/heads/main'
+        id: deploy_prod
         working-directory: ${{ matrix.workdir }}
         env:
-          VERCEL_ORG_ID: ${{ secrets[matrix.org_secret] }}
-          VERCEL_PROJECT_ID: ${{ secrets[matrix.project_secret] }}
-        timeout-minutes: 30
-        run: npx vercel@59 deploy --prod --yes --token "${{ secrets[matrix.token_secret] }}"
-
-      - name: "Aviso: staging sem token"
-        if: github.ref == 'refs/heads/development' && env.STAGING_READY != 'true'
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets[matrix.project_id_secret] }}
         run: |
-          echo "::warning::Secrets VERCEL_TOKEN_API_PREVIEW/VERCEL_TOKEN_FRONTEND_PREVIEW ausentes — deploy de staging pulado. Crie os tokens project-scoped (docs/deploy.md, 'Bootstrap')."
+          DEPLOY_URL=$(npx vercel@59 deploy --prod --yes --token "${{ secrets.VERCEL_TOKEN }}")
+          echo "url=$DEPLOY_URL" >> "$GITHUB_OUTPUT"
+          echo "### 🚀 Deploy de Produção (${{ matrix.name }})" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Ambiente**: Produção (\`main\`)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **URL**: $DEPLOY_URL" >> "$GITHUB_STEP_SUMMARY"
 
-      # `development` publica no par de staging com --prod: cada projeto tem a
-      # própria URL fixa (chat-csa-api-preview / chat-csa-web-preview), como uma
-      # produção paralela usada só como preview.
-      - name: Deploy de staging (`development`)
-        if: github.ref == 'refs/heads/development' && env.STAGING_READY == 'true'
+      - name: Deploy de Preview (`development`)
+        if: github.ref == 'refs/heads/development'
+        id: deploy_preview
         working-directory: ${{ matrix.workdir }}
         env:
-          VERCEL_ORG_ID: ${{ secrets[matrix.org_secret] }}
-          VERCEL_PROJECT_ID: ${{ secrets[matrix.staging_project_secret] }}
-        timeout-minutes: 30
-        run: npx vercel@59 deploy --prod --yes --token "${{ secrets[matrix.staging_token_secret] }}"
-
-      - name: Deploy de preview (PRs)
-        if: github.event_name == 'pull_request'
-        working-directory: ${{ matrix.workdir }}
-        env:
-          VERCEL_ORG_ID: ${{ secrets[matrix.org_secret] }}
-          VERCEL_PROJECT_ID: ${{ secrets[matrix.project_secret] }}
-        timeout-minutes: 30
-        # PRs publicam um preview descartável no par principal. O site usa o
-        # VITE_CONSUMER_URL do ambiente Preview do projeto chat-csa-web, que
-        # aponta para a API de staging (chat-csa-api-preview).
-        run: npx vercel@59 deploy --yes --token "${{ secrets[matrix.token_secret] }}"
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets[matrix.project_id_secret] }}
+        run: |
+          DEPLOY_URL=$(npx vercel@59 deploy --yes --token "${{ secrets.VERCEL_TOKEN }}")
+          echo "url=$DEPLOY_URL" >> "$GITHUB_OUTPUT"
+          echo "### 🔍 Deploy de Preview (${{ matrix.name }})" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Ambiente**: Preview (\`development\`)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **URL**: $DEPLOY_URL" >> "$GITHUB_STEP_SUMMARY"
