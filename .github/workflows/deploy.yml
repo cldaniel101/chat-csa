@@ -40,26 +40,42 @@ jobs:
           - name: api
             workdir: .
             project_id_secret: VERCEL_PROJECT_ID_API
+            legacy_token_secret: VERCEL_TOKEN_API
+            legacy_org_secret: VERCEL_ORG_ID_API
           - name: frontend
             workdir: frontend
             project_id_secret: VERCEL_PROJECT_ID_FRONTEND
+            legacy_token_secret: VERCEL_TOKEN_FRONTEND
+            legacy_org_secret: VERCEL_ORG_ID_FRONTEND
     steps:
       - name: Checkout do código
         uses: actions/checkout@v4
+
+      - name: Valida credenciais da Vercel
+        env:
+          TOKEN: ${{ secrets.VERCEL_TOKEN || secrets[matrix.legacy_token_secret] }}
+          ORG_ID: ${{ secrets.VERCEL_ORG_ID || secrets[matrix.legacy_org_secret] }}
+          PROJECT_ID: ${{ secrets[matrix.project_id_secret] }}
+        run: |
+          if [ -z "$TOKEN" ] || [ -z "$ORG_ID" ] || [ -z "$PROJECT_ID" ]; then
+            echo "::error::Credenciais da Vercel incompletas para ${{ matrix.name }}. Configure VERCEL_TOKEN, VERCEL_ORG_ID e ${{ matrix.project_id_secret }} no repositório (consulte docs/handover.md)."
+            exit 1
+          fi
 
       - name: Deploy de Produção (`main`)
         if: github.ref == 'refs/heads/main'
         id: deploy_prod
         working-directory: ${{ matrix.workdir }}
         env:
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN || secrets[matrix.legacy_token_secret] }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID || secrets[matrix.legacy_org_secret] }}
           VERCEL_PROJECT_ID: ${{ secrets[matrix.project_id_secret] }}
         run: |
           EXTRA_ARGS=""
           if [ "${{ matrix.name }}" = "frontend" ]; then
             EXTRA_ARGS="--build-env VITE_CONSUMER_URL=https://chat-csa-api.vercel.app"
           fi
-          DEPLOY_URL=$(npx vercel@59 deploy --prod --yes --token "${{ secrets.VERCEL_TOKEN }}" $EXTRA_ARGS)
+          DEPLOY_URL=$(npx vercel@59 deploy --prod --yes --token "$VERCEL_TOKEN" $EXTRA_ARGS)
           echo "url=$DEPLOY_URL" >> "$GITHUB_OUTPUT"
           echo "### 🚀 Deploy de Produção (${{ matrix.name }})" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Ambiente**: Produção (\`main\`)" >> "$GITHUB_STEP_SUMMARY"
@@ -70,10 +86,11 @@ jobs:
         id: deploy_preview
         working-directory: ${{ matrix.workdir }}
         env:
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN || secrets[matrix.legacy_token_secret] }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID || secrets[matrix.legacy_org_secret] }}
           VERCEL_PROJECT_ID: ${{ secrets[matrix.project_id_secret] }}
         run: |
-          DEPLOY_URL=$(npx vercel@59 deploy --yes --token "${{ secrets.VERCEL_TOKEN }}")
+          DEPLOY_URL=$(npx vercel@59 deploy --yes --token "$VERCEL_TOKEN")
           echo "url=$DEPLOY_URL" >> "$GITHUB_OUTPUT"
           echo "### 🔍 Deploy de Preview (${{ matrix.name }})" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Ambiente**: Preview (\`development\`)" >> "$GITHUB_STEP_SUMMARY"
