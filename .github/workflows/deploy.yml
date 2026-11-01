@@ -55,7 +55,11 @@ jobs:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets[matrix.project_id_secret] }}
         run: |
-          DEPLOY_URL=$(npx vercel@59 deploy --prod --yes --token "${{ secrets.VERCEL_TOKEN }}")
+          EXTRA_ARGS=""
+          if [ "${{ matrix.name }}" = "frontend" ]; then
+            EXTRA_ARGS="--build-env VITE_CONSUMER_URL=https://chat-csa-api.vercel.app"
+          fi
+          DEPLOY_URL=$(npx vercel@59 deploy --prod --yes --token "${{ secrets.VERCEL_TOKEN }}" $EXTRA_ARGS)
           echo "url=$DEPLOY_URL" >> "$GITHUB_OUTPUT"
           echo "### 🚀 Deploy de Produção (${{ matrix.name }})" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Ambiente**: Produção (\`main\`)" >> "$GITHUB_STEP_SUMMARY"

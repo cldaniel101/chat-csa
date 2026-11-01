@@ -1,7 +1,7 @@
 # ADR-003: Simplificação da Arquitetura DevOps, CI/CD e Handover
 
-**Data:** 2026-11-01  
-**Status:** Aceita  
+**Data:** 2026-11-01
+**Status:** Aceita
 **Decisores:** Equipe Chat CSA
 
 ---
@@ -115,6 +115,6 @@ Desacoplamento estrito em dois fluxos complementares:
 - **Handover viável:** O cliente/professor precisa apenas provisionar 2 projetos e 4 segredos para transferir toda a esteira operacional.
 
 ### Negativas e Mitigações
-- **Provedor de URLs de preview:** Previews dependem do padrão de URLs gerado pelo escopo da Vercel (`-git-development-<escopo>`).  
+- **Provedor de URLs de preview:** Previews dependem do padrão de URLs gerado pelo escopo da Vercel (`-git-development-<escopo>`).
   *Mitigação:* A URL de branch da Vercel é determinística e estável para a branch `development`.
 - **Desativação de staging dedicado:** Ambientes legados de preview (`chat-csa-api-preview` e `chat-csa-web-preview`) devem ser arquivados após a confirmação da nova esteira.
