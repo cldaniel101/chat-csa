@@ -1,4 +1,4 @@
-.PHONY: help install dev run run-consumer prompt-consumer lint format test docker-build docker-run docker-run-consumer docker-run-both clean frontend-install frontend-dev frontend-build deploy-api deploy-frontend deploy-staging deploy-staging-api deploy-staging-frontend deploy-env
+.PHONY: help install dev run run-consumer prompt-consumer lint format test docker-build docker-run docker-run-consumer docker-run-both clean frontend-install frontend-dev frontend-build deploy-api deploy-frontend deploy-preview-api deploy-preview-frontend
 
 # Usa uv se disponível; senão, cai para pip
 UV ?= uv
@@ -59,23 +59,18 @@ frontend-build: ## Gera o bundle de produção do React
 	cd frontend && npm run build
 
 # Deploy manual na Vercel (alternativa ao CI). Local: `vercel link` uma vez em
-# cada projeto; os alvos de staging já passam --project/--scope e dispensam link.
-deploy-api: ## Deploy do backend na Vercel — produção
+# cada diretório (. e frontend/).
+deploy-api: ## Deploy do backend na Vercel — produção (main)
 	npx vercel deploy --prod --yes
 
-deploy-frontend: ## Deploy do frontend na Vercel — produção
+deploy-frontend: ## Deploy do frontend na Vercel — produção (main)
 	cd frontend && npx vercel deploy --prod --yes
 
-deploy-staging: deploy-staging-api deploy-staging-frontend ## Publica o par de staging (API + site)
+deploy-preview-api: ## Deploy do backend na Vercel — preview (development)
+	npx vercel deploy --yes
 
-deploy-staging-api: ## Deploy da API de staging (chat-csa-api-preview)
-	npx vercel deploy --prod --yes --project chat-csa-api-preview --scope dev-davmg
-
-deploy-staging-frontend: ## Deploy do site de staging (chat-csa-web-preview)
-	cd frontend && npx vercel deploy --prod --yes --project chat-csa-web-preview --scope dev-davmg
-
-deploy-env: ## Sincroniza variáveis de ambiente do backend na Vercel (produção)
-	./scripts/sync-vercel-env.sh production
+deploy-preview-frontend: ## Deploy do frontend na Vercel — preview (development)
+	cd frontend && npx vercel deploy --yes
 
 clean: ## Remove caches
 	rm -rf .venv __pycache__ .pytest_cache .ruff_cache dist build frontend/dist
