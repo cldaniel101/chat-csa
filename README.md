@@ -390,37 +390,41 @@ See the branch `data` for the OKF bundle structure (read at runtime by the consu
 
 ## 🚀 Deploy (Vercel + GitHub Actions)
 
-O deploy é automatizado via **GitHub Actions + Vercel CLI** (sem GitHub App), com dois projetos separados na Vercel:
+O deploy é automatizado via **GitHub Actions + Vercel CLI** (sem necessidade de GitHub App), utilizando **2 projetos** na Vercel ([ADR-003](docs/adr/003-simplificacao-arquitetura-devops.md)):
 
-| Projeto | Diretório | URL |
-|---|---|---|
-| **chat-csa-api** (backend FastAPI + superfície admin `/kb/*`) | raiz do repo (`vercel.json`, `api/index.py`) | `https://chat-csa-api.vercel.app` |
-| **chat-csa-web** (frontend React/Vite) | `frontend/` (`frontend/vercel.json`) | *definido no painel da Vercel* |
+| Projeto | Diretório | URL de Produção (`main`) | URL de Preview (`development`) |
+|---|---|---|---|
+| **chat-csa-api** (backend FastAPI + superfície `/kb/*`) | raiz do repo (`vercel.json`, `api/index.py`) | `https://chat-csa-api.vercel.app` | `https://chat-csa-api-git-development-...` |
+| **chat-csa-web** (frontend React/Vite) | `frontend/` (`frontend/vercel.json`) | `https://chat-csa-web.vercel.app` | `https://chat-csa-web-git-development-...` |
 
-### Fluxo do CI (`.github/workflows/deploy.yml`)
+### Fluxo de CI/CD Desacoplado
 
-- `push` em **main** → deploy de produção nos dois projetos;
-- `push` em **development** ou **pull request** → deploy de preview (URLs únicas por deploy).
-- O job `checks` (lint + build) roda antes e bloqueia o deploy.
-- Cada projeto usa um **token project-scoped** próprio, armazenado como secret do GitHub:
-  `VERCEL_TOKEN_API`, `VERCEL_TOKEN_FRONTEND` (mais `VERCEL_ORG_ID_*` e `VERCEL_PROJECT_ID_*`).
+- **Validação Contínua (`.github/workflows/ci.yml`):**
+  - Roda em pull requests e branches de desenvolvimento.
+  - Executa linters (`oxlint`, `ruff`), checagem de tipos/build do frontend e **mais de 140 testes automatizados (`pytest`)**.
+  - Permissões mínimas (`contents: read`), sem acesso a segredos de deploy.
+- **Entrega Contínua (`.github/workflows/deploy.yml`):**
+  - Disparado exclusivamente em pushes para `main` (produção `--prod`) e `development` (preview estável de branch).
+  - Utiliza apenas **4 segredos universais no GitHub**: `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID_API`, `VERCEL_PROJECT_ID_FRONTEND`.
 
-### Variáveis de ambiente (`.github/workflows/env-sync.yml`)
+### Variáveis de Ambiente e Handover
 
-O backend consome `LLM_PROVIDER`, `LLM_MODEL`, `OLLAMA_MODEL`, `OLLAMA_BASE_URL`, `OLLAMA_API_KEY` e as variáveis `KB_*` da base remota (`KB_BACKEND`, `KB_REPO`, `KB_BRANCH`, `KB_ROOT`, `KB_TOKEN`, `KB_WRITE_TOKEN`, `KB_CACHE_TTL`).
-Elas vivem como secrets do GitHub; para sincronizá-las nos ambientes da Vercel (production/preview/development),
-rode manualmente **Actions → “Sync Vercel env”** — o workflow reutiliza `scripts/sync-vercel-env.sh`
-(allowlist + override de `OLLAMA_BASE_URL=https://ollama.com` em produção).
+As variáveis de runtime do backend (`LLM_*`, `KB_*`) e do frontend (`VITE_CONSUMER_URL`) são gerenciadas nativamente nas configurações de cada projeto na Vercel (*Settings → Environment Variables*), eliminando scripts customizados de sincronização.
 
-### Deploy manual (alternativa)
+- Guia completo de deploy: [docs/deploy.md](docs/deploy.md)
+- Checklist de handover em 5 passos para a instituição/cliente: [docs/handover.md](docs/handover.md)
+- Inventário de descomissionamento de segredos legados: [docs/inventario-descontinuacao-devops.md](docs/inventario-descontinuacao-devops.md)
+
+### Deploy Manual (Alternativa Local)
 
 ```bash
-make deploy-env        # sincroniza envs do backend (produção)
-make deploy-api        # deploy do backend
-make deploy-frontend   # deploy do frontend
+make deploy-api              # Produção do backend
+make deploy-frontend         # Produção do frontend
+make deploy-preview-api      # Preview do backend
+make deploy-preview-frontend # Preview do frontend
 ```
 
-> Pré-requisito local: `npx vercel link` uma vez em cada diretório (raiz e `frontend/`).
+> Pré-requisito local: autenticar com `npx vercel login`.
 
 ## 🚧 Status
 
