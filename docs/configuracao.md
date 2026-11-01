@@ -77,7 +77,7 @@ O consumer monta `./data` como volume e lê o `.env` via `env_file`; as variáve
 
 - `vercel.json` (raiz) empacota `src/chat_csa/**` e `.consumer/**` na função Python apontada por `api/index.py`, com rewrite de tudo para o entrypoint.
 - `frontend/vercel.json` faz o rewrite de SPA para `index.html`.
-- Os segredos de deploy vivem como secrets do GitHub e são sincronizados para a Vercel pelo workflow `env-sync.yml` com `scripts/sync-vercel-env.sh` (allowlist de LLM + `KB_*`, sem imprimir valores). O fluxo está em [deploy.md](./deploy.md).
+- Conforme a [ADR-003](./adr/003-simplificacao-arquitetura-devops.md), a topologia adota 2 projetos na Vercel (`chat-csa-api` e `chat-csa-web`). As variáveis de runtime (`LLM_*`, `KB_*` e `VITE_CONSUMER_URL`) são configuradas diretamente no painel de Environment Variables da Vercel para os ambientes Production e Preview, dispensando scripts de sincronização via REST. O CI utiliza 4 segredos universais de deploy (`VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID_API`, `VERCEL_PROJECT_ID_FRONTEND`).
 
 ## Configuração do agente (`.consumer/`)
 
