@@ -47,7 +47,7 @@ Cadastre as variáveis do Vite:
 - **Ambiente Production:**
   - `VITE_CONSUMER_URL`: `https://chat-csa-api.vercel.app` (ou o domínio customizado de produção da API)
 - **Ambiente Preview:**
-  - `VITE_CONSUMER_URL`: `https://chat-csa-api-git-development-<seu-time>.vercel.app` (URL de branch estável de preview da API)
+  - `VITE_CONSUMER_URL`: `https://chat-csa-api-development.vercel.app` (URL limpa e estável de preview da API)
 
 ---
 

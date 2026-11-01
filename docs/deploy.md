@@ -17,13 +17,13 @@ A topologia é enxuta e adota **2 projetos principais** na Vercel vinculados ao 
 
 | Projeto | Diretório no Repo | Entrada / Framework | URL de Produção (`main`) | URL de Preview (`development`) |
 |---|---|---|---|---|
-| `chat-csa-api` | `.` (raiz do repo) | `api/index.py` (`@vercel/python`) | `https://chat-csa-api.vercel.app` | `https://chat-csa-api-git-development-<escopo>.vercel.app` |
-| `chat-csa-web` | `frontend/` | SPA Vite + React | `https://chat-csa-web.vercel.app` | `https://chat-csa-web-git-development-<escopo>.vercel.app` |
+| `chat-csa-api` | `.` (raiz do repo) | `api/index.py` (`@vercel/python`) | `https://chat-csa-api.vercel.app` | `https://chat-csa-api-development.vercel.app` |
+| `chat-csa-web` | `frontend/` | SPA Vite + React | `https://chat-csa-web.vercel.app` | `https://chat-csa-web-development.vercel.app` |
 
 ### Resolução de URLs e Ambientes
 - **Produção (`main`):** Publicado com flag `--prod`. A Vercel promove imediatamente as URLs canônicas de produção.
-- **Preview Estável (`development`):** Publicado com deploy de preview. A Vercel associa automaticamente a URL de branch estável baseada no nome do branch (`-git-development-`). Essa URL é permanente e atualizada a cada push em `development`, dispensando projetos dedicados de staging.
-- **Configuração do Frontend (`VITE_CONSUMER_URL`):** O frontend é compilado no build com a URL da API do seu respectivo ambiente. No ambiente de Preview do projeto `chat-csa-web`, a variável `VITE_CONSUMER_URL` aponta para a URL estável da API de preview (`chat-csa-api-git-development-...`). Para homologação pontual de PRs ou deploys efêmeros, o frontend aceita o query parameter `?consumerUrl=https://...`.
+- **Preview Estável (`development`):** Publicado na esteira de deploy e associado automaticamente ao alias estável e limpo (`chat-csa-*-development.vercel.app`). Essa URL é permanente e atualizada a cada push em `development`, dispensando projetos dedicados de staging e sufixos de time.
+- **Configuração do Frontend (`VITE_CONSUMER_URL`):** O frontend é compilado no build com a URL da API do seu respectivo ambiente. No ambiente de Preview do projeto `chat-csa-web`, a variável `VITE_CONSUMER_URL` aponta para a URL estável da API de preview (`https://chat-csa-api-development.vercel.app`). Para homologação pontual de PRs ou deploys efêmeros, o frontend aceita o query parameter `?consumerUrl=https://...`.
 
 ### Configurações de Build na Vercel
 - O `vercel.json` da raiz empacota `src/chat_csa/**` e `.consumer/**` e reescreve as rotas para `api/index.py`. O `api/index.py` adiciona `src/` ao `sys.path`, define `AGENT_CONFIG_DIR=.consumer` e expõe a aplicação FastAPI.
@@ -79,7 +79,7 @@ Diferente da arquitetura antiga, variáveis de runtime do backend (`LLM_*`, `KB_
 
 ### Variáveis do Frontend (`chat-csa-web`)
 - **Production:** `VITE_CONSUMER_URL=https://chat-csa-api.vercel.app`
-- **Preview:** `VITE_CONSUMER_URL=https://chat-csa-api-git-development-<escopo>.vercel.app`
+- **Preview:** `VITE_CONSUMER_URL=https://chat-csa-api-development.vercel.app`
 
 ---
 

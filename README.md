@@ -394,8 +394,8 @@ O deploy é automatizado via **GitHub Actions + Vercel CLI** (sem necessidade de
 
 | Projeto | Diretório | URL de Produção (`main`) | URL de Preview (`development`) |
 |---|---|---|---|
-| **chat-csa-api** (backend FastAPI + superfície `/kb/*`) | raiz do repo (`vercel.json`, `api/index.py`) | `https://chat-csa-api.vercel.app` | `https://chat-csa-api-git-development-...` |
-| **chat-csa-web** (frontend React/Vite) | `frontend/` (`frontend/vercel.json`) | `https://chat-csa-web.vercel.app` | `https://chat-csa-web-git-development-...` |
+| **chat-csa-api** (backend FastAPI + superfície `/kb/*`) | raiz do repo (`vercel.json`, `api/index.py`) | `https://chat-csa-api.vercel.app` | `https://chat-csa-api-development.vercel.app` |
+| **chat-csa-web** (frontend React/Vite) | `frontend/` (`frontend/vercel.json`) | `https://chat-csa-web.vercel.app` | `https://chat-csa-web-development.vercel.app` |
 
 ### Fluxo de CI/CD Desacoplado
 

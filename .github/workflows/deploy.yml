@@ -86,11 +86,15 @@ jobs:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets[matrix.project_id_secret] }}
         run: |
-          DEPLOY_URL=$(npx vercel@59 deploy --yes --token "$VERCEL_TOKEN")
+          EXTRA_ARGS=""
+          if [ "${{ matrix.name }}" = "frontend" ]; then
+            EXTRA_ARGS="--build-env VITE_CONSUMER_URL=https://chat-csa-api-development.vercel.app"
+          fi
+          DEPLOY_URL=$(npx vercel@59 deploy --yes --token "$VERCEL_TOKEN" $EXTRA_ARGS)
           echo "url=$DEPLOY_URL" >> "$GITHUB_OUTPUT"
 
-          # Atribui a URL fixa e determinística de preview da branch development
-          ALIAS_HOST="chat-csa-${{ matrix.name }}-git-development-dev-davmg.vercel.app"
+          # Atribui a URL fixa e limpa de preview da branch development (sem sufixo de time)
+          ALIAS_HOST="chat-csa-${{ matrix.name }}-development.vercel.app"
           npx vercel@59 alias set "$DEPLOY_URL" "$ALIAS_HOST" --token "$VERCEL_TOKEN" || true
 
           echo "### 🔍 Deploy de Preview (${{ matrix.name }})" >> "$GITHUB_STEP_SUMMARY"

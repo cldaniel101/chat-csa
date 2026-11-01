@@ -30,8 +30,8 @@ A infraestrutura é consolidada em 2 projetos principais vinculados ao mesmo rep
 
 | Projeto Vercel | Diretório Raiz | Entrada / Framework | URL de Produção (`main`) | URL de Preview (`development`) |
 |---|---|---|---|---|
-| `chat-csa-api` | `.` (raiz) | `api/index.py` (`@vercel/python`) | `https://chat-csa-api.vercel.app` | `https://chat-csa-api-git-development-<escopo>.vercel.app` |
-| `chat-csa-web` | `frontend/` | Vite + React (SPA) | `https://chat-csa-web.vercel.app` | `https://chat-csa-web-git-development-<escopo>.vercel.app` |
+| `chat-csa-api` | `.` (raiz) | `api/index.py` (`@vercel/python`) | `https://chat-csa-api.vercel.app` | `https://chat-csa-api-development.vercel.app` |
+| `chat-csa-web` | `frontend/` | Vite + React (SPA) | `https://chat-csa-web.vercel.app` | `https://chat-csa-web-development.vercel.app` |
 
 #### Resolução de URLs por Ambiente:
 - **Produção (`main`):** Deploy executado com flag `--prod`. Atualiza imediatamente os domínios canônicos de produção.
@@ -67,7 +67,7 @@ As variáveis de ambiente de runtime são configuradas diretamente no painel da 
 | Variável | Ambiente Vercel | Valor Alvo | Observações |
 |---|---|---|---|
 | `VITE_CONSUMER_URL` | **Production** | `https://chat-csa-api.vercel.app` | Embutida no build do Vite para a branch `main` |
-| `VITE_CONSUMER_URL` | **Preview** | `https://chat-csa-api-git-development-<escopo>.vercel.app` | Embutida no build de Preview para o branch `development` |
+| `VITE_CONSUMER_URL` | **Preview** | `https://chat-csa-api-development.vercel.app` | Embutida no build de Preview para o branch `development` |
 
 *Nota:* O cliente frontend preserva a capacidade de substituição dinâmica da URL via query parameter `?consumerUrl=https://...`, permitindo testes contra deployments específicos sem recompilação.
 
