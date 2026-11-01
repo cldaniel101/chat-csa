@@ -88,6 +88,12 @@ jobs:
         run: |
           DEPLOY_URL=$(npx vercel@59 deploy --yes --token "$VERCEL_TOKEN")
           echo "url=$DEPLOY_URL" >> "$GITHUB_OUTPUT"
+
+          # Atribui a URL fixa e determinística de preview da branch development
+          ALIAS_HOST="chat-csa-${{ matrix.name }}-git-development-dev-davmg.vercel.app"
+          npx vercel@59 alias set "$DEPLOY_URL" "$ALIAS_HOST" --token "$VERCEL_TOKEN" || true
+
           echo "### 🔍 Deploy de Preview (${{ matrix.name }})" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Ambiente**: Preview (\`development\`)" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **URL**: $DEPLOY_URL" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **URL Estável de Preview**: https://$ALIAS_HOST" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Deployment Específico**: $DEPLOY_URL" >> "$GITHUB_STEP_SUMMARY"
