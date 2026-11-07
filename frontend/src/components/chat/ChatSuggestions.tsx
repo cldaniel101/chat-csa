@@ -5,6 +5,7 @@ const CHAT_SUGGESTIONS = [
   "Quais documentos preciso enviar?",
   "O que significa estar habilitado?",
   "Como acesso o SIDOC?",
+  "Qual é o perfil de cada modalidade de reserva de vagas?",
 ] as const;
 
 type ChatSuggestionsProps = {
