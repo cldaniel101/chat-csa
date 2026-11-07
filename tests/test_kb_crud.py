@@ -27,7 +27,10 @@ def _make_client(tmp_path: Path) -> tuple[TestClient, dict[str, str]]:
     kb_module._kb = kb
 
     client = TestClient(create_app(".consumer"))
-    login_resp = client.post("/auth/login", json={"username": "admin", "password": "sudo123"})
+    login_resp = client.post(
+        "/auth/login",
+        json={"username": "admin-teste", "password": "senha-ficticia-de-teste"},
+    )
     token = login_resp.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
     return client, headers

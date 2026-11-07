@@ -18,7 +18,7 @@ Há um único agente (consumer) e um único app FastAPI, criado por `create_app`
 | GET | `/admin/users` | `Authorization` (Bearer) | lista usuários (sem senha) |
 | POST | `/admin/users` | `Authorization` (Bearer) | cria usuário |
 | PUT | `/admin/users/{uid}` | `Authorization` (Bearer) | atualiza usuário |
-| DELETE | `/admin/users/{uid}` | `Authorization` (Bearer) | remove usuário (não permite remover o último) |
+| DELETE | `/admin/users/{uid}` | `Authorization` (Bearer) | remove usuário adicional |
 | GET | `/kb/list?prefix=` | `Authorization` (Bearer admin) | caminhos disponíveis na base |
 | GET | `/kb/file?path=` | `Authorization` (Bearer admin) | bytes originais do arquivo, com content-type |
 | POST | `/kb/upload` | `Authorization` (Bearer admin) | converte o lote em conceitos OKF → um commit atômico no branch `data` |
@@ -56,9 +56,11 @@ Mensagens sociais curtas ("oi", "obrigado") são detectadas por `_is_conversatio
 
 ## Autenticação e administração
 
-`POST /auth/login` recebe `{username, password}` e devolve `{access_token, token_type: "bearer", user}`. As rotas `/auth/me`, `/admin/users` e `/kb/*` aceitam `Authorization: Bearer <token>` ou o token puro (`verify_token`). O store é **em memória** (`src/chat_csa/server/auth.py`): reiniciar o processo derruba usuários e tokens.
+`POST /auth/login` recebe `{username, password}` e devolve `{access_token, token_type: "bearer", expires_in, user}`. As rotas `/auth/me`, `/admin/users` e `/kb/*` aceitam somente `Authorization: Bearer <token>`. O token é assinado com HMAC-SHA256 e possui expiração.
 
-A auth admin protege duas superfícies: o CRUD de usuários (`/admin/users`) e o upload/inspeção da base (`/kb/*`). O antigo painel FastHTML `/admin` foi removido junto com o agente ingester.
+Não existe credencial padrão. O administrador principal é configurado por `CHAT_CSA_ADMIN_USERNAME`, `CHAT_CSA_ADMIN_PASSWORD_HASH` e `CHAT_CSA_AUTH_SECRET`; sem as três variáveis, o login e as rotas administrativas falham de forma fechada. O hash da senha pode ser gerado com `uv run python scripts/hash_admin_password.py`.
+
+A auth protege o CRUD de usuários (`/admin/users`) e a base (`/kb/*`). No frontend, o painel fica em `/admin`; a raiz `/` contém somente o chat público. Usuários adicionais do CRUD vivem em memória, enquanto o administrador principal é recriado do ambiente em cada instância.
 
 ## Base de conhecimento (`/kb/*`)
 

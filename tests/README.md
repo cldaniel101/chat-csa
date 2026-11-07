@@ -116,13 +116,18 @@ tests/
 
 ---
 
-### `test_admin.py` — Auth admin (3 testes)
+### `test_admin.py` — Auth admin (8 testes)
 
 | Teste | O que verifica |
 |-------|----------------|
 | `test_admin_users_requires_auth` | `/admin/users` responde 401 sem Bearer |
 | `test_admin_users_crud` | Login + CRUD de usuários preservados |
 | `test_admin_panel_removed` | O painel FastHTML foi removido (`/admin` é 404) |
+| `test_raw_or_tampered_token_is_rejected` | Token puro ou adulterado é rejeitado |
+| `test_admin_auth_fails_closed_without_environment` | Sem configuração, o admin responde 503 e não cria credencial padrão |
+| `test_login_is_rate_limited_after_repeated_failures` | Tentativas repetidas recebem 429 |
+| `test_expired_token_is_rejected` | Sessão expirada recebe 401 |
+| `test_cors_and_security_headers_are_restricted` | CORS usa allowlist e respostas protegidas não são armazenadas em cache |
 
 ---
 

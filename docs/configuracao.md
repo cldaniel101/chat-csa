@@ -21,6 +21,11 @@ Fonte principal: `.env.example` (copie para `.env`). Variáveis que aparecem ape
 | `HOST` / `PORT` | bind do `chat-csa serve` | `0.0.0.0` / `8000` (`cli.py`) |
 | `CONSUMER_CONFIG_DIR` / `CONSUMER_PORT` | dir e porta do consumer | `.consumer` / `8002` (Makefile) |
 | `CONSUMER_LLM_*` / `CONSUMER_HOST` | override de provedor/modelo/chave/bind | comentados no `.env.example` |
+| `CHAT_CSA_ADMIN_USERNAME` | usuário principal do painel | vazio (admin desabilitado) |
+| `CHAT_CSA_ADMIN_PASSWORD_HASH` | hash scrypt da senha administrativa | vazio; gere com `scripts/hash_admin_password.py` |
+| `CHAT_CSA_AUTH_SECRET` | segredo HMAC das sessões (mínimo de 32 bytes) | vazio |
+| `CHAT_CSA_AUTH_SESSION_TTL` | validade da sessão em segundos | `28800` |
+| `CHAT_CSA_CORS_ORIGINS` | origens autorizadas, separadas por vírgula | origens locais do Vite |
 | `KB_BACKEND` | backend da base: `github` (deploy) ou `local` (dev/testes) | `github` (`kb.py`) |
 | `KB_REPO` | repositório `owner/name` que guarda o branch da base | — (`kb.py`) |
 | `KB_BRANCH` | branch da base | `data` (`kb.py`) |
@@ -70,14 +75,14 @@ O consumer monta `./data` como volume e lê o `.env` via `env_file`; as variáve
 ## Frontend
 
 - `frontend/.env.example` define `VITE_CONSUMER_URL=http://localhost:8002`.
-- `frontend/.env.production` aponta `VITE_CONSUMER_URL` para a URL pública do backend. Ele também define `VITE_INGESTER_URL`, que **não é lido** por nenhum arquivo do frontend (`client.ts` só consulta `VITE_CONSUMER_URL`); a variável é resíduo da época em que existiam dois agentes.
+- `frontend/.env.production` aponta `VITE_CONSUMER_URL` para a URL pública do backend; nenhuma credencial administrativa é incluída no bundle.
 - Override em runtime: o widget aceita `?consumerUrl=` na URL e `window.__CSA_CHAT_CONSUMER_URL__`, que têm precedência sobre a env de build (`frontend/src/api/client.ts`).
 
 ## Vercel e CI
 
 - `vercel.json` (raiz) empacota `src/chat_csa/**` e `.consumer/**` na função Python apontada por `api/index.py`, com rewrite de tudo para o entrypoint.
 - `frontend/vercel.json` faz o rewrite de SPA para `index.html`.
-- Conforme a [ADR-003](./adr/003-simplificacao-arquitetura-devops.md), a topologia adota 2 projetos na Vercel (`chat-csa-api` e `chat-csa-web`). As variáveis de runtime (`LLM_*`, `KB_*` e `VITE_CONSUMER_URL`) são configuradas diretamente no painel de Environment Variables da Vercel para os ambientes Production e Preview, dispensando scripts de sincronização via REST. O CI utiliza 4 segredos universais de deploy (`VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID_API`, `VERCEL_PROJECT_ID_FRONTEND`).
+- Conforme a [ADR-003](./adr/003-simplificacao-arquitetura-devops.md), a topologia adota 2 projetos na Vercel (`chat-csa-api` e `chat-csa-web`). As variáveis de runtime (`LLM_*`, `KB_*`, `CHAT_CSA_ADMIN_*`, `CHAT_CSA_AUTH_*`, `CHAT_CSA_CORS_ORIGINS` e `VITE_CONSUMER_URL`) são configuradas diretamente no painel de Environment Variables da Vercel para os ambientes Production e Preview, dispensando scripts de sincronização via REST. O CI utiliza 4 segredos universais de deploy (`VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID_API`, `VERCEL_PROJECT_ID_FRONTEND`).
 
 ## Configuração do agente (`.consumer/`)
 

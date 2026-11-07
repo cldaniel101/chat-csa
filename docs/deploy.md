@@ -76,6 +76,7 @@ Diferente da arquitetura antiga, variáveis de runtime do backend (`LLM_*`, `KB_
 ### Variáveis da API (`chat-csa-api`)
 - **Modelos e Provedores:** `LLM_PROVIDER`, `LLM_MODEL`, `OLLAMA_MODEL`, `OLLAMA_BASE_URL`, `OLLAMA_API_KEY`, `OPENAI_API_KEY`.
 - **Base de Conhecimento:** `KB_BACKEND=github`, `KB_REPO`, `KB_BRANCH=data`, `KB_ROOT=knowledge`, `KB_TOKEN`, `KB_WRITE_TOKEN`, `KB_CACHE_TTL`.
+- **Painel administrativo:** `CHAT_CSA_ADMIN_USERNAME`, `CHAT_CSA_ADMIN_PASSWORD_HASH`, `CHAT_CSA_AUTH_SECRET`, `CHAT_CSA_AUTH_SESSION_TTL` e `CHAT_CSA_CORS_ORIGINS`. Gere o hash com `uv run python scripts/hash_admin_password.py`; não use prefixo `VITE_` para credenciais.
 
 ### Variáveis do Frontend (`chat-csa-web`)
 - **Production:** `VITE_CONSUMER_URL=https://chat-csa-api.vercel.app`

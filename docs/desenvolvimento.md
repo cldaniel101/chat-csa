@@ -56,6 +56,9 @@ O `.env.example` é a referência completa. As essenciais para rodar localmente:
 | `KB_REPO` / `KB_BRANCH` | repositório e branch da base | `cldaniel101/chat-csa` / `data` |
 | `KB_TOKEN` / `KB_WRITE_TOKEN` | leitura / escrita da base | vazios |
 | `KB_LOCAL_PATH` | diretório da base no backend local | `knowledge` |
+| `CHAT_CSA_ADMIN_USERNAME` / `CHAT_CSA_ADMIN_PASSWORD_HASH` | credencial do painel `/admin` | vazios (painel desabilitado) |
+| `CHAT_CSA_AUTH_SECRET` / `CHAT_CSA_AUTH_SESSION_TTL` | assinatura e validade das sessões | vazio / `28800` |
+| `CHAT_CSA_CORS_ORIGINS` | origens autorizadas a chamar a API | `http://localhost:5173` |
 
 A base remota é a fonte primária; em dev, `KB_BACKEND=local` + `KB_LOCAL_PATH=knowledge` (pasta gitignored) permitem trabalhar sem rede. O `.env.example` é a referência completa, incluindo `KB_CACHE_TTL` e `CHAT_CSA_PORTAL_TOOLS`.
 

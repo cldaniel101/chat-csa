@@ -345,9 +345,9 @@ make docker-build
 docker compose up   # consumer :${CONSUMER_PORT:-8002} + frontend :${FRONTEND_PORT:-5173}
 ```
 
-### React Chat (frontend/)
+### React Chat e painel (frontend/)
 
-Vite + React chat widget **exclusivo do consumer** — botão flutuante que conversa com o agente consumer via endpoint OpenAI-compatible.
+O frontend Vite + React separa as superfícies no mesmo domínio: o chat público fica em `/` e o painel protegido da base de conhecimento fica em `/admin`.
 
 ```bash
 cp frontend/.env.example frontend/.env   # VITE_CONSUMER_URL=http://localhost:8002
@@ -356,7 +356,8 @@ make frontend-dev      # http://localhost:5173
 make frontend-build    # production build -> frontend/dist (served by nginx in docker)
 ```
 
-- **Consumer**: open chat, no login.
+- **Chat público (`/`)**: acesso sem login.
+- **Painel (`/admin`)**: login obrigatório; as rotas administrativas também validam o token no backend.
 - Env: `VITE_CONSUMER_URL` (default 8002). Com Docker Compose o frontend fica em `http://localhost:5173` e conversa com o consumer em `:8002`.
 
 ### Snippet de integração
@@ -409,7 +410,7 @@ O deploy é automatizado via **GitHub Actions + Vercel CLI** (sem necessidade de
 
 ### Variáveis de Ambiente e Handover
 
-As variáveis de runtime do backend (`LLM_*`, `KB_*`) e do frontend (`VITE_CONSUMER_URL`) são gerenciadas nativamente nas configurações de cada projeto na Vercel (*Settings → Environment Variables*), eliminando scripts customizados de sincronização.
+As variáveis de runtime do backend (`LLM_*`, `KB_*`, `CHAT_CSA_ADMIN_*`, `CHAT_CSA_AUTH_*` e `CHAT_CSA_CORS_ORIGINS`) e do frontend (`VITE_CONSUMER_URL`) são gerenciadas nativamente nas configurações de cada projeto na Vercel (*Settings → Environment Variables*), eliminando scripts customizados de sincronização.
 
 - Guia completo de deploy: [docs/deploy.md](docs/deploy.md)
 - Checklist de handover em 5 passos para a instituição/cliente: [docs/handover.md](docs/handover.md)

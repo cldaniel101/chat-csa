@@ -180,7 +180,7 @@ def test_upload_endpoint_com_backend_github_falso(monkeypatch):
     from chat_csa.server.app import create_app
 
     client = TestClient(create_app(".consumer"))
-    token = client.post("/auth/login", json={"username": "admin", "password": "sudo123"}).json()["access_token"]
+    token = client.post("/auth/login", json={"username": "admin-teste", "password": "senha-ficticia-de-teste"}).json()["access_token"]
 
     response = client.post(
         "/kb/upload",
@@ -235,7 +235,7 @@ def _upload_client(monkeypatch, state: dict):
     from chat_csa.server.app import create_app
 
     client = TestClient(create_app(".consumer"))
-    token = client.post("/auth/login", json={"username": "admin", "password": "sudo123"}).json()["access_token"]
+    token = client.post("/auth/login", json={"username": "admin-teste", "password": "senha-ficticia-de-teste"}).json()["access_token"]
     return client, token, fake
 
 
@@ -374,7 +374,7 @@ def test_delete_endpoint_retorna_ok_e_sha(monkeypatch):
     from chat_csa.server.app import create_app
 
     client = TestClient(create_app(".consumer"))
-    token = client.post("/auth/login", json={"username": "admin", "password": "sudo123"}).json()["access_token"]
+    token = client.post("/auth/login", json={"username": "admin-teste", "password": "senha-ficticia-de-teste"}).json()["access_token"]
 
     response = client.delete(
         "/kb/file",
@@ -418,7 +418,7 @@ def test_get_file_endpoint_com_auth_retorna_bytes(monkeypatch):
     from chat_csa.server.app import create_app
 
     client = TestClient(create_app(".consumer"))
-    token = client.post("/auth/login", json={"username": "admin", "password": "sudo123"}).json()["access_token"]
+    token = client.post("/auth/login", json={"username": "admin-teste", "password": "senha-ficticia-de-teste"}).json()["access_token"]
 
     response = client.get(
         "/kb/file",
@@ -443,7 +443,7 @@ def test_get_file_endpoint_token_na_query_nao_autentica(monkeypatch):
     from chat_csa.server.app import create_app
 
     client = TestClient(create_app(".consumer"))
-    token = client.post("/auth/login", json={"username": "admin", "password": "sudo123"}).json()["access_token"]
+    token = client.post("/auth/login", json={"username": "admin-teste", "password": "senha-ficticia-de-teste"}).json()["access_token"]
 
     response = client.get(
         "/kb/file",

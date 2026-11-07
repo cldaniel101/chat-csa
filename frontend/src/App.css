@@ -9,9 +9,107 @@
   background: transparent;
 }
 
+.app--public {
+  background:
+    radial-gradient(circle at 20% 10%, rgb(238 89 131 / 18%), transparent 34rem),
+    radial-gradient(circle at 85% 80%, rgb(161 18 132 / 12%), transparent 30rem),
+    #fff8fb;
+}
+
+.app--admin {
+  background: var(--bg);
+}
+
 .main {
   min-height: 100dvh;
   width: 100%;
+}
+
+.csa-public {
+  display: grid;
+  place-items: center;
+  padding: 32px 88px 32px 32px;
+}
+
+.csa-public-card {
+  width: min(620px, 100%);
+  padding: clamp(28px, 5vw, 52px);
+  border: 1px solid rgb(161 18 132 / 14%);
+  border-radius: 28px;
+  background: rgb(255 255 255 / 88%);
+  box-shadow: 0 24px 64px rgb(91 24 77 / 12%);
+  text-align: center;
+  backdrop-filter: blur(12px);
+}
+
+.csa-public-icon {
+  display: grid;
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 20px;
+  place-items: center;
+  border-radius: 20px;
+  background: var(--c-gradient-sisu);
+  color: white;
+  box-shadow: 0 12px 30px rgb(161 18 132 / 24%);
+}
+
+.csa-public-eyebrow {
+  margin: 0 0 8px;
+  color: #a11284;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.csa-public-card h1 {
+  margin: 0;
+  color: #401236;
+  font-family: var(--font-heading);
+  font-size: clamp(30px, 5vw, 48px);
+  line-height: 1.08;
+}
+
+.csa-public-card > p:not(.csa-public-eyebrow) {
+  max-width: 510px;
+  margin: 18px auto 26px;
+  color: #66505f;
+  font-size: 16px;
+  line-height: 1.65;
+}
+
+.csa-public-action {
+  padding: 13px 20px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--c-gradient-sisu);
+  color: white;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 10px 24px rgb(161 18 132 / 22%);
+}
+
+.csa-public-action:hover {
+  filter: brightness(1.05);
+  transform: translateY(-1px);
+}
+
+.csa-public-action:focus-visible {
+  outline: 3px solid rgb(238 89 131 / 38%);
+  outline-offset: 3px;
+}
+
+@media (max-width: 560px) {
+  .csa-public {
+    padding: 20px;
+  }
+
+  .csa-public-card {
+    padding: 28px 22px;
+    border-radius: 22px;
+  }
 }
 
 html.csa-embed-mode,

@@ -41,6 +41,13 @@ Cadastre para os ambientes **Production** e **Preview**:
 - `KB_TOKEN`: Personal Access Token do GitHub com permissão `contents:read`
 - `KB_WRITE_TOKEN`: Token com permissão de escrita para o endpoint `/kb/upload` (pode ser o mesmo `KB_TOKEN`)
 - `KB_CACHE_TTL`: `300` (em segundos)
+- `CHAT_CSA_ADMIN_USERNAME`: usuário inicial do painel (não use credencial de demonstração)
+- `CHAT_CSA_ADMIN_PASSWORD_HASH`: hash gerado localmente com `uv run python scripts/hash_admin_password.py`
+- `CHAT_CSA_AUTH_SECRET`: segredo aleatório de sessão com no mínimo 32 bytes
+- `CHAT_CSA_AUTH_SESSION_TTL`: `28800` (8 horas)
+- `CHAT_CSA_CORS_ORIGINS`: domínio do frontend do respectivo ambiente, sem barra final
+
+As variáveis administrativas existem somente no projeto da API. Nunca crie equivalentes com prefixo `VITE_`.
 
 #### B. No projeto `chat-csa-web`:
 Cadastre as variáveis do Vite:

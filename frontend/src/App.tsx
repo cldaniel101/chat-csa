@@ -1,22 +1,28 @@
+import { BsStars } from "react-icons/bs";
+import { useEffect, useState } from "react";
 import "./App.css";
 import { CSAChatWidget } from "./components/chat/CSAChatWidget";
 import { KBExplorer } from "./components/kb/KBExplorer";
-import { useEffect, useState } from "react";
 
 function isEmbedMode() {
   if (typeof window === "undefined") {
     return false;
   }
-
   return new URLSearchParams(window.location.search).has("embed");
 }
 
-// Frontend exclusivo do consumer (decisão da discussão ingester-fasthtml-admin):
-// o ingester tem painel próprio em FastHTML no backend (/admin).
+function isAdminRoute() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  const path = window.location.pathname.replace(/\/+$/, "") || "/";
+  return path === "/admin" || path.startsWith("/admin/");
+}
+
 export default function App() {
   const embedded = isEmbedMode();
-  // Controla se o widget de chat está aberto (acionado pelo KBExplorer).
-  const [chatOpen, setChatOpen] = useState(false);
+  const adminRoute = isAdminRoute();
+  const [chatOpen, setChatOpen] = useState(!embedded && !adminRoute);
 
   useEffect(() => {
     document.documentElement.classList.toggle("csa-embed-mode", embedded);
@@ -25,20 +31,47 @@ export default function App() {
     };
   }, [embedded]);
 
+  if (adminRoute) {
+    return (
+      <div className="app app--admin">
+        <main className="main">
+          <KBExplorer onStartChat={() => window.location.assign("/")} />
+        </main>
+      </div>
+    );
+  }
+
+  if (embedded) {
+    return (
+      <div className="app app--embedded">
+        <main className="main">
+          <CSAChatWidget embedded />
+        </main>
+      </div>
+    );
+  }
+
   return (
-    <div className={`app${embedded ? " app--embedded" : ""}`}>
-      <main className="main">
-        {embedded ? (
-          /* Modo embed: somente o widget flutuante, sem explorador. */
-          <CSAChatWidget embedded={true} />
-        ) : (
-          <>
-            {/* Modo desktop: explorador de arquivos como tela principal. */}
-            <KBExplorer onStartChat={() => setChatOpen(true)} />
-            {/* Widget do chatbot — controlado pelo explorador. */}
-            <CSAChatWidget embedded={false} initialOpen={chatOpen} onOpenChange={setChatOpen} />
-          </>
-        )}
+    <div className="app app--public">
+      <main className="main csa-public">
+        <section className="csa-public-card" aria-labelledby="csa-public-title">
+          <span className="csa-public-icon" aria-hidden="true">
+            <BsStars size={30} />
+          </span>
+          <p className="csa-public-eyebrow">Coordenação de Seleção e Admissão</p>
+          <h1 id="csa-public-title">Assistente Virtual CSA</h1>
+          <p>
+            Tire dúvidas sobre processos seletivos, editais, matrículas e
+            cronogramas com informações da CSA/UEFS.
+          </p>
+          <button type="button" className="csa-public-action" onClick={() => setChatOpen(true)}>
+            Conversar com o assistente
+          </button>
+        </section>
+        <CSAChatWidget
+          initialOpen={chatOpen}
+          onOpenChange={setChatOpen}
+        />
       </main>
     </div>
   );

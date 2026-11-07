@@ -1,75 +1,68 @@
 # Segurança
 
-Este documento reúne o que o Chat CSA protege, o que deliberadamente ainda não protege e onde cada controle vive no código. Ele é escrito para operadores e desenvolvedores: antes de expor o sistema além do ambiente acadêmico, leia a seção de riscos conhecidos.
+Este documento descreve os limites de acesso do Chat CSA e a configuração necessária para operar o painel administrativo.
 
-## Autenticação e sessão
+## Separação entre público e administrativo
 
-A auth admin protege a superfície de escrita da base e o CRUD de usuários. `src/chat_csa/server/auth.py` mantém usuários e tokens **em memória**: há uma credencial-semente de demonstração definida no próprio módulo (o valor não é reproduzido aqui) e tokens de sessão no formato `tok-<uuid>` criados em `POST /auth/login`. As rotas `/auth/me`, `/admin/users` e `/kb/*` aceitam `Authorization: Bearer <token>` ou o token puro (`verify_token`); o CRUD de usuários exige o header e não expõe senhas (`_sanitize`). O próprio docstring do módulo registra o escopo: demonstração, não nível de produção. Senhas são comparadas em texto plano e não há hash, expiração de token nem revogação além da remoção do usuário.
+O frontend usa duas rotas no mesmo domínio:
 
-O painel FastHTML `/admin` foi **removido** junto com o agente ingester (e com `server/admin.py`); sobraram as rotas JSON. Em ambiente serverless, usuários e tokens resetam junto com a instância: é uma limitação conhecida, não um bug.
+- `/`: chat público, sem login;
+- `/admin`: painel da base de conhecimento, com login obrigatório.
 
-## Base de conhecimento: quem pode ler e escrever
+Essa separação visual não substitui a autorização do servidor. Todas as operações administrativas em `/kb/*` e `/admin/users` verificam o token Bearer no backend. Assim, conhecer a URL ou chamar a API diretamente não libera acesso ao conteúdo protegido.
 
-A base vive no branch órfão `data` do próprio repositório e é acessada pela API do GitHub:
+## Credencial inicial e sessão
 
-- **Leitura** (`kb_list`/`kb_read`, `qa_cache`): acontece **em processo**, com `KB_TOKEN` (fine-grained, `contents:read`). O token nunca é exposto ao LLM: as tools não o recebem nem o interpolam no prompt.
-- **Escrita** (`write()`): exige `KB_WRITE_TOKEN` (fine-grained, `contents:write`; fallback para `KB_TOKEN` com escopo de escrita) e **nunca é exposta ao agente** — só aos endpoints `/kb/*`, atrás da auth admin.
-- **Superfície HTTP `/kb/*`**: `list`, `file` e `upload` exigem Bearer admin; sem token respondem 401. O agente não tem credencial de admin e não alcança `/kb/*`.
-- **Upload**: o servidor valida os caminhos declarados e o orçamento por arquivo, e formato sem conversão não entra na base (volta como `converted: false`); o conteúdo em si não é validado. Quem tem o token admin pode gravar qualquer conteúdo na base; trate a credencial como de operador.
-- **Commit atômico**: o lote inteiro entra num único commit via Git Data API; em falha, nada é publicado (sem lote parcial).
-- **Sem escrita em disco no deploy**: o backend github não persiste arquivos localmente; o cache TTL (padrão 60s) vive na memória da instância.
+Não existe usuário ou senha padrão no código. A autenticação fica desabilitada até estas variáveis estarem configuradas no backend:
 
-## Transporte, CORS e superfícies expostas
+- `CHAT_CSA_ADMIN_USERNAME`;
+- `CHAT_CSA_ADMIN_PASSWORD_HASH`;
+- `CHAT_CSA_AUTH_SECRET`;
+- `CHAT_CSA_AUTH_SESSION_TTL` (opcional, padrão de 8 horas).
 
-`create_app` registra `CORSMiddleware` com `allow_origins=["*"]`, `allow_credentials=True` e todos os métodos/headers. Não há middleware de CSP, `TrustedHost` ou rate limiting no código. Na prática:
+Gere o hash interativamente, sem colocar a senha no histórico do shell:
 
-- a API do consumer é **pública por design** (o widget embutido não tem login);
-- as rotas de chat não exigem token — qualquer origem pode chamá-las;
-- o FastAPI mantém `/docs` e `/openapi.json` habilitados por padrão, e o CLI imprime o link de docs ao subir;
-- `/kb/*` responde 401 sem token admin; `/admin/users` responde 401 sem token.
+```bash
+uv run python scripts/hash_admin_password.py
+```
 
-A combinação `allow_origins=["*"]` + `allow_credentials=True` merece decisão explícita antes de qualquer uso além do acadêmico.
+O hash usa `scrypt` com salt aleatório. `CHAT_CSA_AUTH_SECRET` deve ter no mínimo 32 bytes e deve ser gerado e armazenado como segredo do ambiente. Nenhuma dessas variáveis pode usar o prefixo `VITE_`, porque variáveis Vite são públicas no bundle do navegador.
 
-## Ferramentas do agente e limites de acesso
+Os tokens de sessão são assinados com HMAC-SHA256, incluem expiração e só são aceitos no formato `Authorization: Bearer <token>`. Alterar um usuário invalida as sessões anteriores desse usuário. O login aplica limite de cinco falhas por cliente em uma janela de cinco minutos.
 
-O agente só recebe `kb_list` e `kb_read` (leitura da base remota, em processo). As ferramentas de filesystem (`read`/`write`/`edit`/`bash`) e o agente ingester **não existem mais** — o antigo `CHAT_CSA_ALLOW_ABSOLUTE` foi removido junto. As ferramentas do portal CSA (`web_csa_fetch`/`web_csa_search`) continuam no código, desligadas por padrão (`CHAT_CSA_PORTAL_TOOLS=0`).
+O administrador principal é recriado a partir do ambiente em cada instância e não pode ser alterado ou excluído pela API. Usuários adicionais do CRUD são voláteis; para uma instalação com múltiplos administradores persistentes, deve-se adotar um provedor de identidade ou banco compartilhado.
 
-O resultado das tools é truncado em 50KB/2000 linhas. A saída de `kb_read` é a conversão por tipo do arquivo original; binários viram apenas um aviso com tipo e tamanho (sem vazar conteúdo).
+## Base de conhecimento
 
-## Portal CSA: allowlist e polidez como controle
+- A leitura feita pelo agente acontece em processo e usa apenas o token de leitura da base.
+- A escrita exige `KB_WRITE_TOKEN` e só é exposta pelos endpoints administrativos protegidos.
+- Uploads validam caminhos e limites de tamanho, e o lote é publicado em um commit atômico.
+- Segredos do GitHub e do provedor de LLM nunca são enviados ao frontend ou ao prompt.
 
-O acesso ao portal é limitado por código, não por prompt: `_assert_allowed` levanta `ValueError` para qualquer host diferente de `csa.uefs.br`; o intervalo mínimo entre requests (3s), a concorrência 1, o backoff e o cache em disco com TTL protegem o portal de abuso. Downloads de PDF vão para `.cache/csa-web/` (gitignored).
+## CORS e headers
+
+`CHAT_CSA_CORS_ORIGINS` define uma lista de origens autorizadas separadas por vírgula. Sem configuração, somente `http://localhost:5173` e `http://127.0.0.1:5173` são aceitos. Em produção, inclua explicitamente o domínio do frontend e as páginas oficiais que incorporam o widget.
+
+A API não habilita credenciais CORS, restringe métodos e headers e adiciona `X-Content-Type-Options`, `Referrer-Policy` e `Permissions-Policy`. Respostas de `/auth`, `/admin` e `/kb` usam `Cache-Control: no-store`.
 
 ## Segredos e higiene do repositório
 
-- `.gitignore` bloqueia `.env`/`.env*` (abre exceção só para `frontend/.env.production`), `.venv`, `.cache/`, `frontend/node_modules/`, `cards*.json|md`, `.vercel/*` (mantendo `.vercel/project.json`, cujo conteúdo é apenas id de projeto, não segredo) e `knowledge/` (base local de dev/testes, nunca versionada).
-- Os segredos de LLM, de deploy e os tokens da base (`KB_TOKEN`, `KB_WRITE_TOKEN`) vivem como **secrets do GitHub** e são sincronizados para a Vercel por allowlist, sem impressão de valores (`scripts/sync-vercel-env.sh`, `.github/workflows/env-sync.yml`).
-- `VITE_*` é público por construção: o `frontend/.env.production` contém apenas URLs.
-- `frontend/public/embed.js` aceita `data-consumer-url` da página hospedeira — quem embute decide para qual backend o iframe aponta.
+- `.env`, ambientes virtuais, dependências e caches permanecem ignorados pelo Git.
+- Valores reais devem existir somente no gerenciador de segredos do ambiente de execução.
+- Exemplos e testes usam apenas valores fictícios.
+- `VITE_*` deve conter somente configuração pública, como a URL da API.
 
-Nenhum valor de chave, token ou credencial é reproduzido nesta documentação; quando um segredo importa, o texto cita o arquivo que o define.
+## Riscos remanescentes
 
-## Riscos conhecidos e prioridades
+- O limite de tentativas vive em memória e deve ser complementado por rate limiting no gateway para múltiplas instâncias.
+- Usuários adicionais criados pela API não persistem em ambiente serverless.
+- `/docs` e `/openapi.json` continuam públicos.
+- A conversão de uploads pode enviar o conteúdo ao provedor de LLM configurado.
 
-| Risco | Onde | Sugestão |
-|---|---|---|
-| Credencial-semente de demonstração definida em código | `server/auth.py` | permitir override/seed por ambiente e exigir troca no primeiro uso |
-| Senhas em texto plano, tokens sem expiração, store volátil | `server/auth.py` | hash + store persistente antes de qualquer uso real |
-| `CORS *` com credenciais e sem rate limit | `server/app.py` | restringir origens e adicionar limite por IP no proxy/gateway |
-| Conversão do upload envia o conteúdo do arquivo ao provedor de LLM configurado | `kb_convert.py` | restringir o provedor/modelo da conversão (`KB_CONVERT_MODEL`) e tratar o conteúdo enviado como não confiável |
-| Tokens da base com escopo amplo | `kb.py` / secrets | usar fine-grained tokens mínimos (`contents:read` para leitura) |
-| `/docs` e `/openapi.json` públicos | `server/app.py` | desabilitar em produção ou proteger por rede |
-| Validação por allowlist depende do domínio exato `csa.uefs.br` | `csa_portal.py` | manter a checagem e revisar em mudanças de portal |
+## Arquivos relacionados
 
-## Fontes
-
-- `src/chat_csa/server/auth.py`, `src/chat_csa/server/app.py`, `src/chat_csa/server/kb_api.py`
-- `src/chat_csa/kb.py`
-- `src/chat_csa/kb_upload.py`, `src/chat_csa/kb_convert.py`
-- `src/chat_csa/agent/tools.py`, `src/chat_csa/agent/factory.py`
-- `src/chat_csa/csa_portal.py`
-- `.gitignore`, `.env.example`
-- `.github/workflows/deploy.yml`, `.github/workflows/env-sync.yml`
-- `scripts/sync-vercel-env.sh`
-- `docs/integracao-widget.md`
-- `README.md` (menção à credencial de demonstração)
+- `src/chat_csa/server/auth.py`
+- `src/chat_csa/server/app.py`
+- `src/chat_csa/server/kb_api.py`
+- `scripts/hash_admin_password.py`
+- `.env.example`

@@ -33,7 +33,7 @@ O `tests/README.md` traz o guia de execução detalhado e mostra a saída espera
 | `tests/test_kb_upload.py` | processamento do upload | caminho inválido/duplicado não commita, conversão antes do commit, tipo sem conversão e acima do orçamento ficam `converted: false`, um único commit com conceitos + índices, sobrescrita atualiza o bullet |
 | `tests/test_kb_convert.py` | conversão por tipo | pdf página a página (texto + imagem) e fallback `pypdf`/`pymupdf` sem poppler, lotes multimodais em ordem, imagem com texto vazio, csv/tsv → tabela, texto direto, tipo não suportado e falha que não interrompe os demais |
 | `tests/test_kb_okf.py` | conceitos e índices OKF | conceito pelo template e fallback sem template, citação declarada, normalização de caminho, índice de seção (cria, atualiza sem duplicar, preserva trecho autoral) e índice raiz |
-| `tests/test_admin.py` | auth admin | `/admin/users` exige Bearer, CRUD preservado e `/admin` (painel) removido |
+| `tests/test_admin.py` | auth admin | configuração obrigatória, Bearer assinado/expirável, rate limit, CORS, headers e CRUD protegido |
 | `tests/test_server.py` | API FastAPI | `/health`, `/v1/models`, completions non-stream e stream (SSE com `[DONE]`), injeção da FAQ curada no prompt, shim `/api/chat` |
 | `tests/test_csa_portal.py` | cliente do portal | allowlist bloqueia domínio externo, cache de fetch, busca com filtros, fallback para o SiSU vigente, links markdown, extração de PDF e status `completed`/`partial`/`failed` |
 | `tests/test_qa_cache.py` | recuperação da FAQ | parsing de Markdown (frontmatter + entradas) lido da base remota (backend local), ranking por similaridade, entradas `dynamic` não dão short-circuit, formatação sem URL omite a linha de fonte |

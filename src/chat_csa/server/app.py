@@ -45,6 +45,14 @@ from .models import ChatMessage, ModelCard, ModelsResponse
 load_dotenv()
 
 
+def _cors_origins() -> list[str]:
+    """Lê a allowlist de origens do frontend; sem curinga por padrão."""
+    configured = os.getenv("CHAT_CSA_CORS_ORIGINS", "")
+    if configured.strip():
+        return [origin.strip().rstrip("/") for origin in configured.split(",") if origin.strip()]
+    return ["http://localhost:5173", "http://127.0.0.1:5173"]
+
+
 def _openai_messages_to_lc(messages: list[ChatMessage], system_prompt: str):
     lc = []
     # Sempre antepõe o system prompt composto
@@ -348,6 +356,7 @@ def _prompt_extra(faq_block: str) -> str:
 
 def create_app(config_dir: str | Path | None = None) -> FastAPI:
     config_dir = Path(config_dir or os.getenv("AGENT_CONFIG_DIR") or ".consumer")
+    auth_store.configure_from_env()
 
     app = FastAPI(
         title="Chat CSA — Agent API",
@@ -360,11 +369,21 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_origins=_cors_origins(),
+        allow_credentials=False,
+        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type"],
     )
+
+    @app.middleware("http")
+    async def security_headers(req: Request, call_next):
+        response = await call_next(req)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        if req.url.path.startswith(("/auth", "/admin", "/kb")):
+            response.headers["Cache-Control"] = "no-store"
+        return response
 
     @app.get("/health")
     async def health():
@@ -640,14 +659,15 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
         return StreamingResponse(ollama_stream(), media_type="application/x-ndjson")
 
     # ------------------------------------------------------------------
-    # Auth — login + CRUD admin simples (admin / sudo123)
+    # Auth administrativa — credenciais configuradas exclusivamente no ambiente
     # ------------------------------------------------------------------
     @app.post("/auth/login")
     async def auth_login_route(req: Request):
         body = await req.json()
         username = body.get("username", "")
         password = body.get("password", "")
-        return auth_store.login(username=username, password=password)
+        client_id = req.client.host if req.client else "unknown"
+        return auth_store.login(username=username, password=password, client_id=client_id)
 
     @app.get("/auth/me")
     async def auth_me(authorization: str | None = Header(default=None)):

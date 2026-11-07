@@ -323,6 +323,8 @@ export function CSAChatWidget({ embedded = false, initialOpen = false, onOpenCha
   }, [initialOpen]);
 
   useEffect(() => {
+    onOpenChange?.(open);
+
     if (!embedded || window.parent === window) return;
 
     window.parent.postMessage(
@@ -333,8 +335,6 @@ export function CSAChatWidget({ embedded = false, initialOpen = false, onOpenCha
       },
       "*",
     );
-    // Notifica o pai (App.tsx) para sincronizar o estado
-    onOpenChange?.(open);
   }, [embedded, open, onOpenChange]);
 
   useEffect(() => {
