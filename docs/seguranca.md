@@ -38,6 +38,7 @@ O administrador principal é recriado a partir do ambiente em cada instância e 
 - A escrita exige `KB_WRITE_TOKEN` e só é exposta pelos endpoints administrativos protegidos.
 - Uploads validam caminhos e limites de tamanho, e o lote é publicado em um commit atômico.
 - Segredos do GitHub e do provedor de LLM nunca são enviados ao frontend ou ao prompt.
+- Fontes versionadas são autorizadas pelo processo e edição identificados na conversa. O backend confere caminho, metadados, corpo e URLs: uma fonte `sisu271` que aponte para `sisu261`, por exemplo, é rejeitada antes de chegar à resposta.
 
 ## CORS e headers
 

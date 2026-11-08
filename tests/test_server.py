@@ -101,7 +101,7 @@ def test_chat_completions_injects_cached_faq_as_context(kb_local, monkeypatch):
     c = TestClient(app)
     r = c.post(
         "/v1/chat/completions",
-        json={"model": "chat-csa", "messages": [{"role": "user", "content": "Vale ENEM 2024?"}]},
+        json={"model": "chat-csa", "messages": [{"role": "user", "content": "Vale ENEM 2024 no SiSU 2026?"}]},
     )
 
     assert r.status_code == 200
@@ -122,7 +122,7 @@ def test_chat_completions_stream_with_cached_faq_uses_normal_flow(kb_local):
     c = TestClient(app)
     r = c.post(
         "/v1/chat/completions",
-        json={"model": "chat-csa", "messages": [{"role": "user", "content": "Vale ENEM 2024?"}], "stream": True},
+        json={"model": "chat-csa", "messages": [{"role": "user", "content": "Vale ENEM 2024 no SiSU 2026?"}], "stream": True},
     )
 
     assert r.status_code == 200
@@ -136,3 +136,38 @@ def test_ollama_chat():
     r = c.post("/api/chat", json={"model": "chat-csa", "messages": [{"role": "user", "content": "oi"}]})
     assert r.status_code == 200
     assert r.json()["done"] is True
+
+
+def test_selection_question_without_edition_requests_clarification():
+    app = create_app(".consumer")
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "chat-csa",
+            "messages": [{"role": "user", "content": "Quais documentos preciso para matrícula?"}],
+        },
+    )
+
+    assert response.status_code == 200
+    content = response.json()["choices"][0]["message"]["content"]
+    assert "qual processo seletivo" in content
+    assert "qual ano/edição" in content
+
+
+def test_selection_response_without_valid_source_is_blocked():
+    app = create_app(".consumer")
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "chat-csa",
+            "messages": [{"role": "user", "content": "Quais documentos são exigidos no SiSU 2027?"}],
+        },
+    )
+
+    content = response.json()["choices"][0]["message"]["content"]
+    assert "Não encontrei uma fonte válida e consistente" in content
+    assert "fake-ok" not in content

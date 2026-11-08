@@ -103,6 +103,8 @@ Motivações principais dessa escolha:
 
 O consumer responde consultando diretamente os conceitos da base (`kb_list`/`kb_read`), com as ferramentas do portal disponíveis como complemento opcional.
 
+Antes de responder sobre um processo seletivo, o backend identifica o processo e a edição no histórico da conversa e filtra todas as fontes. SiSU 2026 (`sisu261`), SiSU 2027 (`sisu271`) e outros processos não são misturados. Documento, FAQ ou página que declare uma edição e aponte para URL de outra é rejeitado; se processo/ano estiverem ambíguos, o chat pede esclarecimento.
+
 ## 📋 Escopo inicial
 
 O projeto deverá contemplar dúvidas relacionadas ao processo SISU/UEFS, incluindo, entre outros:

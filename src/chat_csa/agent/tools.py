@@ -21,6 +21,12 @@ from langchain_core.tools import tool
 
 from ..kb import KBError, get_kb, render_file
 from ..kb_upload import ORIGINALS_PREFIX, find_original
+from ..selection_scope import (
+    assess_source,
+    get_selection_scope,
+    path_matches_scope,
+    source_rejection_reason,
+)
 
 _CSA_LINK_RE = re.compile(r"^(?:url|resource):\s*[\"']?https?://", re.M)
 
@@ -79,14 +85,26 @@ def kb_list(prefix: str = "") -> str:
     Args:
         prefix: prefixo de caminho para filtrar (vazio = base inteira).
     """
+    scope = get_selection_scope()
+    if scope and scope.needs_clarification:
+        return (
+            "Error: informe o processo seletivo e o ano/edição antes da consulta. "
+            "O backend não permite misturar fontes de edições diferentes."
+        )
     try:
         paths = get_kb().list(prefix)
     except KBError as exc:
         return f"Error: {exc}"
     paths = [p for p in paths if not p.startswith(ORIGINALS_PREFIX)]
+    if scope and scope.must_filter:
+        paths = [path for path in paths if path_matches_scope(path, scope)]
     if not paths:
-        return "(base vazia ou nenhum caminho para o prefixo informado)"
-    return "\n".join(paths)
+        label = f" para {scope.label}" if scope and scope.must_filter else ""
+        return f"(base vazia ou nenhuma fonte compatível{label})"
+    header = ""
+    if scope and scope.must_filter:
+        header = f"[Filtro obrigatório ativo: {scope.label}. Outras edições foram omitidas.]\n"
+    return header + "\n".join(paths)
 
 
 @tool
@@ -102,11 +120,22 @@ def kb_read(path: str) -> str:
     Args:
         path: caminho relativo do arquivo, como devolvido por kb_list.
     """
+    scope = get_selection_scope()
+    if scope and scope.needs_clarification:
+        return (
+            "Error: informe o processo seletivo e o ano/edição antes de abrir a fonte. "
+            "O backend não permite misturar edições."
+        )
     try:
         file = get_kb().read(path)
     except KBError as exc:
         return f"Error: {exc}"
-    return _truncate(render_file(file)) + _link_note(path, file)
+    rendered = render_file(file)
+    if scope and scope.must_filter:
+        reason = source_rejection_reason(scope, assess_source(path, rendered))
+        if reason:
+            return f"Error: fonte rejeitada pelo filtro de processo/edição: {reason}."
+    return _truncate(rendered) + _link_note(path, file)
 
 
 @tool
@@ -133,7 +162,22 @@ def web_csa_fetch(url: str, refresh: bool = False, extract_text: bool = False) -
 
     try:
         import json as _json
-        return _json.dumps(fetch_page(url, refresh=refresh, extract_text=extract_text), ensure_ascii=False)
+        scope = get_selection_scope()
+        if scope and scope.needs_clarification:
+            return "Error: informe o processo seletivo e o ano/edição antes de abrir uma fonte do portal."
+        if scope and scope.must_filter:
+            reason = source_rejection_reason(scope, assess_source(url))
+            if reason:
+                return f"Error: URL rejeitada pelo filtro de processo/edição: {reason}."
+        result = fetch_page(url, refresh=refresh, extract_text=extract_text)
+        if scope and scope.must_filter:
+            reason = source_rejection_reason(
+                scope,
+                assess_source(url, _json.dumps(result, ensure_ascii=False)),
+            )
+            if reason:
+                return f"Error: conteúdo rejeitado pelo filtro de processo/edição: {reason}."
+        return _json.dumps(result, ensure_ascii=False)
     except Exception as e:
         return f"Error: {e}"
 
@@ -157,10 +201,20 @@ def web_csa_search(query: str = "", categoria: str = "", since: str = "", limit:
 
     try:
         import json as _json
-        return _json.dumps(
-            search_portal(query=query, categoria=categoria, since=since, limit=limit),
-            ensure_ascii=False,
-        )
+        scope = get_selection_scope()
+        if scope and scope.needs_clarification:
+            return "Error: informe o processo seletivo e o ano/edição antes da busca no portal."
+        result = search_portal(query=query, categoria=categoria, since=since, limit=limit)
+        if scope and scope.must_filter:
+            filtered = []
+            for item in result.get("results", []):
+                identity = f"{item.get('url', '')}\n{item.get('title', '')}"
+                if source_rejection_reason(scope, assess_source(identity)) is None:
+                    filtered.append(item)
+            result["results"] = filtered
+            result["count"] = len(filtered)
+            result["selection_filter"] = scope.label
+        return _json.dumps(result, ensure_ascii=False)
     except Exception as e:
         return f"Error: {e}"
 

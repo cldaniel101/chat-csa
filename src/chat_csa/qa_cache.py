@@ -20,6 +20,7 @@ from difflib import SequenceMatcher
 from pathlib import Path
 
 from .kb import KBError, get_kb
+from .selection_scope import SelectionScope, assess_source, source_rejection_reason
 
 DEFAULT_QA_CACHE_PREFIXES = ("perguntas-frequentes/",)
 DEFAULT_MIN_MATCH_SCORE = 0.68
@@ -130,7 +131,10 @@ def get_cache_prefixes() -> list[str]:
 
 
 def lookup_cached_matches(
-    question: str, prefixes: list[str] | None = None, top_k: int = 3
+    question: str,
+    prefixes: list[str] | None = None,
+    top_k: int = 3,
+    scope: SelectionScope | None = None,
 ) -> list[QACacheHit]:
     """Recupera as entradas FAQ mais parecidas com a pergunta, para usar como contexto.
 
@@ -145,9 +149,13 @@ def lookup_cached_matches(
     if not query:
         return []
 
+    if scope and scope.needs_clarification:
+        return []
+
     hits = [
         QACacheHit(entry=entry, score=score, matched_question=matched)
         for entry in load_cache_entries(prefixes)
+        if not scope or source_rejection_reason(scope, _entry_assessment(entry)) is None
         for score, matched in [_score_entry(query, entry)]
     ]
     hits.sort(key=lambda hit: hit.score, reverse=True)
@@ -165,6 +173,19 @@ def lookup_cached_answer(question: str, prefixes: list[str] | None = None) -> QA
         if hit.entry.cache_policy == "static":
             return hit
     return None
+
+
+def _entry_assessment(entry: QACacheEntry):
+    """Monta a identidade da FAQ e também valida a URL usada como evidência."""
+    content = "\n".join(
+        (
+            entry.question,
+            entry.answer,
+            entry.source_label,
+            entry.source_url,
+        )
+    )
+    return assess_source(str(entry.path), content)
 
 
 def format_faq_reference(entry: QACacheEntry) -> str:

@@ -64,6 +64,7 @@ tests/
 ├── test_kb.py               # Cliente da base: github falso (write atômico) e /kb/upload
 ├── test_admin.py            # Auth admin e CRUD /admin/users (painel removido)
 ├── test_qa_cache.py         # FAQ curada lida da base remota (backend local)
+├── test_selection_scope.py  # filtro obrigatório por processo/edição
 ├── test_response_quality.py # Formatação da resposta e detecção de fonte aberta
 ├── test_csa_portal.py       # Portal CSA: fetch, busca, PDF, HTML, metadados
 └── test_citation_quality.py # Qualidade de citação: 15 cenários obrigatórios

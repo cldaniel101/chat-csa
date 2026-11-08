@@ -50,6 +50,8 @@ Com streaming, a resposta é `text/event-stream` no formato OpenAI SSE. Cada chu
 
 Mensagens sociais curtas ("oi", "obrigado") são detectadas por `_is_conversational` e respondidas em modo bufferizado mesmo com `stream: true` (o cliente recebe o stream simulado, sem consulta a fontes). Erros durante o stream são emitidos como um chunk `{"error": {"message": "...", "type": "server_error"}}`.
 
+Perguntas sobre processos seletivos passam por um filtro de edição no backend. O escopo é inferido do histórico de mensagens (por exemplo, `sisu261` para SiSU 2026 e `sisu271` para SiSU 2027) e aplicado a `kb_list`, `kb_read`, FAQ e ferramentas do portal. Consultas ambíguas pedem processo e ano; fontes de outra edição e documentos cujas URLs versionadas contradizem o próprio documento são bloqueados. Essas respostas são bufferizadas para que a validação final aconteça antes do primeiro token enviado ao cliente.
+
 ## Shim do Ollama
 
 `POST /api/chat` aceita `{model, messages, stream}` e devolve o formato do Ollama: sem stream, um JSON com `message.role`, `message.content`, `done: true` (e os extras `reasoning`/`tool_steps`); com stream, NDJSON com uma linha por evento e `done: true` na última. `GET /api/tags` devolve o modelo derivado do config dir para ferramentas que listam modelos.

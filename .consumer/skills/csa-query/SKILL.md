@@ -10,16 +10,19 @@ allowed-tools: kb_list kb_read
 
 Pergunta: *"Quais documentos preciso para matrícula?"* →
 
-1. Base remota primeiro:
+1. Confirme o processo e a edição (ex.: **SiSU 2026** ou **SiSU 2027**). Se a
+   pergunta não informar ambos e o histórico não resolver, peça esclarecimento;
+   o backend bloqueará fontes versionadas.
+2. Base remota primeiro:
    `kb_list()` para descobrir os caminhos e `kb_read("perguntas-frequentes/…")`
    para ler o conteúdo (csv/tsv viram tabela; PDFs viram texto; binários avisam
    o tipo).
-2. Achou resposta completa e atualizada? → responda direto.
-3. Não achou, pareceu incompleta ou desatualizada → **com as ferramentas do
+3. Achou resposta completa e atualizada? → responda direto.
+4. Não achou, pareceu incompleta ou desatualizada → **com as ferramentas do
    portal ligadas**, siga a skill `csa-portal-lookup` (busca persistente: várias
    consultas, páginas prováveis e PDFs). Sem o portal, responda com o que a base
    cobre e diga que a informação não está nela — sem inventar.
-4. Responda extrativo:
+5. Responda extrativo:
 
 ```markdown
 Para a matrícula você precisa apresentar: <trechos verbatim da fonte>
@@ -29,7 +32,7 @@ Fontes:
 Em caso de divergência, prevalece o edital oficial.
 ```
 
-5. Nada encontrado nem na base nem no portal → só então diga "Não encontrei
+6. Nada encontrado nem na base nem no portal → só então diga "Não encontrei
    essa informação nas fontes oficiais da CSA/UEFS", mas inclua as páginas/PDFs
    efetivamente consultados e aponte https://csa.uefs.br/.
 
@@ -74,6 +77,8 @@ Não use apenas um nome de seção ou página como evidência suficiente. Exempl
 
 Antes de citar uma fonte, confirme:
 - A fonte refere-se à **mesma seleção e ano** da pergunta?
+- O caminho, o frontmatter, o corpo e todas as URLs versionadas concordam com a
+  mesma edição? `sisu271` com qualquer referência `sisu261` deve ser rejeitado.
 - A fonte não foi **substituída** por um edital retificador posterior?
 - A fonte é da **mesma instituição** (UEFS/CSA)?
 

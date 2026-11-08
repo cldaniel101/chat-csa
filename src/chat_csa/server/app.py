@@ -38,6 +38,14 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 from ..agent.factory import build_agent
 from ..agent.prompt import build_system_prompt
 from ..qa_cache import format_faq_reference, lookup_cached_matches
+from ..selection_scope import (
+    SelectionScope,
+    infer_selection_scope,
+    reset_selection_scope,
+    response_source_mismatches,
+    scope_prompt,
+    set_selection_scope,
+)
 from . import auth as auth_store
 from .kb_api import router as kb_router
 from .models import ChatMessage, ModelCard, ModelsResponse
@@ -107,13 +115,17 @@ def _last_user_message_text(messages: list[ChatMessage]) -> str:
     return ""
 
 
-def _faq_reference_block(question: str) -> str:
+def _user_message_texts(messages: list[ChatMessage]) -> list[str]:
+    return [_message_content_to_text(message.content) for message in messages if message.role == "user"]
+
+
+def _faq_reference_block(question: str, scope: SelectionScope) -> str:
     """Monta o bloco de FAQ curada injetado no system prompt quando há entradas relevantes.
 
     A FAQ não responde diretamente: entra como referência curada para o agente
     formular a resposta no turno, adaptada ao contexto da conversa.
     """
-    hits = lookup_cached_matches(question)
+    hits = lookup_cached_matches(question, scope=scope)
     if not hits:
         return ""
     lines = [
@@ -337,6 +349,50 @@ def _format_agent_response(response_text: str, *, source_was_consulted: bool) ->
     return formatted.strip()
 
 
+def _has_successful_evidence_lookup(messages: list) -> bool:
+    """Confirma que uma ferramenta de leitura terminou sem erro de escopo."""
+    for event in _tool_events_from_messages(messages):
+        if (
+            event.get("type") == "tool_end"
+            and event.get("name") in {"kb_read", "web_csa_fetch"}
+            and not event.get("error")
+        ):
+            return True
+    return False
+
+
+def _enforce_selection_response(
+    response_text: str,
+    *,
+    scope: SelectionScope,
+    messages: list,
+    has_filtered_faq: bool,
+) -> str:
+    """Última barreira antes de devolver uma resposta sobre seleção."""
+    if not scope.must_filter:
+        return response_text
+    if scope.needs_clarification:
+        return (
+            "Para evitar misturar regras e documentos de processos diferentes, informe "
+            "**qual processo seletivo** e **qual ano/edição** você quer consultar "
+            "(por exemplo: SiSU 2026 ou SiSU 2027)."
+        )
+
+    mismatches = response_source_mismatches(response_text, scope)
+    if mismatches:
+        return (
+            f"[!] A resposta foi bloqueada porque continha fonte de outra edição. "
+            f"A consulta está filtrada para **{scope.label}**. "
+            "Tente novamente após a fonte correta ser cadastrada ou corrigida."
+        )
+    if not has_filtered_faq and not _has_successful_evidence_lookup(messages):
+        return (
+            f"[!] Não encontrei uma fonte válida e consistente para **{scope.label}**. "
+            "Fontes de outras edições ou com referências cruzadas incorretas foram rejeitadas pelo backend."
+        )
+    return response_text
+
+
 _RESPONSE_GUIDE_BLOCK = """## Guia de citações (obrigatório)
 
 - Termine a resposta com uma seção `Fontes:` sempre que usar qualquer fonte: base de conhecimento remota (kb_list/kb_read) ou páginas do portal.
@@ -348,10 +404,19 @@ _RESPONSE_GUIDE_BLOCK = """## Guia de citações (obrigatório)
 """
 
 
-def _prompt_extra(faq_block: str) -> str:
+def _prompt_extra(faq_block: str, selection_block: str = "") -> str:
     """Junta o bloco de FAQ recuperada com o guia de citações para o system prompt."""
-    blocks = [b for b in (faq_block, _RESPONSE_GUIDE_BLOCK.strip()) if b]
+    blocks = [b for b in (selection_block, faq_block, _RESPONSE_GUIDE_BLOCK.strip()) if b]
     return "\n\n".join(blocks)
+
+
+async def _invoke_with_selection_scope(agent, messages: list, scope: SelectionScope):
+    """Propaga o filtro até as ferramentas executadas pelo grafo do agente."""
+    token = set_selection_scope(scope)
+    try:
+        return await agent.ainvoke({"messages": messages})
+    finally:
+        reset_selection_scope(token)
 
 
 def create_app(config_dir: str | Path | None = None) -> FastAPI:
@@ -421,26 +486,36 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
         completion_id = f"chatcmpl-{uuid.uuid4().hex[:24]}"
         created = int(time.time())
         last_user_msg = _last_user_message_text(messages)
+        selection_scope = infer_selection_scope(_user_message_texts(messages))
 
         # Recarrega prompt + agente a cada request (barato; mantém hot-reload).
         # FAQ curada: injeta entradas relevantes como referência no prompt —
         # a resposta é formulada pelo agente no turno, sem short-circuit.
-        faq_block = _faq_reference_block(last_user_msg)
+        faq_block = _faq_reference_block(last_user_msg, selection_scope)
         system_prompt = build_system_prompt(
-            Path(config_dir).resolve(), extra=_prompt_extra(faq_block)
+            Path(config_dir).resolve(),
+            extra=_prompt_extra(faq_block, scope_prompt(selection_scope)),
         )
         agent, _, _, _ = build_agent(config_dir=config_dir)
 
         lc_messages = _openai_messages_to_lc(messages, system_prompt)
 
-        force_buffer = _is_conversational(last_user_msg)
+        # Consultas versionadas são bufferizadas para validar todas as fontes
+        # antes de liberar o primeiro token ao usuário.
+        force_buffer = _is_conversational(last_user_msg) or selection_scope.must_filter
 
         if not stream or force_buffer:
-            result = await agent.ainvoke({"messages": lc_messages})
+            result = await _invoke_with_selection_scope(agent, lc_messages, selection_scope)
             result_messages = result.get("messages", [])
             text = _format_agent_response(
                 _extract_text_from_agent_result(result),
                 source_was_consulted=_has_source_lookup(result_messages) or bool(faq_block),
+            )
+            text = _enforce_selection_response(
+                text,
+                scope=selection_scope,
+                messages=result_messages,
+                has_filtered_faq=bool(faq_block),
             )
             # Rastro da atividade do agente (caminho bufferizado): reasoning
             # completo + eventos de ferramenta, reemitidos no JSON/SSE.
@@ -491,6 +566,7 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
             yield _openai_chunk(completion_id, created, model, {"role": "assistant"})
             streamed_messages: list = []
             seen_events = 0
+            scope_token = set_selection_scope(selection_scope)
             try:
                 async for mode, data in agent.astream(
                     {"messages": lc_messages}, stream_mode=["updates", "messages"]
@@ -533,6 +609,8 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
             except Exception as e:
                 err = {"error": {"message": str(e), "type": "server_error"}}
                 yield f"data: {json.dumps(err)}\n\n"
+            finally:
+                reset_selection_scope(scope_token)
             yield _openai_chunk(completion_id, created, model, {}, finish_reason="stop")
             yield "data: [DONE]\n\n"
 
@@ -557,24 +635,32 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
             messages.append(ChatMessage(role=m.get("role", "user"), content=m.get("content", "")))
 
         last_user_msg = _last_user_message_text(messages)
+        selection_scope = infer_selection_scope(_user_message_texts(messages))
 
         # FAQ curada: injeta entradas relevantes como referência no prompt —
         # a resposta é formulada pelo agente no turno, sem short-circuit.
-        faq_block = _faq_reference_block(last_user_msg)
+        faq_block = _faq_reference_block(last_user_msg, selection_scope)
         system_prompt = build_system_prompt(
-            Path(config_dir).resolve(), extra=_prompt_extra(faq_block)
+            Path(config_dir).resolve(),
+            extra=_prompt_extra(faq_block, scope_prompt(selection_scope)),
         )
         agent, _, _, _ = build_agent(config_dir=config_dir)
         lc_messages = _openai_messages_to_lc(messages, system_prompt)
 
-        force_buffer = _is_conversational(last_user_msg)
+        force_buffer = _is_conversational(last_user_msg) or selection_scope.must_filter
 
         if not stream or force_buffer:
-            result = await agent.ainvoke({"messages": lc_messages})
+            result = await _invoke_with_selection_scope(agent, lc_messages, selection_scope)
             result_messages = result.get("messages", [])
             text = _format_agent_response(
                 _extract_text_from_agent_result(result),
                 source_was_consulted=_has_source_lookup(result_messages) or bool(faq_block),
+            )
+            text = _enforce_selection_response(
+                text,
+                scope=selection_scope,
+                messages=result_messages,
+                has_filtered_faq=bool(faq_block),
             )
             # Rastro da atividade do agente (caminho bufferizado).
             reasoning_text, tool_events = _trace_from_messages(result_messages)
@@ -613,47 +699,52 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
         async def ollama_stream() -> AsyncIterator[str]:
             streamed_messages: list = []
             seen_events = 0
-            async for mode, data in agent.astream(
-                {"messages": lc_messages}, stream_mode=["updates", "messages"]
-            ):
-                if mode == "messages":
-                    msg_chunk = data[0] if isinstance(data, tuple) else data
-                    # Ignora resultados de ferramenta streamados pelo grafo
-                    # (langgraph_node == "tools") — não são a resposta final.
-                    meta = data[1] if isinstance(data, tuple) and len(data) > 1 else {}
-                    if meta.get("langgraph_node") == "tools":
+            scope_token = set_selection_scope(selection_scope)
+            try:
+                stream_iter = agent.astream(
+                    {"messages": lc_messages}, stream_mode=["updates", "messages"]
+                )
+                async for mode, data in stream_iter:
+                    if mode == "messages":
+                        msg_chunk = data[0] if isinstance(data, tuple) else data
+                        # Ignora resultados de ferramenta streamados pelo grafo
+                        # (langgraph_node == "tools") — não são a resposta final.
+                        meta = data[1] if isinstance(data, tuple) and len(data) > 1 else {}
+                        if meta.get("langgraph_node") == "tools":
+                            continue
+                        reasoning = _reasoning_from_message(msg_chunk)
+                        if reasoning:
+                            yield json.dumps(
+                                {"model": model, "message": {"role": "assistant", "reasoning": reasoning, "content": ""}, "done": False}
+                            ) + "\n"
+                        text = getattr(msg_chunk, "content", "")
+                        if isinstance(text, list):
+                            flat = ""
+                            for part in text:
+                                if isinstance(part, dict) and "text" in part:
+                                    flat += part["text"]
+                                elif isinstance(part, str):
+                                    flat += part
+                            text = flat
+                        text = str(text) if text else ""
+                        if not text:
+                            continue
+                        yield json.dumps({"model": model, "message": {"role": "assistant", "content": text}, "done": False}) + "\n"
                         continue
-                    reasoning = _reasoning_from_message(msg_chunk)
-                    if reasoning:
-                        yield json.dumps(
-                            {"model": model, "message": {"role": "assistant", "reasoning": reasoning, "content": ""}, "done": False}
-                        ) + "\n"
-                    text = getattr(msg_chunk, "content", "")
-                    if isinstance(text, list):
-                        flat = ""
-                        for part in text:
-                            if isinstance(part, dict) and "text" in part:
-                                flat += part["text"]
-                            elif isinstance(part, str):
-                                flat += part
-                        text = flat
-                    text = str(text) if text else ""
-                    if not text:
-                        continue
-                    yield json.dumps({"model": model, "message": {"role": "assistant", "content": text}, "done": False}) + "\n"
-                    continue
 
-                # mode == "updates": passos de ferramenta (nome + args + resultado)
-                if isinstance(data, dict):
-                    for payload in data.values():
-                        msgs = payload.get("messages", []) if isinstance(payload, dict) else []
-                        streamed_messages.extend(msgs)
-                events = _tool_events_from_messages(streamed_messages)
-                for event in events[seen_events:]:
-                    yield json.dumps(
-                        {"model": model, "message": {"role": "assistant", "tool_call": event, "content": ""}, "done": False}
-                    ) + "\n"
-                seen_events = len(events)
+                    # mode == "updates": passos de ferramenta (nome + args + resultado)
+                    if isinstance(data, dict):
+                        for payload in data.values():
+                            msgs = payload.get("messages", []) if isinstance(payload, dict) else []
+                            streamed_messages.extend(msgs)
+                    events = _tool_events_from_messages(streamed_messages)
+                    for event in events[seen_events:]:
+                        yield json.dumps(
+                            {"model": model, "message": {"role": "assistant", "tool_call": event, "content": ""}, "done": False}
+                        ) + "\n"
+                    seen_events = len(events)
+            finally:
+                reset_selection_scope(scope_token)
             yield json.dumps({"model": model, "message": {"role": "assistant", "content": ""}, "done": True}) + "\n"
 
         return StreamingResponse(ollama_stream(), media_type="application/x-ndjson")
