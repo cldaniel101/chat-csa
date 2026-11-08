@@ -15,6 +15,7 @@ chat-csa/
 │   ├── kb_convert.py    # conversão por tipo (pdf, imagem, csv/tsv, texto) em Markdown
 │   ├── kb_okf.py        # conceito OKF (frontmatter, caminho, índices de seção e raiz)
 │   ├── csa_portal.py    # cliente read-only do portal CSA/UEFS
+│   ├── update_notification.py # alerta backend para revisão de mudanças
 │   └── qa_cache.py      # recuperação de FAQ curada na base remota
 ├── api/index.py         # entrypoint ASGI da Vercel (importa o pacote)
 ├── .consumer/           # AGENTS home do agente consumer (AGENTS.md + skills/)
@@ -52,6 +53,7 @@ O pacote segue o layout `src/`, então o código importável fica em `src/chat_c
 | `src/chat_csa/server/models.py` | modelos Pydantic da API |
 | `src/chat_csa/qa_cache.py` | carrega e pontua entradas de FAQ curada como referência de prompt |
 | `src/chat_csa/csa_portal.py` | fetch/busca com allowlist, rate-limit, backoff e cache em disco |
+| `src/chat_csa/update_notification.py` | monta e envia o alerta de revisão sem registrar segredos |
 | `src/chat_csa/cli.py` | comando `chat-csa serve` e `chat-csa print-prompt` |
 
 O `api/index.py` é o adaptador para a runtime Python da Vercel: insere `src/` no `sys.path`, aponta `AGENT_CONFIG_DIR` para o `.consumer` embutido e expõe o mesmo app FastAPI como `handler`. É por isso que o `vercel.json` empacota `src/chat_csa/**` e `.consumer/**` junto da função.
@@ -88,7 +90,8 @@ A base é um bundle **OKF** com um conceito por arquivo Markdown (frontmatter YA
 
 ## Scripts, testes e exemplos
 
-- `scripts/scrape_portal.py` monta a lista de URLs do SiSU vigente e raspa para `knowledge/raw/` com frontmatter de proveniência; o workflow `scrape-csa.yml` virou manual e publica a saída como artifact (sem commit).
+- `scripts/scrape_portal.py` monta a lista de URLs do SiSU vigente, compara os corpos com a referência anterior e raspa para `knowledge/raw/` com frontmatter de proveniência.
+- `scripts/notify_update.py` envia o aviso de revisão quando o resumo do scrape contém documento novo ou alterado; o workflow continua manual e publica a saída como artifact, sem commit na base.
 - `scripts/sync-vercel-env.sh` sincroniza uma allowlist de variáveis (LLM + `KB_*`) do `.env` para a Vercel, sem imprimir valores.
 - `tests/` cobre ferramentas (`kb_list`/`kb_read`), servidor, cliente da base, portal, cache de QA e qualidade de citação (veja [testes.md](./testes.md)).
 - `examples/` traz clientes mínimos (`curl.md`, `openai_client.py`, `ollama_client.py`) apontando para `:8002`.
@@ -107,4 +110,5 @@ O `src/` evita que o pacote seja importado por acidente a partir da raiz e casa 
 - `api/index.py`, `vercel.json`
 - `.consumer/AGENTS.md`
 - `frontend/src/App.tsx`, `frontend/src/api/client.ts`, `frontend/public/embed.js`
-- `scripts/scrape_portal.py`
+- `scripts/scrape_portal.py`, `scripts/notify_update.py`
+- `src/chat_csa/update_notification.py`

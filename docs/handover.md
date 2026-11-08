@@ -2,7 +2,7 @@
 
 Este documento serve como guia definitivo para a equipe receptora, professor ou cliente institucional assumir e operar a infraestrutura de publicação contínua (CI/CD) do **Chat CSA**.
 
-A arquitetura foi simplificada conforme a [ADR-003](./adr/003-simplificacao-arquitetura-devops.md) para operar com apenas **2 projetos na Vercel** e **4 segredos no GitHub**.
+A arquitetura foi simplificada conforme a [ADR-003](./adr/003-simplificacao-arquitetura-devops.md) para operar com apenas **2 projetos na Vercel**, 4 segredos de deploy e 3 segredos do alerta de atualização no GitHub.
 
 ---
 
@@ -66,8 +66,8 @@ Cadastre as variáveis do Vite:
 
 ---
 
-### 4. Configurar os 4 Segredos no Repositório GitHub
-No repositório do GitHub, acesse **Settings** → **Secrets and variables** → **Actions** e cadastre exatamente estes 4 segredos:
+### 4. Configurar os Segredos no Repositório GitHub
+No repositório do GitHub, acesse **Settings** → **Secrets and variables** → **Actions**. Para o deploy, cadastre estes 4 segredos:
 
 | Secret | Descrição / Onde Obter |
 |---|---|
@@ -75,6 +75,16 @@ No repositório do GitHub, acesse **Settings** → **Secrets and variables** →
 | `VERCEL_ORG_ID` | O ID da conta ou time dono dos projetos na Vercel (*Team Settings → General → Team ID*) |
 | `VERCEL_PROJECT_ID_API` | O ID do projeto `chat-csa-api` (*Project Settings → General → Project ID*) |
 | `VERCEL_PROJECT_ID_FRONTEND` | O ID do projeto `chat-csa-web` (*Project Settings → General → Project ID*) |
+
+Para o alerta do scrape, cadastre também como **repository secrets**:
+
+| Secret | Descrição |
+|---|---|
+| `CHAT_CSA_EMAIL_API_URL` | Endpoint HTTPS da API de e-mail |
+| `CHAT_CSA_EMAIL_API_TOKEN` | Token Bearer da API de e-mail |
+| `CHAT_CSA_UPDATE_NOTIFICATION_TO` | Endereço que receberá os avisos de revisão |
+
+Não coloque esses valores em variables, arquivos versionados ou chaves `VITE_*`. Opcionalmente, crie a repository variable pública `CHAT_CSA_ADMIN_PANEL_URL` para trocar o link do painel enviado no e-mail. Se o portal bloquear o runner hospedado pelo GitHub, configure também `SCRAPE_RUNNER` com o label de um runner Linux que alcance a rede da CSA.
 
 ---
 
@@ -89,3 +99,9 @@ No repositório do GitHub, acesse **Settings** → **Secrets and variables** →
    - Abra um Pull Request de `development` para `main` e realize o merge.
    - O workflow `Deploy` publicará a versão final em produção (`--prod`).
    - Verifique a saúde em `https://chat-csa-api.vercel.app/health`.
+3. **Validação do fluxo manual de atualização:**
+   - Em **Actions → Scrape portal CSA**, execute **Run workflow**.
+   - Na primeira execução sem referência anterior, todos os documentos coletados são classificados como novos. Nas seguintes, apenas corpos novos ou alterados geram aviso.
+   - Confirme o recebimento do e-mail, abra o link `/admin`, baixe o artifact `knowledge-raw` na execução e revise o material.
+   - Envie o documento para a seção correta. Reenviar o mesmo caminho substitui o conceito existente e atualiza os índices de forma atômica.
+   - Execute novamente sem alterar a origem: o resumo deve indicar `written: 0` e nenhum e-mail deve ser enviado.

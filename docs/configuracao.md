@@ -38,6 +38,9 @@ Fonte principal: `.env.example` (copie para `.env`). Variáveis que aparecem ape
 | `KB_CONVERT_PAGES_PER_CALL` | páginas de PDF por chamada multimodal no upload | `4` (`kb_convert.py`) |
 | `KB_UPLOAD_MAX_BYTES` | orçamento de bytes por arquivo no upload (teto do corpo da Vercel ~4.5 MB) | `4500000` (`kb_upload.py`) |
 | `CHAT_CSA_PORTAL_TOOLS` | `1` liga `web_csa_fetch`/`web_csa_search` no agente | `0` (`factory.py`) |
+| `CHAT_CSA_EMAIL_API_URL` | endpoint HTTPS da API usada pelo alerta de atualização | vazio (`update_notification.py`) |
+| `CHAT_CSA_EMAIL_API_TOKEN` | token Bearer da API de e-mail | vazio (`update_notification.py`) |
+| `CHAT_CSA_UPDATE_NOTIFICATION_TO` | destinatário do aviso de revisão manual | vazio (`update_notification.py`) |
 | `CHAT_CSA_QA_CACHE_ENABLED` | liga/desliga a injeção da FAQ curada | `1` (`qa_cache.py`) |
 | `CHAT_CSA_QA_CACHE_PATHS` | prefixos da FAQ na base, separados por `os.pathsep` | `perguntas-frequentes/` |
 | `CHAT_CSA_QA_CACHE_MIN_SCORE` | limiar de similaridade para injetar uma entrada | `0.68` (`qa_cache.py`) |
@@ -83,6 +86,7 @@ O consumer monta `./data` como volume e lê o `.env` via `env_file`; as variáve
 - `vercel.json` (raiz) empacota `src/chat_csa/**` e `.consumer/**` na função Python apontada por `api/index.py`, com rewrite de tudo para o entrypoint.
 - `frontend/vercel.json` faz o rewrite de SPA para `index.html`.
 - Conforme a [ADR-003](./adr/003-simplificacao-arquitetura-devops.md), a topologia adota 2 projetos na Vercel (`chat-csa-api` e `chat-csa-web`). As variáveis de runtime (`LLM_*`, `KB_*`, `CHAT_CSA_ADMIN_*`, `CHAT_CSA_AUTH_*`, `CHAT_CSA_CORS_ORIGINS` e `VITE_CONSUMER_URL`) são configuradas diretamente no painel de Environment Variables da Vercel para os ambientes Production e Preview, dispensando scripts de sincronização via REST. O CI utiliza 4 segredos universais de deploy (`VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID_API`, `VERCEL_PROJECT_ID_FRONTEND`).
+- O workflow manual `scrape-csa.yml` recebe `CHAT_CSA_EMAIL_API_URL`, `CHAT_CSA_EMAIL_API_TOKEN` e `CHAT_CSA_UPDATE_NOTIFICATION_TO` exclusivamente como *repository secrets*. A variável pública opcional `CHAT_CSA_ADMIN_PANEL_URL` troca o link do painel no aviso; sem ela, usa `https://chat-csa-web.vercel.app/admin`. `SCRAPE_RUNNER` pode indicar o label de um runner Linux com acesso ao portal; sem a variável, o workflow usa `ubuntu-latest`.
 
 ## Configuração do agente (`.consumer/`)
 

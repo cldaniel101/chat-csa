@@ -67,6 +67,8 @@ tests/
 ├── test_selection_scope.py  # filtro obrigatório por processo/edição
 ├── test_response_quality.py # Formatação da resposta e detecção de fonte aberta
 ├── test_csa_portal.py       # Portal CSA: fetch, busca, PDF, HTML, metadados
+├── test_scrape_portal.py    # Detecção idempotente de documento novo/alterado
+├── test_update_notification.py # Alerta de revisão sem chamadas externas reais
 └── test_citation_quality.py # Qualidade de citação: 15 cenários obrigatórios
 ```
 

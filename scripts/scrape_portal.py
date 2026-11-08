@@ -17,6 +17,7 @@ página, nunca o caminho do arquivo Markdown.
 Uso:
     python scripts/scrape_portal.py [--out-dir knowledge/raw]
                                     [--limit 50] [--no-refresh] [--dry-run]
+                                    [--summary-json scrape-summary.json]
 """
 
 from __future__ import annotations
@@ -146,11 +147,7 @@ def scrape(
     print(f"[scrape] URLs fixas: {len(fixed)}")
 
     search = search_portal(query="", limit=limit, refresh=refresh)
-    discovered = [
-        str(item["url"])
-        for item in search.get("results", [])
-        if item.get("url")
-    ]
+    discovered = [str(item["url"]) for item in search.get("results", []) if item.get("url")]
     print(f"[scrape] URLs descobertas na busca: {len(discovered)}")
 
     urls = _dedupe(fixed + discovered)
@@ -159,6 +156,7 @@ def scrape(
     pages = 0
     written = 0
     errors = 0
+    changes: list[dict[str, str]] = []
 
     for url in urls:
         result = fetch_page(url, refresh=refresh, extract_text=True)
@@ -185,17 +183,30 @@ def scrape(
             print(f"[dry-run] {url} -> {slugify(url)}.md ({len(body)} chars)")
             continue
 
+        slug = slugify(url)
+        output_path = out_dir / f"{slug}.md"
+        existed = output_path.exists()
         if write_page(result, body, out_dir):
             written += 1
-            print(f"[ok] {slugify(url)}.md ({len(body)} chars)")
+            changes.append(
+                {
+                    "kind": "alterado" if existed else "novo",
+                    "path": output_path.as_posix(),
+                    "url": str(result.get("url", url)),
+                    "title": str(result.get("title") or slug),
+                }
+            )
+            print(f"[ok] {slug}.md ({len(body)} chars)")
         else:
-            print(f"[=] {slugify(url)}.md inalterado")
+            print(f"[=] {slug}.md inalterado")
 
-    summary = {"pages": pages, "written": written, "errors": errors}
-    print(
-        f"\nResumo: {pages} páginas raspadas, {written} arquivos escritos, "
-        f"{errors} erros"
-    )
+    summary = {
+        "pages": pages,
+        "written": written,
+        "errors": errors,
+        "changes": changes,
+    }
+    print(f"\nResumo: {pages} páginas raspadas, {written} arquivos escritos, {errors} erros")
     return summary
 
 
@@ -223,15 +234,28 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Não grava arquivos; apenas lista o que seria feito.",
     )
+    parser.add_argument(
+        "--summary-json",
+        type=Path,
+        help="Grava o resumo da execução em JSON (usado pelo workflow de alerta).",
+    )
     args = parser.parse_args(argv)
 
-    scrape(
+    summary = scrape(
         out_dir=args.out_dir,
         limit=args.limit,
         refresh=not args.no_refresh,
         dry_run=args.dry_run,
     )
-    return 0
+    if args.summary_json:
+        args.summary_json.parent.mkdir(parents=True, exist_ok=True)
+        args.summary_json.write_text(
+            json.dumps(summary, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+    # Falha fechada: sem nenhuma página não há como afirmar que o portal está
+    # inalterado, então o workflow não deve avançar nem enviar aviso enganoso.
+    return 0 if summary["pages"] > 0 else 2
 
 
 if __name__ == "__main__":

@@ -41,6 +41,7 @@ O `tests/README.md` traz o guia de execução detalhado e mostra a saída espera
 | `tests/test_selection_scope.py` | processo e edição | separa SiSU 2026/2027, preserva contexto em follow-up, bloqueia ambiguidade e rejeita documento 2027 com links de 2026 |
 | `tests/test_citation_quality.py` | qualidade de citação | 15 cenários obrigatórios (fonte única, múltiplas fontes, trecho verbatim, precedência do edital, avisos de ano, PDFs, ausência de fontes, URL inválida, Markdown válido para o frontend) |
 | `tests/test_scrape_portal.py` | utilitários de scraping | `slugify` seguro/estável, deduplicação, frontmatter idempotente em `knowledge/raw/` |
+| `tests/test_update_notification.py` | alerta de atualização | link do painel, chamada autenticada e erros sem vazamento de configuração |
 
 ## O contrato de citação sob teste
 

@@ -51,7 +51,7 @@ Estes segredos eram consumidos exclusivamente pelo workflow `env-sync.yml` (agor
 
 ### 2.2 Segredos Ativos e Obrigatórios no GitHub
 
-Apenas **4 segredos** devem permanecer configurados no GitHub:
+Permanecem os **4 segredos de deploy**:
 
 | Secret | Valor Esperado |
 |---|---|
@@ -59,6 +59,8 @@ Apenas **4 segredos** devem permanecer configurados no GitHub:
 | `VERCEL_ORG_ID` | ID do time proprietário dos projetos na Vercel |
 | `VERCEL_PROJECT_ID_API` | ID do projeto `chat-csa-api` |
 | `VERCEL_PROJECT_ID_FRONTEND` | ID do projeto `chat-csa-web` |
+
+O workflow de alerta do portal requer, adicionalmente, os segredos `CHAT_CSA_EMAIL_API_URL`, `CHAT_CSA_EMAIL_API_TOKEN` e `CHAT_CSA_UPDATE_NOTIFICATION_TO`. Eles não são segredos de runtime da Vercel e não devem ser removidos nesta limpeza.
 
 ---
 

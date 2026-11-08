@@ -409,6 +409,9 @@ O deploy é automatizado via **GitHub Actions + Vercel CLI** (sem necessidade de
 - **Entrega Contínua (`.github/workflows/deploy.yml`):**
   - Disparado exclusivamente em pushes para `main` (produção `--prod`) e `development` (preview estável de branch).
   - Utiliza apenas **4 segredos universais no GitHub**: `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID_API`, `VERCEL_PROJECT_ID_FRONTEND`.
+- **Revisão manual do portal (`.github/workflows/scrape-csa.yml`):**
+  - Compara a coleta com o último artifact e envia e-mail apenas quando encontra documento novo ou alterado.
+  - O aviso aponta para `/admin`; o workflow não altera a base sem revisão humana.
 
 ### Variáveis de Ambiente e Handover
 

@@ -1,21 +1,27 @@
-# Scrape manual do portal CSA/UEFS.
+# Scrape manual do portal CSA/UEFS com alerta para curadoria humana.
 #
-# Antes: rodava agendado e commitava o resultado em knowledge/raw/.
-# Agora: disparo manual (workflow_dispatch), sem commit/push — a saída vira
-# artifact. A base de produção vive no branch `data` e é alimentada pelo
-# endpoint /kb/upload (com aval do time).
-#
-# O agente consumidor cita a URL de cada página (frontmatter `url`), nunca o
-# caminho do arquivo Markdown — ver .consumer/AGENTS.md.
+# Cada execução recupera o último artifact `knowledge-raw` como referência,
+# raspa o portal e compara apenas o corpo dos documentos. Quando encontra
+# conteúdo novo ou alterado, envia um e-mail com o link do painel /admin.
+# A automação nunca escreve na base: o time revisa o artifact e decide se faz
+# upload/substituição pelo painel protegido.
 name: Scrape portal CSA
 
 on:
   workflow_dispatch:
 
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: scrape-csa
+  cancel-in-progress: false
+
 jobs:
   scrape:
-    name: Scrape (artifact)
-    runs-on: ubuntu-latest
+    name: Detecta mudanças e avisa
+    runs-on: ${{ vars.SCRAPE_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 30
     steps:
       - name: Checkout
@@ -30,12 +36,78 @@ jobs:
       - name: Instala as dependências do projeto
         run: uv sync --frozen
 
-      - name: Raspa o portal para knowledge/raw/
-        run: uv run python scripts/scrape_portal.py
+      - name: Recupera a última referência do scrape
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p knowledge/raw
+          ARTIFACT_ID="$(gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts?name=knowledge-raw&per_page=100" --jq '[.artifacts[] | select(.expired == false)][0].id // empty')"
+          if [ -z "$ARTIFACT_ID" ]; then
+            echo "Nenhuma referência anterior encontrada; os documentos desta execução serão tratados como novos."
+            exit 0
+          fi
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${ARTIFACT_ID}/zip" > "$RUNNER_TEMP/knowledge-raw.zip"
+          unzip -q "$RUNNER_TEMP/knowledge-raw.zip" -d knowledge/raw
+          echo "Referência anterior recuperada."
 
-      - name: Publica a saída como artifact
+      - name: Raspa o portal e detecta mudanças
+        id: scrape
+        run: |
+          uv run python scripts/scrape_portal.py --summary-json scrape-summary.json
+          uv run python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          summary = json.loads(Path("scrape-summary.json").read_text(encoding="utf-8"))
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
+              output.write(f"written={summary['written']}\n")
+          PY
+
+      - name: Registra o resumo da execução
+        if: always()
+        run: |
+          {
+            echo "### Scrape do portal CSA"
+            echo
+            if [ -f scrape-summary.json ]; then
+              echo '```json'
+              cat scrape-summary.json
+              echo '```'
+            else
+              echo "O scrape não produziu um resumo."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Envia aviso para revisão manual
+        if: steps.scrape.outputs.written != '0'
+        env:
+          CHAT_CSA_EMAIL_API_URL: ${{ secrets.CHAT_CSA_EMAIL_API_URL }}
+          CHAT_CSA_EMAIL_API_TOKEN: ${{ secrets.CHAT_CSA_EMAIL_API_TOKEN }}
+          CHAT_CSA_UPDATE_NOTIFICATION_TO: ${{ secrets.CHAT_CSA_UPDATE_NOTIFICATION_TO }}
+          CHAT_CSA_ADMIN_PANEL_URL: ${{ vars.CHAT_CSA_ADMIN_PANEL_URL || 'https://chat-csa-web.vercel.app/admin' }}
+        run: |
+          uv run python scripts/notify_update.py \
+            --summary-json scrape-summary.json \
+            --panel-url "$CHAT_CSA_ADMIN_PANEL_URL" \
+            --run-url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+      - name: Publica a saída como artifact e nova referência
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: knowledge-raw
           path: knowledge/raw/
+          if-no-files-found: error
+          retention-days: 90
+
+      # Se o aviso falhar, preserva a coleta para diagnóstico, mas não a usa
+      # como referência. Assim uma nova execução volta a tentar o mesmo alerta.
+      - name: Preserva a saída quando o aviso falha
+        if: failure() && steps.scrape.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: knowledge-raw-pending-${{ github.run_id }}
+          path: knowledge/raw/
           if-no-files-found: warn
+          retention-days: 30
