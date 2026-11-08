@@ -119,7 +119,7 @@ tests/
 
 ---
 
-### `test_admin.py` — Auth admin (8 testes)
+### `test_admin.py` — Auth admin (11 testes)
 
 | Teste | O que verifica |
 |-------|----------------|
@@ -130,6 +130,9 @@ tests/
 | `test_admin_auth_fails_closed_without_environment` | Sem configuração, o admin responde 503 e não cria credencial padrão |
 | `test_login_is_rate_limited_after_repeated_failures` | Tentativas repetidas recebem 429 |
 | `test_expired_token_is_rejected` | Sessão expirada recebe 401 |
+| `test_login_reports_configured_session_duration` | Login informa a duração configurada da sessão |
+| `test_session_uses_eight_hour_default` | Sessão usa o padrão de 8 horas sem configuração explícita |
+| `test_primary_admin_session_survives_auth_reconfiguration` | Token do administrador principal sobrevive à recriação da instância com a mesma configuração |
 | `test_cors_and_security_headers_are_restricted` | CORS usa allowlist e respostas protegidas não são armazenadas em cache |
 
 ---

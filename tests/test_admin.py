@@ -99,6 +99,41 @@ def test_expired_token_is_rejected(monkeypatch):
     assert client.get("/admin/users", headers=headers).status_code == 401
 
 
+def test_login_reports_configured_session_duration():
+    client = _client()
+
+    response = client.post(
+        "/auth/login",
+        json={"username": "admin-teste", "password": "senha-ficticia-de-teste"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["expires_in"] == 3600
+
+
+def test_session_uses_eight_hour_default(monkeypatch):
+    monkeypatch.delenv("CHAT_CSA_AUTH_SESSION_TTL")
+    client = _client()
+
+    response = client.post(
+        "/auth/login",
+        json={"username": "admin-teste", "password": "senha-ficticia-de-teste"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["expires_in"] == 8 * 60 * 60
+
+
+def test_primary_admin_session_survives_auth_reconfiguration():
+    client = _client()
+    headers = _admin_headers(client)
+
+    # Simula uma nova instância serverless carregando a mesma configuração.
+    auth_store.configure_from_env()
+
+    assert client.get("/auth/me", headers=headers).status_code == 200
+
+
 def test_cors_and_security_headers_are_restricted():
     client = _client()
 

@@ -241,6 +241,7 @@ export async function chatCompletion(
 export type AuthToken = {
   access_token: string;
   token_type: string;
+  expires_in: number;
   user: { username: string; role: string };
 };
 

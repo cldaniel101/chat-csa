@@ -731,6 +731,13 @@
   animation: kbe-backdrop-in 160ms ease;
 }
 
+.kbe-modal-backdrop > [role="dialog"] {
+  display: flex;
+  width: 100%;
+  justify-content: center;
+  outline: none;
+}
+
 @keyframes kbe-backdrop-in {
   from { opacity: 0; }
 }

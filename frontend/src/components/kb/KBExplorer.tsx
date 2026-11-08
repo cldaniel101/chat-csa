@@ -42,12 +42,14 @@ import {
 import {
   type ChangeEvent,
   type FormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -91,6 +93,22 @@ function clearToken() {
     sessionStorage.removeItem(SESSION_KEY);
   } catch {
     /* ignora */
+  }
+}
+
+/**
+ * Lê somente a data de expiração usada pela interface. A assinatura continua
+ * sendo validada exclusivamente pelo backend em todas as requisições.
+ */
+function tokenExpiration(token: string): number | null {
+  try {
+    const [version, payload] = token.split(".");
+    if (version !== "csa1" || !payload) return null;
+    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const decoded = JSON.parse(atob(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=")));
+    return typeof decoded.exp === "number" ? decoded.exp * 1000 : null;
+  } catch {
+    return null;
   }
 }
 
@@ -297,6 +315,125 @@ type ConfirmModalProps = {
   onCancel: () => void;
 };
 
+const FOCUSABLE_SELECTOR = [
+  "a[href]",
+  "button:not([disabled])",
+  "input:not([disabled]):not([type='hidden'])",
+  "select:not([disabled])",
+  "textarea:not([disabled])",
+  "[tabindex]:not([tabindex='-1'])",
+].join(",");
+
+type ModalLayerProps = {
+  labelledBy: string;
+  onClose: () => void;
+  closeDisabled?: boolean;
+  children: React.ReactNode;
+};
+
+/** Camada modal compartilhada: isola o fundo, prende e restaura o foco. */
+function ModalLayer({ labelledBy, onClose, closeDisabled = false, children }: ModalLayerProps) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+
+    const previouslyFocused = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+    const previousOverflow = document.body.style.overflow;
+    const siblings = Array.from(document.body.children).filter((element) => element !== dialog.parentElement);
+    const siblingState = siblings.map((element) => ({
+      element: element as HTMLElement,
+      inert: (element as HTMLElement).inert,
+      ariaHidden: element.getAttribute("aria-hidden"),
+    }));
+
+    document.body.style.overflow = "hidden";
+    for (const { element } of siblingState) {
+      element.inert = true;
+      element.setAttribute("aria-hidden", "true");
+    }
+
+    const initialFocus = dialog.querySelector<HTMLElement>("[data-modal-autofocus]")
+      ?? dialog.querySelector<HTMLElement>(FOCUSABLE_SELECTOR)
+      ?? dialog;
+    initialFocus.focus();
+    const keepFocusInside = (event: FocusEvent) => {
+      if (event.target instanceof Node && !dialog.contains(event.target)) initialFocus.focus();
+    };
+    document.addEventListener("focusin", keepFocusInside);
+
+    return () => {
+      document.removeEventListener("focusin", keepFocusInside);
+      document.body.style.overflow = previousOverflow;
+      for (const { element, inert, ariaHidden } of siblingState) {
+        element.inert = inert;
+        if (ariaHidden === null) element.removeAttribute("aria-hidden");
+        else element.setAttribute("aria-hidden", ariaHidden);
+      }
+      if (previouslyFocused?.isConnected) previouslyFocused.focus();
+    };
+  }, []);
+
+  function handleKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+    if (event.key === "Escape" && !closeDisabled) {
+      event.preventDefault();
+      event.stopPropagation();
+      onCloseRef.current();
+      return;
+    }
+    if (event.key !== "Tab") return;
+
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
+      .filter((element) => element.getClientRects().length > 0);
+    if (focusable.length === 0) {
+      event.preventDefault();
+      dialog.focus();
+      return;
+    }
+
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && (document.activeElement === first || document.activeElement === dialog)) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
+
+  return createPortal(
+    <div
+      className="kbe-modal-backdrop"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !closeDisabled) onCloseRef.current();
+      }}
+    >
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={labelledBy}
+        tabIndex={-1}
+        onKeyDown={handleKeyDown}
+      >
+        {children}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 function ConfirmModal({
   icon,
   title,
@@ -308,15 +445,7 @@ function ConfirmModal({
   onCancel,
 }: ConfirmModalProps) {
   return (
-    <div
-      className="kbe-modal-backdrop"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="kbe-modal-title"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onCancel();
-      }}
-    >
+    <ModalLayer labelledBy="kbe-modal-title" onClose={onCancel}>
       <div className="kbe-modal">
         <div className="kbe-modal-header">
           <span className={`kbe-modal-header-icon kbe-modal-header-icon--${icon}`} aria-hidden="true">
@@ -331,6 +460,7 @@ function ConfirmModal({
             type="button"
             className="kbe-btn kbe-btn--ghost"
             onClick={onCancel}
+            data-modal-autofocus
           >
             {cancelLabel}
           </button>
@@ -345,7 +475,7 @@ function ConfirmModal({
           </button>
         </div>
       </div>
-    </div>
+    </ModalLayer>
   );
 }
 
@@ -353,9 +483,10 @@ function ConfirmModal({
 
 type LoginScreenProps = {
   onSuccess: (token: string) => void;
+  notice?: string | null;
 };
 
-function LoginScreen({ onSuccess }: LoginScreenProps) {
+function LoginScreen({ onSuccess, notice }: LoginScreenProps) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -390,6 +521,12 @@ function LoginScreen({ onSuccess }: LoginScreenProps) {
         </div>
 
         <form className="kbe-login-body" onSubmit={handleSubmit} noValidate>
+          {notice && (
+            <div className="kbe-alert kbe-alert--info" role="status">
+              <AlertTriangle size={15} style={{ flexShrink: 0, marginTop: 1 }} aria-hidden="true" />
+              {notice}
+            </div>
+          )}
           {error && (
             <div className="kbe-alert kbe-alert--error" role="alert">
               <XCircle size={15} style={{ flexShrink: 0, marginTop: 1 }} aria-hidden="true" />
@@ -442,9 +579,17 @@ function LoginScreen({ onSuccess }: LoginScreenProps) {
 
 type ExplorerScreenProps = {
   token: string;
-  onLogout: () => void;
+  onLogout: (notice?: string) => void;
   onStartChat: () => void;
 };
+
+const SESSION_WARNING_SECONDS = 5 * 60;
+
+function formatSessionTime(seconds: number): string {
+  if (seconds < 60) return `${seconds} segundo${seconds === 1 ? "" : "s"}`;
+  const minutes = Math.ceil(seconds / 60);
+  return `${minutes} minuto${minutes === 1 ? "" : "s"}`;
+}
 
 function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
   const [files, setFiles] = useState<KBFile[]>([]);
@@ -496,6 +641,60 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const [lastOpenedFile, setLastOpenedFile] = useState<KBFile | null>(null);
   const previewAbortControllerRef = useRef<AbortController | null>(null);
+  const [sessionRemainingSeconds, setSessionRemainingSeconds] = useState<number | null>(null);
+
+  const closeAllModals = useCallback(() => {
+    previewAbortControllerRef.current?.abort();
+    previewAbortControllerRef.current = null;
+    setPendingFiles(null);
+    setPreview(null);
+    setDeleteTarget(null);
+    setShowChatConfirm(false);
+    setEditTarget(null);
+    setRenameTarget(null);
+  }, []);
+
+  const openChatConfirm = useCallback(() => {
+    closeAllModals();
+    setShowChatConfirm(true);
+  }, [closeAllModals]);
+
+  /* Avisa antes da expiração e encerra a tela mesmo sem uma nova requisição. */
+  useEffect(() => {
+    const expiration = tokenExpiration(token);
+    if (expiration === null) return;
+    let timeoutId: number | undefined;
+    let stopped = false;
+
+    const updateSessionClock = () => {
+      if (stopped) return;
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+      const remaining = Math.ceil((expiration - Date.now()) / 1000);
+      if (remaining <= 0) {
+        clearToken();
+        onLogout("Sua sessão expirou. Entre novamente para continuar.");
+        return;
+      }
+      setSessionRemainingSeconds(remaining <= SESSION_WARNING_SECONDS ? remaining : null);
+      const delay = remaining > SESSION_WARNING_SECONDS
+        ? Math.min((remaining - SESSION_WARNING_SECONDS) * 1000, 60_000)
+        : 1_000;
+      timeoutId = window.setTimeout(updateSessionClock, delay);
+    };
+
+    updateSessionClock();
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") updateSessionClock();
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    window.addEventListener("focus", updateSessionClock);
+    return () => {
+      stopped = true;
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+      document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("focus", updateSessionClock);
+    };
+  }, [token, onLogout]);
 
   /* Truncamento e teto de segurança para evitar congelamento do renderer em Markdowns volumosos */
   const markdownPreviewInfo = useMemo(() => {
@@ -566,6 +765,7 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
   function handleFileInputChange(e: ChangeEvent<HTMLInputElement>) {
     const selected = Array.from(e.target.files ?? []);
     if (!selected.length) return;
+    closeAllModals();
     /* Abre o modal para declarar a seção antes de enviar */
     setPendingFiles(selected);
     /* Limpa o input para permitir reenvio do mesmo arquivo */
@@ -610,9 +810,7 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
 
   /* Abre o preview no front: baixa os bytes com o header de auth e renderiza aqui */
   async function handleOpen(file: KBFile) {
-    if (previewAbortControllerRef.current) {
-      previewAbortControllerRef.current.abort();
-    }
+    closeAllModals();
     const controller = new AbortController();
     previewAbortControllerRef.current = controller;
     setLastOpenedFile(file);
@@ -701,6 +899,7 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
 
   /* Remoção */
   function handleDeleteRequest(file: KBFile) {
+    closeAllModals();
     setDeleteError(null);
     setDeleteTarget(file);
   }
@@ -798,6 +997,7 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
 
   /* Edição inline */
   async function handleOpenEdit(file: KBFile) {
+    closeAllModals();
     setEditError(null);
     setEditLoading(true);
     setEditTarget(file);
@@ -834,6 +1034,7 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
 
   /* Renomeação / Mover */
   function handleOpenRename(file: KBFile) {
+    closeAllModals();
     setRenameError(null);
     setRenameTarget(file);
     setRenameNewPath(file.path);
@@ -999,6 +1200,20 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
     ),
   ).sort();
 
+  const activeModal = pendingFiles
+    ? "upload"
+    : preview
+      ? "preview"
+      : deleteTarget
+        ? "delete"
+        : showChatConfirm
+          ? "chat"
+          : editTarget
+            ? "edit"
+            : renameTarget
+              ? "rename"
+              : null;
+
   return (
     <div className="kbe-root">
       {/* Cabeçalho */}
@@ -1020,7 +1235,7 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
           id="kbe-start-chat-btn"
           type="button"
           className="kbe-btn kbe-btn--chat"
-          onClick={() => setShowChatConfirm(true)}
+          onClick={openChatConfirm}
         >
           <MessageCircle size={16} aria-hidden="true" />
           Iniciar Chatbot
@@ -1043,6 +1258,16 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
 
       {/* Corpo */}
       <main className="kbe-body">
+
+        {sessionRemainingSeconds !== null && (
+          <div className="kbe-alert kbe-alert--info kbe-session-warning" role="status" aria-live="polite">
+            <AlertTriangle size={17} style={{ flexShrink: 0 }} aria-hidden="true" />
+            <span>
+              Sua sessão expira em <strong>{formatSessionTime(sessionRemainingSeconds)}</strong>.
+              {" "}Salve o trabalho em andamento.
+            </span>
+          </div>
+        )}
 
         {/* Feedback de upload */}
         {uploadError && (
@@ -1470,7 +1695,7 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
                 id="kbe-footer-start-chat-btn"
                 type="button"
                 className="kbe-btn kbe-btn--chat"
-                onClick={() => setShowChatConfirm(true)}
+                onClick={openChatConfirm}
               >
                 <MessageCircle size={15} aria-hidden="true" />
                 Iniciar conversa com o chatbot
@@ -1481,7 +1706,7 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
       </main>
 
       {/* Modal: destino do upload */}
-      {pendingFiles && (
+      {activeModal === "upload" && pendingFiles && (
         <ConfirmModal
           icon="upload"
           title={
@@ -1513,6 +1738,7 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
                 placeholder="ex.: editais"
                 value={uploadSection}
                 onChange={(e) => setUploadSection(e.target.value)}
+                data-modal-autofocus
               />
               <datalist id="kbe-upload-sections">
                 {sections.map((section) => (
@@ -1529,16 +1755,8 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
       )}
 
       {/* Modal: preview do documento renderizado no front */}
-      {preview && (
-        <div
-          className="kbe-modal-backdrop"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="kbe-preview-title"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) closePreview();
-          }}
-        >
+      {activeModal === "preview" && preview && (
+        <ModalLayer labelledBy="kbe-preview-title" onClose={closePreview}>
           <div className="kbe-modal kbe-modal--preview">
             <div className="kbe-modal-header">
               <span className="kbe-modal-header-icon kbe-modal-header-icon--chat" aria-hidden="true">
@@ -1554,6 +1772,7 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
                 onClick={closePreview}
                 aria-label="Fechar visualização"
                 title="Fechar"
+                data-modal-autofocus
               >
                 <XCircle size={18} aria-hidden="true" />
               </button>
@@ -1639,11 +1858,11 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
               </button>
             </div>
           </div>
-        </div>
+        </ModalLayer>
       )}
 
       {/* Modal: confirmação de remoção */}
-      {deleteTarget && (
+      {activeModal === "delete" && deleteTarget && (
         <ConfirmModal
           icon="danger"
           title={trashView ? "Excluir permanentemente?" : "Mover para a lixeira?"}
@@ -1672,7 +1891,7 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
       )}
 
       {/* Modal: confirmação para iniciar chatbot */}
-      {showChatConfirm && (
+      {activeModal === "chat" && showChatConfirm && (
         <ConfirmModal
           icon="chat"
           title="Iniciar conversa?"
@@ -1698,15 +1917,11 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
       )}
 
       {/* Modal: Edição inline */}
-      {editTarget && (
-        <div
-          className="kbe-modal-backdrop"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="kbe-edit-title"
-          onClick={(e) => {
-            if (e.target === e.currentTarget && !editSaving) setEditTarget(null);
-          }}
+      {activeModal === "edit" && editTarget && (
+        <ModalLayer
+          labelledBy="kbe-edit-title"
+          onClose={() => setEditTarget(null)}
+          closeDisabled={editSaving}
         >
           <div className="kbe-modal kbe-modal--preview">
             <div className="kbe-modal-header">
@@ -1750,6 +1965,7 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
                   rows={18}
                   placeholder="Conteúdo do documento em Markdown ou texto…"
                   disabled={editSaving}
+                  data-modal-autofocus
                 />
               )}
             </div>
@@ -1774,11 +1990,11 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
               </button>
             </div>
           </div>
-        </div>
+        </ModalLayer>
       )}
 
       {/* Modal: Renomear ou Mover */}
-      {renameTarget && (
+      {activeModal === "rename" && renameTarget && (
         <ConfirmModal
           icon="upload"
           title="Renomear ou mover arquivo"
@@ -1804,6 +2020,7 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
                   onChange={(e) => setRenameNewPath(e.target.value)}
                   placeholder="ex: editais/novo_nome.md"
                   disabled={renaming}
+                  data-modal-autofocus
                 />
               </div>
               {renameError && (
@@ -1827,19 +2044,23 @@ export function KBExplorer({ onStartChat }: KBExplorerProps) {
     loadToken() ? "explorer" : "login",
   );
   const [token, setToken] = useState<string>(() => loadToken() ?? "");
+  const [loginNotice, setLoginNotice] = useState<string | null>(null);
 
   function handleLoginSuccess(newToken: string) {
+    setLoginNotice(null);
     setToken(newToken);
     setScreen("explorer");
   }
 
-  function handleLogout() {
+  const handleLogout = useCallback((notice?: string) => {
+    clearToken();
+    setLoginNotice(notice ?? null);
     setToken("");
     setScreen("login");
-  }
+  }, []);
 
   if (screen === "login") {
-    return <LoginScreen onSuccess={handleLoginSuccess} />;
+    return <LoginScreen onSuccess={handleLoginSuccess} notice={loginNotice} />;
   }
 
   return (
