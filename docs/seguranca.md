@@ -39,6 +39,7 @@ O administrador principal é recriado a partir do ambiente em cada instância e 
 - Uploads validam caminhos e limites de tamanho, e o lote é publicado em um commit atômico.
 - Segredos do GitHub e do provedor de LLM nunca são enviados ao frontend ou ao prompt.
 - Fontes versionadas são autorizadas pelo processo e edição identificados na conversa. O backend confere caminho, metadados, corpo e URLs: uma fonte `sisu271` que aponte para `sisu261`, por exemplo, é rejeitada antes de chegar à resposta.
+- Perguntas sem resposta são registradas sem IP, conta, sessão ou histórico. E-mail, telefone, documento e links são removidos; o texto restante é criptografado antes de ser gravado no branch público `data` e só é descriptografado por uma rota administrativa autenticada.
 
 ## CORS e headers
 

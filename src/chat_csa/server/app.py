@@ -20,6 +20,7 @@ Execução:
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import time
@@ -34,9 +35,11 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 # Tipos de mensagem do LangChain
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+from starlette.concurrency import run_in_threadpool
 
 from ..agent.factory import build_agent
 from ..agent.prompt import build_system_prompt
+from ..kb import KBError
 from ..qa_cache import format_faq_reference, lookup_cached_matches
 from ..selection_scope import (
     SelectionScope,
@@ -46,11 +49,15 @@ from ..selection_scope import (
     scope_prompt,
     set_selection_scope,
 )
+from ..unanswered import record_unanswered_question
 from . import auth as auth_store
 from .kb_api import router as kb_router
 from .models import ChatMessage, ModelCard, ModelsResponse
+from .unanswered_api import router as unanswered_router
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 
 def _cors_origins() -> list[str]:
@@ -393,6 +400,62 @@ def _enforce_selection_response(
     return response_text
 
 
+_INSUFFICIENT_EVIDENCE_MARKERS = (
+    "não encontrei",
+    "não localizei",
+    "não foi possível confirmar",
+    "não consegui confirmar",
+    "não há fonte",
+    "sem fonte válida",
+    "resposta foi bloqueada",
+)
+
+
+def _has_insufficient_evidence(
+    response_text: str,
+    *,
+    question: str,
+    scope: SelectionScope,
+    messages: list,
+    has_filtered_faq: bool,
+) -> bool:
+    """Decide se a pergunta representa uma lacuna real, não uma saudação/ambiguidade."""
+    if not question.strip() or _is_conversational(question) or scope.needs_clarification:
+        return False
+    normalized_response = response_text.casefold()
+    if any(marker in normalized_response for marker in _INSUFFICIENT_EVIDENCE_MARKERS):
+        return True
+    return bool(
+        scope.must_filter
+        and not has_filtered_faq
+        and not _has_successful_evidence_lookup(messages)
+    )
+
+
+async def _record_unanswered_if_needed(
+    response_text: str,
+    *,
+    question: str,
+    scope: SelectionScope,
+    messages: list,
+    has_filtered_faq: bool,
+) -> None:
+    """Persiste a lacuna sem permitir que uma falha de registro derrube o chat."""
+    if not _has_insufficient_evidence(
+        response_text,
+        question=question,
+        scope=scope,
+        messages=messages,
+        has_filtered_faq=has_filtered_faq,
+    ):
+        return
+    try:
+        await run_in_threadpool(record_unanswered_question, question, scope)
+    except KBError as exc:
+        # Não registra a pergunta no log para evitar vazamento acidental de dados.
+        logger.warning("Falha ao registrar pergunta sem resposta: %s", type(exc).__name__)
+
+
 _RESPONSE_GUIDE_BLOCK = """## Guia de citações (obrigatório)
 
 - Termine a resposta com uma seção `Fontes:` sempre que usar qualquer fonte: base de conhecimento remota (kb_list/kb_read) ou páginas do portal.
@@ -517,6 +580,13 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
                 messages=result_messages,
                 has_filtered_faq=bool(faq_block),
             )
+            await _record_unanswered_if_needed(
+                text,
+                question=last_user_msg,
+                scope=selection_scope,
+                messages=result_messages,
+                has_filtered_faq=bool(faq_block),
+            )
             # Rastro da atividade do agente (caminho bufferizado): reasoning
             # completo + eventos de ferramenta, reemitidos no JSON/SSE.
             reasoning_text, tool_events = _trace_from_messages(result_messages)
@@ -565,6 +635,7 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
         async def event_stream() -> AsyncIterator[str]:
             yield _openai_chunk(completion_id, created, model, {"role": "assistant"})
             streamed_messages: list = []
+            answer_parts: list[str] = []
             seen_events = 0
             scope_token = set_selection_scope(selection_scope)
             try:
@@ -594,6 +665,7 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
                         text = str(text) if text else ""
                         if not text:
                             continue
+                        answer_parts.append(text)
                         yield _openai_chunk(completion_id, created, model, {"content": text})
                         continue
 
@@ -611,6 +683,13 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
                 yield f"data: {json.dumps(err)}\n\n"
             finally:
                 reset_selection_scope(scope_token)
+            await _record_unanswered_if_needed(
+                "".join(answer_parts),
+                question=last_user_msg,
+                scope=selection_scope,
+                messages=streamed_messages,
+                has_filtered_faq=bool(faq_block),
+            )
             yield _openai_chunk(completion_id, created, model, {}, finish_reason="stop")
             yield "data: [DONE]\n\n"
 
@@ -662,6 +741,13 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
                 messages=result_messages,
                 has_filtered_faq=bool(faq_block),
             )
+            await _record_unanswered_if_needed(
+                text,
+                question=last_user_msg,
+                scope=selection_scope,
+                messages=result_messages,
+                has_filtered_faq=bool(faq_block),
+            )
             # Rastro da atividade do agente (caminho bufferizado).
             reasoning_text, tool_events = _trace_from_messages(result_messages)
 
@@ -698,6 +784,7 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
 
         async def ollama_stream() -> AsyncIterator[str]:
             streamed_messages: list = []
+            answer_parts: list[str] = []
             seen_events = 0
             scope_token = set_selection_scope(selection_scope)
             try:
@@ -729,6 +816,7 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
                         text = str(text) if text else ""
                         if not text:
                             continue
+                        answer_parts.append(text)
                         yield json.dumps({"model": model, "message": {"role": "assistant", "content": text}, "done": False}) + "\n"
                         continue
 
@@ -745,6 +833,13 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
                     seen_events = len(events)
             finally:
                 reset_selection_scope(scope_token)
+            await _record_unanswered_if_needed(
+                "".join(answer_parts),
+                question=last_user_msg,
+                scope=selection_scope,
+                messages=streamed_messages,
+                has_filtered_faq=bool(faq_block),
+            )
             yield json.dumps({"model": model, "message": {"role": "assistant", "content": ""}, "done": True}) + "\n"
 
         return StreamingResponse(ollama_stream(), media_type="application/x-ndjson")
@@ -800,6 +895,7 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
     # Base de conhecimento remota — superfície admin /kb/* (auth obrigatória)
     # ------------------------------------------------------------------
     app.include_router(kb_router)
+    app.include_router(unanswered_router)
 
     # Painel FastHTML do ingester removido (só o consumer existe agora);
     # as rotas JSON /admin/users e a auth admin continuam nesta app.

@@ -50,6 +50,24 @@ def test_infer_scope_separates_sisu_editions_and_preserves_follow_up():
     assert (follow_up.process, follow_up.year, follow_up.slug) == ("sisu", 2027, "sisu271")
 
 
+def test_new_process_does_not_inherit_year_from_previous_process():
+    scope = infer_selection_scope(
+        ["Quero saber do ProSel 2015", "Na verdade, quais documentos do SiSU?"],
+    )
+
+    assert scope.process == "sisu"
+    assert scope.year is None
+    assert scope.needs_clarification is True
+
+
+def test_latest_explicit_process_and_year_replace_previous_scope():
+    scope = infer_selection_scope(
+        ["Quero saber do SiSU 2027", "Agora consulte o ProSel 2015"],
+    )
+
+    assert (scope.process, scope.year) == ("prosel", 2015)
+
+
 def test_enem_year_is_not_mistaken_for_selection_edition():
     scope = infer_selection_scope(["Posso usar o ENEM 2024?"])
 

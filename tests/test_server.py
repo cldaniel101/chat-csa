@@ -156,8 +156,8 @@ def test_selection_question_without_edition_requests_clarification():
     assert "qual ano/edição" in content
 
 
-def test_selection_response_without_valid_source_is_blocked():
-    app = create_app(".consumer")
+def test_selection_response_without_valid_source_is_blocked(kb_local):
+    app = create_app(kb_local / "config")
     client = TestClient(app)
 
     response = client.post(
@@ -171,3 +171,5 @@ def test_selection_response_without_valid_source_is_blocked():
     content = response.json()["choices"][0]["message"]["content"]
     assert "Não encontrei uma fonte válida e consistente" in content
     assert "fake-ok" not in content
+    records = list((kb_local / ".admin" / "unanswered").glob("*.json"))
+    assert len(records) == 1

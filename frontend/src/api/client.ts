@@ -280,6 +280,39 @@ export async function authLogin(
   return res.json();
 }
 
+// ─── Perguntas sem resposta (admin) ─────────────────────────────────────────
+
+export type UnansweredQuestion = {
+  id: string;
+  question: string;
+  asked_at: string;
+  process?: string | null;
+  year?: number | null;
+  edition?: number | null;
+};
+
+/** Lista lacunas registradas pelo agente para revisão do CSA. */
+export async function unansweredList(
+  token: string,
+): Promise<{ questions: UnansweredQuestion[] }> {
+  const base = getConsumerUrl();
+  const res = await fetch(`${base.replace(/\/$/, "")}/admin/unanswered`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  await ensureOk(res);
+  return res.json();
+}
+
+/** Remove da fila uma pergunta já revisada pelo CSA. */
+export async function unansweredDelete(token: string, id: string): Promise<void> {
+  const base = getConsumerUrl();
+  const res = await fetch(
+    `${base.replace(/\/$/, "")}/admin/unanswered/${encodeURIComponent(id)}`,
+    { method: "DELETE", headers: { Authorization: `Bearer ${token}` } },
+  );
+  await ensureOk(res);
+}
+
 // ─── Base de conhecimento (/kb/*) ────────────────────────────────────────────
 
 export type KBFileMetadata = {

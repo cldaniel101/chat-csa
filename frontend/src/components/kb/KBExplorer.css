@@ -125,6 +125,28 @@
   font-weight: 400;
 }
 
+.kbe-unanswered-intro {
+  margin: 0;
+  padding: var(--sp-md) var(--sp-lg);
+  color: var(--c-muted);
+  font-size: 12px;
+  line-height: 1.5;
+  border-bottom: 1px solid var(--c-border-subtle);
+}
+
+.kbe-unanswered-question {
+  min-width: 360px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.kbe-unanswered-modal-question {
+  padding: var(--sp-sm);
+  border-left: 3px solid var(--c-primary);
+  background: var(--c-surface-subtle);
+  overflow-wrap: anywhere;
+}
+
 /* ─── Abas: Ativos vs Lixeira ─────────────────────────────────────────────── */
 
 .kbe-tabs {
@@ -643,6 +665,10 @@
   font-size: 13px;
   max-width: 320px;
   line-height: 1.5;
+}
+
+.kbe-empty--compact {
+  padding: 32px var(--sp-xl);
 }
 
 /* ─── Estado de carregamento ───────────────────────────────────────────────── */

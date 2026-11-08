@@ -95,7 +95,10 @@ def kb_list(prefix: str = "") -> str:
         paths = get_kb().list(prefix)
     except KBError as exc:
         return f"Error: {exc}"
-    paths = [p for p in paths if not p.startswith(ORIGINALS_PREFIX)]
+    paths = [
+        p for p in paths
+        if not p.startswith((ORIGINALS_PREFIX, ".admin/"))
+    ]
     if scope and scope.must_filter:
         paths = [path for path in paths if path_matches_scope(path, scope)]
     if not paths:
@@ -120,6 +123,8 @@ def kb_read(path: str) -> str:
     Args:
         path: caminho relativo do arquivo, como devolvido por kb_list.
     """
+    if path.strip().replace("\\", "/").startswith(".admin/"):
+        return "Error: caminho administrativo reservado."
     scope = get_selection_scope()
     if scope and scope.needs_clarification:
         return (

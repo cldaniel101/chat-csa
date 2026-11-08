@@ -128,18 +128,32 @@ def infer_selection_scope(user_messages: Iterable[str]) -> SelectionScope:
         selection_intent = selection_intent or _has_selection_intent(normalized)
 
         slug_match = _SLUG_RE.search(normalized)
-        if slug_match:
-            if process is None:
-                process = _normalize_process(slug_match.group("process"))
-            if year is None:
-                year = 2000 + int(slug_match.group("year"))
-            if edition is None:
-                edition = int(slug_match.group("edition"))
+        message_process = (
+            _normalize_process(slug_match.group("process"))
+            if slug_match
+            else _process_in_text(normalized)
+        )
+        message_year = (
+            2000 + int(slug_match.group("year"))
+            if slug_match
+            else _selection_year_in_text(normalized)
+        )
+        message_edition = int(slug_match.group("edition")) if slug_match else None
 
-        if process is None:
-            process = _process_in_text(normalized)
-        if year is None:
-            year = _selection_year_in_text(normalized)
+        if process is None and message_process is not None:
+            process = message_process
+        # Nunca combina o processo mais recente com o ano explicitamente ligado
+        # a outro processo em uma mensagem anterior.
+        if year is None and message_year is not None:
+            if message_process is None or process is None or message_process == process:
+                year = message_year
+        if (
+            edition is None
+            and message_edition is not None
+            and message_process == process
+            and message_year == year
+        ):
+            edition = message_edition
 
     if process == "sisu" and year and edition is None:
         # A nomenclatura do portal usa 1 para a edição anual: sisu261/sisu271.

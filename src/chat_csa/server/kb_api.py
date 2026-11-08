@@ -93,7 +93,9 @@ async def kb_list_route(
             paths = [p for p in all_paths if p.startswith(".trash/")]
         else:
             paths = [
-                p for p in all_paths if not p.startswith((".trash/", ".originals/"))
+                p
+                for p in all_paths
+                if not p.startswith((".trash/", ".originals/", ".admin/"))
             ]
 
         files_meta = []

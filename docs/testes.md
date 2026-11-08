@@ -38,7 +38,9 @@ O `tests/README.md` traz o guia de execução detalhado e mostra a saída espera
 | `tests/test_csa_portal.py` | cliente do portal | allowlist bloqueia domínio externo, cache de fetch, busca com filtros, fallback para o SiSU vigente, links markdown, extração de PDF e status `completed`/`partial`/`failed` |
 | `tests/test_qa_cache.py` | recuperação da FAQ | parsing de Markdown (frontmatter + entradas) lido da base remota (backend local), ranking por similaridade, entradas `dynamic` não dão short-circuit, formatação sem URL omite a linha de fonte |
 | `tests/test_response_quality.py` | formatação da resposta | rótulo `Resposta:` removido, nota de divergência órfã removida, seção `Fontes:` preservada, `_has_source_lookup` exige fonte realmente aberta (`kb_read` ou `web_csa_fetch`) |
-| `tests/test_selection_scope.py` | processo e edição | separa SiSU 2026/2027, preserva contexto em follow-up, bloqueia ambiguidade e rejeita documento 2027 com links de 2026 |
+| `tests/test_selection_scope.py` | processo e edição | separa SiSU 2026/2027 e outros processos, preserva contexto sem herdar ano incorreto, bloqueia ambiguidade e rejeita documento 2027 com links de 2026 |
+| `tests/test_unanswered.py` | lacunas de conteúdo | sanitiza e criptografa perguntas, deduplica registros e protege a listagem administrativa |
+| `frontend/src/components/kb/KBExplorer.test.tsx` | acessibilidade dos modais | foco inicial e circular, fundo inerte, bloqueio de rolagem, `Escape` e devolução do foco |
 | `tests/test_citation_quality.py` | qualidade de citação | 15 cenários obrigatórios (fonte única, múltiplas fontes, trecho verbatim, precedência do edital, avisos de ano, PDFs, ausência de fontes, URL inválida, Markdown válido para o frontend) |
 | `tests/test_scrape_portal.py` | utilitários de scraping | `slugify` seguro/estável, deduplicação, frontmatter idempotente em `knowledge/raw/` |
 | `tests/test_update_notification.py` | alerta de atualização | link do painel, chamada autenticada e erros sem vazamento de configuração |

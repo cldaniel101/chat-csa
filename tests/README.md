@@ -50,6 +50,10 @@ uv run ruff check src
 
 # Corrigir automaticamente o que for possível
 uv run ruff check --fix src
+
+# Teste de acessibilidade dos modais do painel
+cd frontend
+npm run test
 ```
 
 ---
@@ -60,11 +64,12 @@ uv run ruff check --fix src
 tests/
 ├── conftest.py              # fixtures: base local + reset do cliente kb
 ├── test_tools.py            # Ferramentas do consumer: kb_list/kb_read e renderização por tipo
-├── test_server.py           # API FastAPI (health, modelos, completions, Ollama, FAQ no prompt)
+├── test_server.py           # API FastAPI (health, modelos, completions, Ollama, FAQ e lacunas)
 ├── test_kb.py               # Cliente da base: github falso (write atômico) e /kb/upload
 ├── test_admin.py            # Auth admin e CRUD /admin/users (painel removido)
 ├── test_qa_cache.py         # FAQ curada lida da base remota (backend local)
 ├── test_selection_scope.py  # filtro obrigatório por processo/edição
+├── test_unanswered.py       # perguntas sem resposta, privacidade e revisão admin
 ├── test_response_quality.py # Formatação da resposta e detecção de fonte aberta
 ├── test_csa_portal.py       # Portal CSA: fetch, busca, PDF, HTML, metadados
 ├── test_scrape_portal.py    # Detecção idempotente de documento novo/alterado
@@ -92,7 +97,7 @@ tests/
 
 ---
 
-### `test_server.py` — API do servidor (7 testes)
+### `test_server.py` — API do servidor (9 testes)
 
 | Teste | O que verifica |
 |-------|----------------|
@@ -134,6 +139,16 @@ tests/
 | `test_session_uses_eight_hour_default` | Sessão usa o padrão de 8 horas sem configuração explícita |
 | `test_primary_admin_session_survives_auth_reconfiguration` | Token do administrador principal sobrevive à recriação da instância com a mesma configuração |
 | `test_cors_and_security_headers_are_restricted` | CORS usa allowlist e respostas protegidas não são armazenadas em cache |
+
+---
+
+### `test_unanswered.py` — Perguntas sem resposta (3 testes)
+
+| Teste | O que verifica |
+|-------|----------------|
+| `test_sanitize_question_removes_common_personal_data` | Remove e-mail, telefone, documento e link antes do registro |
+| `test_record_is_deduplicated_per_day_and_kept_out_of_agent_base` | Criptografa, deduplica e não expõe a lacuna às ferramentas do agente |
+| `test_admin_unanswered_list_requires_auth_and_can_remove_reviewed_item` | Listagem e revisão exigem autenticação administrativa |
 
 ---
 

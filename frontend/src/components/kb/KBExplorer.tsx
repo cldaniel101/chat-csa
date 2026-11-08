@@ -21,6 +21,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  CircleHelp,
   Download,
   Eye,
   FileText,
@@ -63,8 +64,11 @@ import {
   kbMove,
   kbRestore,
   kbUpload,
+  unansweredDelete,
+  unansweredList,
   UnauthorizedError,
   type KBUploadFileResult,
+  type UnansweredQuestion,
 } from "../../api/client";
 import "./KBExplorer.css";
 
@@ -332,7 +336,7 @@ type ModalLayerProps = {
 };
 
 /** Camada modal compartilhada: isola o fundo, prende e restaura o foco. */
-function ModalLayer({ labelledBy, onClose, closeDisabled = false, children }: ModalLayerProps) {
+export function ModalLayer({ labelledBy, onClose, closeDisabled = false, children }: ModalLayerProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
 
@@ -591,10 +595,35 @@ function formatSessionTime(seconds: number): string {
   return `${minutes} minuto${minutes === 1 ? "" : "s"}`;
 }
 
+function formatQuestionDate(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("pt-BR", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(date);
+}
+
+function formatQuestionScope(question: UnansweredQuestion): string {
+  if (!question.process || !question.year) return "Não identificado";
+  const process = question.process.toLocaleUpperCase("pt-BR");
+  const edition = question.edition && question.edition !== 1
+    ? ` · edição ${question.edition}`
+    : "";
+  return `${process} ${question.year}${edition}`;
+}
+
 function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
   const [files, setFiles] = useState<KBFile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  /* Lacunas de conteúdo registradas pelo agente */
+  const [unansweredQuestions, setUnansweredQuestions] = useState<UnansweredQuestion[]>([]);
+  const [unansweredLoading, setUnansweredLoading] = useState(true);
+  const [unansweredError, setUnansweredError] = useState<string | null>(null);
+  const [unansweredTarget, setUnansweredTarget] = useState<UnansweredQuestion | null>(null);
+  const [removingUnanswered, setRemovingUnanswered] = useState(false);
 
   /* Feedback de upload */
   const [uploading, setUploading] = useState(false);
@@ -652,6 +681,7 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
     setShowChatConfirm(false);
     setEditTarget(null);
     setRenameTarget(null);
+    setUnansweredTarget(null);
   }, []);
 
   const openChatConfirm = useCallback(() => {
@@ -695,6 +725,52 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
       window.removeEventListener("focus", updateSessionClock);
     };
   }, [token, onLogout]);
+
+  const loadUnanswered = useCallback(async () => {
+    setUnansweredLoading(true);
+    setUnansweredError(null);
+    try {
+      const result = await unansweredList(token);
+      setUnansweredQuestions(result.questions);
+    } catch (err: unknown) {
+      if (err instanceof UnauthorizedError) {
+        onLogout("Sua sessão expirou. Entre novamente para continuar.");
+        return;
+      }
+      setUnansweredError(
+        err instanceof Error ? err.message : "Erro ao carregar perguntas sem resposta.",
+      );
+    } finally {
+      setUnansweredLoading(false);
+    }
+  }, [token, onLogout]);
+
+  useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- sincroniza a listagem com a API administrativa
+    void loadUnanswered();
+  }, [loadUnanswered]);
+
+  async function handleConfirmUnansweredReview() {
+    if (!unansweredTarget) return;
+    const target = unansweredTarget;
+    setRemovingUnanswered(true);
+    setUnansweredTarget(null);
+    setUnansweredError(null);
+    try {
+      await unansweredDelete(token, target.id);
+      await loadUnanswered();
+    } catch (err: unknown) {
+      if (err instanceof UnauthorizedError) {
+        onLogout("Sua sessão expirou. Entre novamente para continuar.");
+        return;
+      }
+      setUnansweredError(
+        err instanceof Error ? err.message : "Erro ao marcar a pergunta como revisada.",
+      );
+    } finally {
+      setRemovingUnanswered(false);
+    }
+  }
 
   /* Truncamento e teto de segurança para evitar congelamento do renderer em Markdowns volumosos */
   const markdownPreviewInfo = useMemo(() => {
@@ -1212,7 +1288,9 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
             ? "edit"
             : renameTarget
               ? "rename"
-              : null;
+              : unansweredTarget
+                ? "unanswered"
+                : null;
 
   return (
     <div className="kbe-root">
@@ -1373,6 +1451,88 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
             </div>
           </div>
         )}
+
+        {/* Lacunas de conteúdo identificadas nas conversas */}
+        <section className="kbe-card" aria-labelledby="kbe-unanswered-title">
+          <div className="kbe-toolbar">
+            <h2 id="kbe-unanswered-title" className="kbe-toolbar-title">
+              Perguntas sem resposta
+              {!unansweredLoading && !unansweredError && (
+                <span className="kbe-toolbar-count"> ({unansweredQuestions.length})</span>
+              )}
+            </h2>
+            <button
+              type="button"
+              className="kbe-btn kbe-btn--ghost"
+              onClick={() => { void loadUnanswered(); }}
+              disabled={unansweredLoading || removingUnanswered}
+            >
+              <RefreshCw size={14} aria-hidden="true" />
+              Atualizar
+            </button>
+          </div>
+          <p className="kbe-unanswered-intro">
+            Lacunas registradas quando não foi possível confirmar a resposta em uma fonte válida.
+            O registro contém somente a pergunta sanitizada, a data e o processo inferido.
+          </p>
+
+          {unansweredLoading ? (
+            <div className="kbe-loading" role="status" aria-live="polite">
+              <div className="kbe-spinner" aria-hidden="true" />
+              Carregando perguntas…
+            </div>
+          ) : unansweredError ? (
+            <div className="kbe-alert kbe-alert--error" style={{ margin: "var(--sp-lg)" }} role="alert">
+              <XCircle size={15} style={{ flexShrink: 0, marginTop: 1 }} aria-hidden="true" />
+              {unansweredError}
+            </div>
+          ) : unansweredQuestions.length === 0 ? (
+            <div className="kbe-empty kbe-empty--compact">
+              <span className="kbe-empty-icon" aria-hidden="true">
+                <CircleHelp size={25} />
+              </span>
+              <h3>Nenhuma lacuna registrada</h3>
+              <p>As perguntas que precisarem de novas fontes aparecerão aqui.</p>
+            </div>
+          ) : (
+            <div className="kbe-table-wrap">
+              <table className="kbe-table" aria-label="Perguntas sem resposta">
+                <thead>
+                  <tr>
+                    <th scope="col">Pergunta</th>
+                    <th scope="col">Processo</th>
+                    <th scope="col">Data</th>
+                    <th scope="col" className="kbe-col-actions">Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {unansweredQuestions.map((question) => (
+                    <tr key={question.id}>
+                      <td className="kbe-unanswered-question">{question.question}</td>
+                      <td><span className="kbe-badge">{formatQuestionScope(question)}</span></td>
+                      <td className="kbe-col-date">{formatQuestionDate(question.asked_at)}</td>
+                      <td className="kbe-col-actions">
+                        <button
+                          type="button"
+                          className="kbe-icon-btn"
+                          onClick={() => {
+                            closeAllModals();
+                            setUnansweredTarget(question);
+                          }}
+                          disabled={removingUnanswered}
+                          aria-label={`Marcar como revisada: ${question.question}`}
+                          title="Marcar como revisada"
+                        >
+                          <CheckCircle size={16} aria-hidden="true" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
 
         {/* Cartão principal de arquivos */}
         <div className="kbe-card">
@@ -2029,6 +2189,25 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
                   {renameError}
                 </div>
               )}
+            </>
+          }
+        />
+      )}
+
+      {activeModal === "unanswered" && unansweredTarget && (
+        <ConfirmModal
+          icon="danger"
+          title="Marcar pergunta como revisada?"
+          confirmLabel="Sim, remover da lista"
+          onConfirm={() => { void handleConfirmUnansweredReview(); }}
+          onCancel={() => setUnansweredTarget(null)}
+          body={
+            <>
+              <p>Confirme depois de cadastrar ou corrigir a fonte necessária:</p>
+              <p className="kbe-unanswered-modal-question">{unansweredTarget.question}</p>
+              <p style={{ color: "var(--c-muted)", fontSize: 12 }}>
+                O histórico continuará recuperável no Git, mas a pergunta deixará de aparecer nesta lista.
+              </p>
             </>
           }
         />
