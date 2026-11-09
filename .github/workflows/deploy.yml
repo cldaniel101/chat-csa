@@ -100,8 +100,25 @@ jobs:
           echo "url=$DEPLOY_URL" >> "$GITHUB_OUTPUT"
 
           # Atribui a URL fixa de preview correspondente ao nome real do projeto.
+          # `vercel alias set` da CLI consulta /v2/user, que token project-scoped não
+          # acessa ("User not found"). O endpoint REST de alias funciona com o token
+          # restrito ao projeto, então o alias é aplicado via API.
           ALIAS_HOST="${{ matrix.preview_alias }}"
-          npx vercel@59 alias set "$DEPLOY_URL" "$ALIAS_HOST" --token "$VERCEL_TOKEN" || true
+          DEPLOY_ID=$(curl -fsS \
+            -H "Authorization: Bearer $VERCEL_TOKEN" \
+            "https://api.vercel.com/v6/deployments?projectId=$VERCEL_PROJECT_ID&teamId=$VERCEL_ORG_ID&limit=10" \
+            | python3 -c "import json,os,sys; d=json.load(sys.stdin).get('deployments',[]); print(next((x['uid'] for x in d if (x.get('meta') or {}).get('githubCommitSha','').startswith(os.environ['GITHUB_SHA'][:7])), ''))" \
+          ) || DEPLOY_ID=""
+          if [ -n "$DEPLOY_ID" ]; then
+            curl -fsS -X POST \
+              -H "Authorization: Bearer $VERCEL_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d "{\"alias\":\"$ALIAS_HOST\"}" \
+              "https://api.vercel.com/v2/deployments/$DEPLOY_ID/aliases?teamId=$VERCEL_ORG_ID" > /dev/null \
+              || echo "::warning::Não foi possível apontar $ALIAS_HOST para $DEPLOY_URL"
+          else
+            echo "::warning::Deploy de $GITHUB_SHA não encontrado para aplicar o alias $ALIAS_HOST"
+          fi
 
           echo "### 🔍 Deploy de Preview (${{ matrix.name }})" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Ambiente**: Preview (\`development\`)" >> "$GITHUB_STEP_SUMMARY"
