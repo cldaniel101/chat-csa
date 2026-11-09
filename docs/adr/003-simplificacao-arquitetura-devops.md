@@ -3,6 +3,7 @@
 **Data:** 2026-11-01
 **Status:** Aceita
 **Decisores:** Equipe Chat CSA
+**Substituída parcialmente por:** [ADR-004](./004-tokens-deploy-project-scoped.md) — o token único de time (`VERCEL_TOKEN`) foi trocado por tokens project-scoped, um por projeto.
 
 ---
 

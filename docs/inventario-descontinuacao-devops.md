@@ -2,6 +2,8 @@
 
 Este documento audita e inventaria os recursos legados (projetos na Vercel e segredos no GitHub Actions) tornados obsoletos pela simplificação da arquitetura DevOps ([ADR-003](./adr/003-simplificacao-arquitetura-devops.md)).
 
+> **Atualização de 2026-11-09 (ADR-004):** o token único de time foi substituído por tokens project-scoped, um por projeto. Os itens `VERCEL_TOKEN_API` e `VERCEL_TOKEN_FRONTEND` da seção 2.1 voltaram a ser **obrigatórios** e não devem ser tratados como legado; `VERCEL_TOKEN` deixou de existir. As demais exclusões descritas aqui seguem válidas.
+
 ---
 
 ## 1. Projetos Vercel para Descomissionamento
@@ -21,9 +23,9 @@ Com a adoção de URLs de branch determinísticas da Vercel (`-git-development-.
 
 ### 2.1 Segredos a Excluir do GitHub (`Settings → Secrets and variables → Actions`)
 
-#### A. Segredos de Deploy da Vercel Legados (Substituídos pelos 4 unificados)
-1. `VERCEL_TOKEN_API` — *Substituído pelo unificado `VERCEL_TOKEN`*
-2. `VERCEL_TOKEN_FRONTEND` — *Substituído pelo unificado `VERCEL_TOKEN`*
+#### A. Segredos de Deploy da Vercel Legados
+1. `VERCEL_TOKEN_API` — **reativado em 2026-11-09** ([ADR-004](./adr/004-tokens-deploy-project-scoped.md))
+2. `VERCEL_TOKEN_FRONTEND` — **reativado em 2026-11-09** ([ADR-004](./adr/004-tokens-deploy-project-scoped.md))
 3. `VERCEL_TOKEN_API_PREVIEW` — *Obsoleto (projeto staging)*
 4. `VERCEL_TOKEN_FRONTEND_PREVIEW` — *Obsoleto (projeto staging)*
 5. `VERCEL_ORG_ID_API` — *Substituído pelo unificado `VERCEL_ORG_ID`*
@@ -51,11 +53,12 @@ Estes segredos eram consumidos exclusivamente pelo workflow `env-sync.yml` (agor
 
 ### 2.2 Segredos Ativos e Obrigatórios no GitHub
 
-Permanecem os **4 segredos de deploy**:
+Permanecem os **5 segredos de deploy**:
 
 | Secret | Valor Esperado |
 |---|---|
-| `VERCEL_TOKEN` | Token de deploy pessoal ou de time com permissão nos projetos |
+| `VERCEL_TOKEN_API` | Token project-scoped do projeto `chat-csa-api` |
+| `VERCEL_TOKEN_FRONTEND` | Token project-scoped do projeto `chat-csa-web` |
 | `VERCEL_ORG_ID` | ID do time proprietário dos projetos na Vercel |
 | `VERCEL_PROJECT_ID_API` | ID do projeto `chat-csa-api` |
 | `VERCEL_PROJECT_ID_FRONTEND` | ID do projeto `chat-csa-web` |
@@ -66,8 +69,8 @@ O workflow de alerta do portal requer, adicionalmente, os segredos `CHAT_CSA_EMA
 
 ## 3. Roteiro Seguro de Descomissionamento
 
-1. **Configurar os 4 Segredos Novos no GitHub:**
-   - Adicionar `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID_API`, `VERCEL_PROJECT_ID_FRONTEND`.
+1. **Configurar os 5 Segredos Novos no GitHub:**
+   - Adicionar `VERCEL_TOKEN_API`, `VERCEL_TOKEN_FRONTEND`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID_API`, `VERCEL_PROJECT_ID_FRONTEND`.
 2. **Validar o Deploy do Branch `development`:**
    - Disparar o workflow `deploy.yml` em `development` e confirmar que `chat-csa-api` e `chat-csa-web` publicam na URL estável de preview.
 3. **Validar o Deploy do Branch `main`:**

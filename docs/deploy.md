@@ -35,14 +35,19 @@ A topologia é enxuta e adota **2 projetos principais** na Vercel vinculados ao 
 
 Os projetos pertencem ao escopo do time na Vercel (identificado por `VERCEL_ORG_ID`), garantindo continuidade institucional independentemente de contas pessoais.
 
-Para gerenciar o deploy a partir do GitHub Actions, são necessários apenas **4 segredos universais no repositório**:
+Para gerenciar o deploy a partir do GitHub Actions são necessários **5 segredos**. Cada projeto usa um token **project-scoped** (`vcp_…`), restrito a um único projeto da Vercel — o CI não precisa de um token com acesso a todos os projetos do time:
 
 | Secret (GitHub) | Descrição |
 |---|---|
-| `VERCEL_TOKEN` | Token de deploy da Vercel (com permissão de deployment nos projetos) |
+| `VERCEL_TOKEN_API` | Token project-scoped do projeto `chat-csa-api` |
+| `VERCEL_TOKEN_FRONTEND` | Token project-scoped do projeto `chat-csa-web` |
 | `VERCEL_ORG_ID` | ID do time proprietário dos projetos |
 | `VERCEL_PROJECT_ID_API` | ID do projeto `chat-csa-api` |
 | `VERCEL_PROJECT_ID_FRONTEND` | ID do projeto `chat-csa-web` |
+
+O workflow resolve o token por job com `secrets[matrix.token_secret] || secrets.VERCEL_TOKEN`: quando `VERCEL_TOKEN_API`/`VERCEL_TOKEN_FRONTEND` existem, eles vencem. O `VERCEL_TOKEN` (token de time, aceito pelos dois projetos) permanece apenas como compatibilidade opcional e **não** está cadastrado. Decisão registrada na [ADR-004](./adr/004-tokens-deploy-project-scoped.md).
+
+> **Token da Vercel é write-only:** o valor aparece uma única vez, na criação, e não há como recuperá-lo depois. "Renovar" significa sempre criar outro token e substituir o secret — não existe copiar o valor de um token existente.
 
 ---
 
@@ -62,7 +67,18 @@ A esteira de integração e entrega contínua é dividida em dois fluxos complem
 - **Comportamento:**
   - `main`: Executa deploy com a flag `--prod`, atualizando a produção.
   - `development`: Executa deploy sem a flag `--prod`, atualizando a URL estável de preview de branch.
+  - A URL estável de preview é aplicada pela API da Vercel (`POST /v2/deployments/{id}/aliases`), não por `vercel alias set`: a CLI consulta `/v2/user`, que token project-scoped não acessa (`Error: User not found.`). O passo valida o retorno e reporta falha como `::warning::` no log, em vez de engolir o erro.
   - Publica no Step Summary do run um resumo legível com os links de acesso aos deploys.
+
+---
+
+## Dependências de Runtime: `pyproject.toml` × `api/requirements.txt`
+
+A Vercel instala **apenas** `api/requirements.txt` (declarado no `builds` de `vercel.json`), enquanto o CI e o ambiente local usam `uv sync` a partir do `pyproject.toml`. As duas listas precisam caminhar juntas:
+
+- toda dependência nova de runtime deve ser adicionada **nos dois arquivos**;
+- se ela entrar só no `pyproject.toml`, o CI fica verde e a função quebra em produção com `FUNCTION_INVOCATION_FAILED` (HTTP 500 em todas as rotas);
+- caso real: `cryptography`, usada por `src/chat_csa/unanswered.py`, faltava em `api/requirements.txt` e derrubou todas as rotas da API até ser adicionada.
 
 ---
 
@@ -77,6 +93,8 @@ Diferente da arquitetura antiga, variáveis de runtime do backend (`LLM_*`, `KB_
 - **Modelos e Provedores:** `LLM_PROVIDER`, `LLM_MODEL`, `OLLAMA_MODEL`, `OLLAMA_BASE_URL`, `OLLAMA_API_KEY`, `OPENAI_API_KEY`.
 - **Base de Conhecimento:** `KB_BACKEND=github`, `KB_REPO=cldaniel101/chat-csa`, `KB_BRANCH=data`, `KB_ROOT` vazio (o `index.md` está na raiz do branch), `KB_TOKEN`, `KB_WRITE_TOKEN`, `KB_CACHE_TTL`.
 - **Painel administrativo:** `CHAT_CSA_ADMIN_USERNAME`, `CHAT_CSA_ADMIN_PASSWORD_HASH`, `CHAT_CSA_AUTH_SECRET`, `CHAT_CSA_AUTH_SESSION_TTL` e `CHAT_CSA_CORS_ORIGINS`. Gere o hash com `uv run python scripts/hash_admin_password.py`; não use prefixo `VITE_` para credenciais.
+- **Perguntas sem resposta:** `CHAT_CSA_UNANSWERED_SECRET` (opcional, mínimo de 32 bytes). Sem ela, o módulo usa `CHAT_CSA_AUTH_SECRET` como chave.
+- `CHAT_CSA_CORS_ORIGINS` aceita lista separada por vírgula e deve ser definida **por ambiente**: em Preview, a URL estável do frontend de preview; em Production, o domínio de produção. Origens fora da lista recebem `400` no preflight.
 
 ### Variáveis do Frontend (`chat-csa-web`)
 - **Production:** `VITE_CONSUMER_URL=https://chat-csa-api.vercel.app`
@@ -91,11 +109,13 @@ Para confirmar a saúde da API em qualquer ambiente:
 ```bash
 # Healthcheck simples:
 curl -s https://chat-csa-api.vercel.app/health
-# {"status":"ok","kb_backend":"github",...}
+# {"status":"ok","config_dir":"/var/task/.consumer","config_exists":true}
 
 # Verificação do OpenAPI:
 curl -s https://chat-csa-api.vercel.app/openapi.json | jq '.paths | keys'
 ```
+
+> Alterar variáveis de ambiente na Vercel **não** afeta deployments já criados: é preciso redeployar (`vercel redeploy` ou novo push) para o runtime ler os novos valores.
 
 Para validar o preview sem credenciais:
 

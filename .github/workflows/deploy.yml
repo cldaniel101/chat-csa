@@ -6,9 +6,9 @@
 #   - push em `development` -> deploy de preview (URL de branch determinística)
 #
 # Segredos universais no GitHub:
-#   - VERCEL_TOKEN: Token de deploy com acesso a ambos os projetos (fallback)
-#   - VERCEL_TOKEN_API: Token de deploy restrito ao projeto `chat-csa-api` (opcional)
-#   - VERCEL_TOKEN_FRONTEND: Token de deploy restrito ao projeto `chat-csa-web` (opcional)
+#   - VERCEL_TOKEN_API: Token project-scoped do projeto `chat-csa-api`
+#   - VERCEL_TOKEN_FRONTEND: Token project-scoped do projeto `chat-csa-web`
+#   - VERCEL_TOKEN: fallback opcional (token de escopo de time); não é cadastrado hoje
 #   - VERCEL_ORG_ID: ID do time proprietário dos projetos
 #   - VERCEL_PROJECT_ID_API: ID do projeto backend
 #   - VERCEL_PROJECT_ID_FRONTEND: ID do projeto frontend
@@ -60,7 +60,7 @@ jobs:
           PROJECT_ID: ${{ secrets[matrix.project_id_secret] }}
         run: |
           if [ -z "$TOKEN" ] || [ -z "$ORG_ID" ] || [ -z "$PROJECT_ID" ]; then
-            echo "::error::Credenciais da Vercel ausentes para ${{ matrix.name }}. Configure VERCEL_TOKEN, VERCEL_ORG_ID e ${{ matrix.project_id_secret }} nos Secrets do GitHub (ver docs/handover.md)."
+            echo "::error::Credenciais da Vercel ausentes para ${{ matrix.name }}. Configure ${{ matrix.token_secret }} (ou VERCEL_TOKEN como fallback), VERCEL_ORG_ID e ${{ matrix.project_id_secret }} nos Secrets do GitHub (ver docs/handover.md)."
             exit 1
           fi
 

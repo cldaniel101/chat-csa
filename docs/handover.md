@@ -2,7 +2,7 @@
 
 Este documento serve como guia definitivo para a equipe receptora, professor ou cliente institucional assumir e operar a infraestrutura de publicação contínua (CI/CD) do **Chat CSA**.
 
-A arquitetura foi simplificada conforme a [ADR-003](./adr/003-simplificacao-arquitetura-devops.md) para operar com apenas **2 projetos na Vercel**, 4 segredos de deploy e 3 segredos do alerta de atualização no GitHub.
+A arquitetura foi simplificada conforme a [ADR-003](./adr/003-simplificacao-arquitetura-devops.md) para operar com apenas **2 projetos na Vercel**, 5 segredos de deploy (um token project-scoped por projeto, conforme a [ADR-004](./adr/004-tokens-deploy-project-scoped.md)) e 3 segredos do alerta de atualização no GitHub.
 
 ---
 
@@ -42,10 +42,13 @@ Cadastre para os ambientes **Production** e **Preview**:
 - `KB_WRITE_TOKEN`: Token com permissão de escrita para o endpoint `/kb/upload` (pode ser o mesmo `KB_TOKEN`)
 - `KB_CACHE_TTL`: `300` (em segundos)
 - `CHAT_CSA_ADMIN_USERNAME`: usuário inicial do painel (não use credencial de demonstração)
-- `CHAT_CSA_ADMIN_PASSWORD_HASH`: hash gerado localmente com `uv run python scripts/hash_admin_password.py`
+- `CHAT_CSA_ADMIN_PASSWORD_HASH`: hash gerado localmente com `uv run python scripts/hash_admin_password.py` (o código exige senha com **no mínimo 12 caracteres**)
 - `CHAT_CSA_AUTH_SECRET`: segredo aleatório de sessão com no mínimo 32 bytes
 - `CHAT_CSA_AUTH_SESSION_TTL`: `28800` (8 horas)
 - `CHAT_CSA_CORS_ORIGINS`: domínio do frontend do respectivo ambiente, sem barra final
+- `CHAT_CSA_UNANSWERED_SECRET` (opcional): chave das perguntas sem resposta, mínimo de 32 bytes; sem ela o módulo usa `CHAT_CSA_AUTH_SECRET`
+
+Exemplo de `CHAT_CSA_CORS_ORIGINS` por ambiente: `https://chat-csa-web-development.vercel.app` em Preview e `https://chat-csa-web.vercel.app` em Production. O valor é uma lista separada por vírgula; inclua a origem oficial do CSA quando o widget for integrado a ela.
 
 As variáveis administrativas existem somente no projeto da API. Nunca crie equivalentes com prefixo `VITE_`.
 
@@ -58,20 +61,25 @@ Cadastre as variáveis do Vite:
 
 ---
 
-### 3. Gerar o Token de Deploy da Vercel
-1. No painel da Vercel, acesse **Account Settings** (ou **Team Settings**) → **Tokens**.
+### 3. Gerar os Tokens de Deploy da Vercel
+São **dois** tokens, um por projeto, para não conceder acesso a todos os projetos do time:
+1. No painel da Vercel, acesse **Account Settings** → **Tokens**.
 2. Clique em **Create Token**.
-3. Defina um nome descritivo (ex.: `github-actions-chat-csa`) e escopo adequado com permissão para realizar deployments.
-4. Copie o valor gerado.
+3. Token do backend: nome `chat-csa-github-actions-api`, restrito ao projeto `chat-csa-api`, com validade definida.
+4. Token do frontend: nome `chat-csa-github-actions-web`, restrito ao projeto `chat-csa-web`.
+5. Copie o valor de cada um no momento da criação.
+
+> Token da Vercel é **write-only**: o valor aparece uma única vez e não há como recuperá-lo depois. "Renovar" significa criar outro e substituir o secret. Um token de escopo de time também funciona, no secret `VERCEL_TOKEN` (fallback opcional do workflow), mas passa a valer para todos os projetos do time.
 
 ---
 
 ### 4. Configurar os Segredos no Repositório GitHub
-No repositório do GitHub, acesse **Settings** → **Secrets and variables** → **Actions**. Para o deploy, cadastre estes 4 segredos:
+No repositório do GitHub, acesse **Settings** → **Secrets and variables** → **Actions**. Para o deploy, cadastre estes 5 segredos:
 
 | Secret | Descrição / Onde Obter |
 |---|---|
-| `VERCEL_TOKEN` | O token de deploy gerado na etapa 3 |
+| `VERCEL_TOKEN_API` | Token project-scoped do projeto `chat-csa-api` (etapa 3) |
+| `VERCEL_TOKEN_FRONTEND` | Token project-scoped do projeto `chat-csa-web` (etapa 3) |
 | `VERCEL_ORG_ID` | O ID da conta ou time dono dos projetos na Vercel (*Team Settings → General → Team ID*) |
 | `VERCEL_PROJECT_ID_API` | O ID do projeto `chat-csa-api` (*Project Settings → General → Project ID*) |
 | `VERCEL_PROJECT_ID_FRONTEND` | O ID do projeto `chat-csa-web` (*Project Settings → General → Project ID*) |

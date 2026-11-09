@@ -26,7 +26,9 @@ Gere o hash interativamente, sem colocar a senha no histórico do shell:
 uv run python scripts/hash_admin_password.py
 ```
 
-O hash usa `scrypt` com salt aleatório. `CHAT_CSA_AUTH_SECRET` deve ter no mínimo 32 bytes e deve ser gerado e armazenado como segredo do ambiente. Nenhuma dessas variáveis pode usar o prefixo `VITE_`, porque variáveis Vite são públicas no bundle do navegador.
+O código recusa senhas com menos de 12 caracteres (`_PASSWORD_MIN_LENGTH` em `server/auth.py`), então credenciais curtas falham na geração do hash, não em runtime. O hash usa `scrypt` com salt aleatório. `CHAT_CSA_AUTH_SECRET` deve ter no mínimo 32 bytes e deve ser gerado e armazenado como segredo do ambiente. Nenhuma dessas variáveis pode usar o prefixo `VITE_`, porque variáveis Vite são públicas no bundle do navegador.
+
+`CHAT_CSA_CORS_ORIGINS` deve ser definida por ambiente e restringir o preflight às origens reais do frontend; sem ela, apenas as origens locais do Vite passam. O registro de perguntas sem resposta usa `CHAT_CSA_UNANSWERED_SECRET` e, na ausência dele, reaproveita `CHAT_CSA_AUTH_SECRET`.
 
 Os tokens de sessão são assinados com HMAC-SHA256, incluem expiração e só são aceitos no formato `Authorization: Bearer <token>`. Alterar um usuário invalida as sessões anteriores desse usuário. O login aplica limite de cinco falhas por cliente em uma janela de cinco minutos.
 

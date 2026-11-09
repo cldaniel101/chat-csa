@@ -22,10 +22,11 @@ Fonte principal: `.env.example` (copie para `.env`). Variáveis que aparecem ape
 | `CONSUMER_CONFIG_DIR` / `CONSUMER_PORT` | dir e porta do consumer | `.consumer` / `8002` (Makefile) |
 | `CONSUMER_LLM_*` / `CONSUMER_HOST` | override de provedor/modelo/chave/bind | comentados no `.env.example` |
 | `CHAT_CSA_ADMIN_USERNAME` | usuário principal do painel | vazio (admin desabilitado) |
-| `CHAT_CSA_ADMIN_PASSWORD_HASH` | hash scrypt da senha administrativa | vazio; gere com `scripts/hash_admin_password.py` |
+| `CHAT_CSA_ADMIN_PASSWORD_HASH` | hash scrypt da senha administrativa (senha com no mínimo 12 caracteres) | vazio; gere com `scripts/hash_admin_password.py` |
 | `CHAT_CSA_AUTH_SECRET` | segredo HMAC das sessões (mínimo de 32 bytes) | vazio |
 | `CHAT_CSA_AUTH_SESSION_TTL` | validade da sessão em segundos | `28800` |
 | `CHAT_CSA_CORS_ORIGINS` | origens autorizadas, separadas por vírgula | origens locais do Vite |
+| `CHAT_CSA_UNANSWERED_SECRET` | chave (mínimo de 32 bytes) das perguntas sem resposta | cai em `CHAT_CSA_AUTH_SECRET` |
 | `KB_BACKEND` | backend da base: `github` (deploy) ou `local` (dev/testes) | `github` (`kb.py`) |
 | `KB_REPO` | repositório `owner/name` que guarda o branch da base | — (`kb.py`) |
 | `KB_BRANCH` | branch da base | `data` (`kb.py`) |
@@ -85,7 +86,7 @@ O consumer monta `./data` como volume e lê o `.env` via `env_file`; as variáve
 
 - `vercel.json` (raiz) empacota `src/chat_csa/**` e `.consumer/**` na função Python apontada por `api/index.py`, com rewrite de tudo para o entrypoint.
 - `frontend/vercel.json` faz o rewrite de SPA para `index.html`.
-- Conforme a [ADR-003](./adr/003-simplificacao-arquitetura-devops.md), a topologia adota 2 projetos na Vercel (`chat-csa-api` e `chat-csa-web`). As variáveis de runtime (`LLM_*`, `KB_*`, `CHAT_CSA_ADMIN_*`, `CHAT_CSA_AUTH_*`, `CHAT_CSA_CORS_ORIGINS` e `VITE_CONSUMER_URL`) são configuradas diretamente no painel de Environment Variables da Vercel para os ambientes Production e Preview, dispensando scripts de sincronização via REST. O CI utiliza 4 segredos universais de deploy (`VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID_API`, `VERCEL_PROJECT_ID_FRONTEND`).
+- Conforme a [ADR-003](./adr/003-simplificacao-arquitetura-devops.md), a topologia adota 2 projetos na Vercel (`chat-csa-api` e `chat-csa-web`). As variáveis de runtime (`LLM_*`, `KB_*`, `CHAT_CSA_ADMIN_*`, `CHAT_CSA_AUTH_*`, `CHAT_CSA_CORS_ORIGINS` e `VITE_CONSUMER_URL`) são configuradas diretamente no painel de Environment Variables da Vercel para os ambientes Production e Preview, dispensando scripts de sincronização via REST. O CI utiliza 5 segredos de deploy (`VERCEL_TOKEN_API`, `VERCEL_TOKEN_FRONTEND`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID_API`, `VERCEL_PROJECT_ID_FRONTEND`), com um token project-scoped por projeto ([ADR-004](./adr/004-tokens-deploy-project-scoped.md)). A Vercel instala apenas `api/requirements.txt`: dependências novas de runtime precisam entrar nele **e** no `pyproject.toml`, senão o CI passa e a função quebra em produção.
 - O workflow manual `scrape-csa.yml` recebe `CHAT_CSA_EMAIL_API_URL`, `CHAT_CSA_EMAIL_API_TOKEN` e `CHAT_CSA_UPDATE_NOTIFICATION_TO` exclusivamente como *repository secrets*. A variável pública opcional `CHAT_CSA_ADMIN_PANEL_URL` troca o link do painel no aviso; sem ela, usa `https://chat-csa-web.vercel.app/admin`. `SCRAPE_RUNNER` pode indicar o label de um runner Linux com acesso ao portal; sem a variável, o workflow usa `ubuntu-latest`.
 
 ## Configuração do agente (`.consumer/`)
