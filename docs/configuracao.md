@@ -39,7 +39,7 @@ Fonte principal: `.env.example` (copie para `.env`). Variáveis que aparecem ape
 | `KB_UPLOAD_MAX_BYTES` | orçamento de bytes por arquivo no upload (teto do corpo da Vercel ~4.5 MB) | `4500000` (`kb_upload.py`) |
 | `CHAT_CSA_PORTAL_TOOLS` | `1` liga `web_csa_fetch`/`web_csa_search` no agente | `0` (`factory.py`) |
 | `CHAT_CSA_EMAIL_API_URL` | endpoint HTTPS da API usada pelo alerta de atualização | vazio (`update_notification.py`) |
-| `CHAT_CSA_EMAIL_API_TOKEN` | token Bearer da API de e-mail | vazio (`update_notification.py`) |
+| `CHAT_CSA_EMAIL_API_TOKEN` | token sigiloso enviado no corpo JSON da API de e-mail | vazio (`update_notification.py`) |
 | `CHAT_CSA_UPDATE_NOTIFICATION_TO` | destinatário do aviso de revisão manual | vazio (`update_notification.py`) |
 | `CHAT_CSA_QA_CACHE_ENABLED` | liga/desliga a injeção da FAQ curada | `1` (`qa_cache.py`) |
 | `CHAT_CSA_QA_CACHE_PATHS` | prefixos da FAQ na base, separados por `os.pathsep` | `perguntas-frequentes/` |

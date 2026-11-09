@@ -90,12 +90,11 @@ def test_sem_mudanca_nao_exige_configuracao_nem_chama_api():
     assert called is False
 
 
-def test_send_update_notification_envia_payload_e_bearer():
+def test_send_update_notification_envia_contrato_da_api():
     captured: dict[str, object] = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
         captured["url"] = str(request.url)
-        captured["authorization"] = request.headers.get("Authorization")
         captured["payload"] = json.loads(request.content)
         return httpx.Response(202)
 
@@ -113,11 +112,13 @@ def test_send_update_notification_envia_payload_e_bearer():
 
     assert sent is True
     assert captured["url"] == "https://email.exemplo.test/send"
-    assert captured["authorization"] == "Bearer token-ficticio"
     payload = captured["payload"]
     assert isinstance(payload, dict)
+    assert set(payload) == {"token", "to", "subject", "message"}
+    assert payload["token"] == "token-ficticio"
     assert payload["to"] == "equipe@example.test"
-    assert PANEL_URL in payload["html"]
+    assert payload["subject"] == "[Chat CSA] 2 documentos precisam de revisão"
+    assert PANEL_URL in payload["message"]
 
 
 def test_erro_da_api_nao_expoe_configuracao_sensivel():

@@ -1,7 +1,8 @@
 """Conversão de arquivos enviados em Markdown para a base de conhecimento.
 
 Usado pelo POST /kb/upload: cada arquivo recebido vira um conceito OKF em
-Markdown; o original não é preservado. A conversão roda dentro do request.
+Markdown. O fluxo de upload preserva o arquivo original separadamente em
+``.originals/``. A conversão roda dentro do request.
 
 - PDF: texto extraído por layout, página a página, + uma imagem rasterizada
   por página (a imagem devolve a estrutura que o texto perde).

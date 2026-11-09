@@ -1907,7 +1907,8 @@ function ExplorerScreen({ token, onLogout, onStartChat }: ExplorerScreenProps) {
               </datalist>
               <p className="kbe-upload-hint">
                 Cada arquivo vira um conceito <code>&lt;seção&gt;/&lt;nome&gt;.md</code> num
-                único commit no branch <code>data</code>; o original não é preservado.
+                único commit no branch <code>data</code>; o arquivo original também é preservado em
+                <code> .originals/</code> junto com o Markdown convertido.
               </p>
             </>
           }

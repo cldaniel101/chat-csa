@@ -82,7 +82,7 @@ Devolve os **bytes originais** do arquivo com o content-type adequado. A convers
 
 ### `POST /kb/upload`
 
-Multipart em lote: o caminho declarado de cada arquivo vem no **filename** da parte e vira o conceito `<pasta>/<slug>.md` (o servidor normaliza caracteres e troca a extensão). Cada arquivo é **convertido dentro do request** — o original não é preservado — e conceitos + índices vão num **único commit atômico** no branch `data` (Git Data API); nunca existe lote parcial.
+Multipart em lote: o caminho declarado de cada arquivo vem no **filename** da parte e vira o conceito `<pasta>/<slug>.md` (o servidor normaliza caracteres e troca a extensão). Cada arquivo é **convertido dentro do request** e o original é preservado em `.originals/<pasta>/<slug>/<nome original>`. Conceitos, originais e índices vão num **único commit atômico** no branch `data` (Git Data API); nunca existe lote parcial.
 
 Tipos convertidos: `pdf` (texto extraído por layout + imagens das páginas numa chamada multimodal, lote a lote), imagens, `csv`/`tsv` (tabela Markdown) e `md`/`txt`/`json` (texto direto). Demais tipos (docx/xlsx/html…) ficam para depois: o arquivo não é gravado e a resposta marca `converted: false`.
 

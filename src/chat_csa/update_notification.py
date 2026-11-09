@@ -164,20 +164,16 @@ def send_update_notification(
 
     config = settings or EmailSettings.from_env()
     payload = {
+        "token": config.api_token,
         "to": config.recipient,
         "subject": message.subject,
-        "text": message.text,
-        "html": message.html,
-    }
-    headers = {
-        "Authorization": f"Bearer {config.api_token}",
-        "Content-Type": "application/json",
+        "message": message.text,
     }
 
     owned_client = client is None
-    http_client = client or httpx.Client(timeout=15, follow_redirects=False)
+    http_client = client or httpx.Client(timeout=15, follow_redirects=True)
     try:
-        response = http_client.post(config.api_url, json=payload, headers=headers)
+        response = http_client.post(config.api_url, json=payload)
     except httpx.HTTPError:
         # A exceção original pode conter a URL configurada; não a propagamos.
         raise UpdateNotificationError("Falha de rede ao chamar a API de e-mail.") from None
