@@ -37,7 +37,7 @@ Cadastre para os ambientes **Production** e **Preview**:
 - `KB_BACKEND`: `github`
 - `KB_REPO`: Repositório da base (ex.: `seu-usuario-ou-org/chat-csa`)
 - `KB_BRANCH`: `data`
-- `KB_ROOT`: `knowledge`
+- `KB_ROOT`: vazio, pois `index.md` está diretamente na raiz do branch `data`
 - `KB_TOKEN`: Personal Access Token do GitHub com permissão `contents:read`
 - `KB_WRITE_TOKEN`: Token com permissão de escrita para o endpoint `/kb/upload` (pode ser o mesmo `KB_TOKEN`)
 - `KB_CACHE_TTL`: `300` (em segundos)

@@ -64,7 +64,11 @@ def _cors_origins() -> list[str]:
     """Lê a allowlist de origens do frontend; sem curinga por padrão."""
     configured = os.getenv("CHAT_CSA_CORS_ORIGINS", "")
     if configured.strip():
-        return [origin.strip().rstrip("/") for origin in configured.split(",") if origin.strip()]
+        origins = [origin.strip().rstrip("/") for origin in configured.split(",") if origin.strip()]
+        if "*" in origins:
+            logger.error("CHAT_CSA_CORS_ORIGINS não aceita curinga; todas as origens serão bloqueadas.")
+            return []
+        return origins
     return ["http://localhost:5173", "http://127.0.0.1:5173"]
 
 

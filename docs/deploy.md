@@ -75,7 +75,7 @@ Diferente da arquitetura antiga, variáveis de runtime do backend (`LLM_*`, `KB_
 
 ### Variáveis da API (`chat-csa-api`)
 - **Modelos e Provedores:** `LLM_PROVIDER`, `LLM_MODEL`, `OLLAMA_MODEL`, `OLLAMA_BASE_URL`, `OLLAMA_API_KEY`, `OPENAI_API_KEY`.
-- **Base de Conhecimento:** `KB_BACKEND=github`, `KB_REPO`, `KB_BRANCH=data`, `KB_ROOT=knowledge`, `KB_TOKEN`, `KB_WRITE_TOKEN`, `KB_CACHE_TTL`.
+- **Base de Conhecimento:** `KB_BACKEND=github`, `KB_REPO=cldaniel101/chat-csa`, `KB_BRANCH=data`, `KB_ROOT` vazio (o `index.md` está na raiz do branch), `KB_TOKEN`, `KB_WRITE_TOKEN`, `KB_CACHE_TTL`.
 - **Painel administrativo:** `CHAT_CSA_ADMIN_USERNAME`, `CHAT_CSA_ADMIN_PASSWORD_HASH`, `CHAT_CSA_AUTH_SECRET`, `CHAT_CSA_AUTH_SESSION_TTL` e `CHAT_CSA_CORS_ORIGINS`. Gere o hash com `uv run python scripts/hash_admin_password.py`; não use prefixo `VITE_` para credenciais.
 
 ### Variáveis do Frontend (`chat-csa-web`)
@@ -96,6 +96,18 @@ curl -s https://chat-csa-api.vercel.app/health
 # Verificação do OpenAPI:
 curl -s https://chat-csa-api.vercel.app/openapi.json | jq '.paths | keys'
 ```
+
+Para validar o preview sem credenciais:
+
+```bash
+uv run python scripts/validate_preview.py
+```
+
+O comando verifica healthcheck, carregamento do frontend, bloqueio sem token,
+login inválido e CORS. Para incluir login real, TTL e recarga do painel, defina
+temporariamente `CHAT_CSA_SMOKE_ADMIN_PASSWORD` no terminal e passe somente o
+nome de usuário com `--admin-username`. A senha e o token nunca são impressos,
+gravados ou enviados ao frontend.
 
 ---
 

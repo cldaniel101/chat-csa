@@ -158,3 +158,18 @@ def test_cors_and_security_headers_are_restricted():
     assert "Access-Control-Allow-Origin" not in untrusted.headers
     assert protected.headers["Cache-Control"] == "no-store"
     assert protected.headers["X-Content-Type-Options"] == "nosniff"
+
+
+def test_cors_wildcard_configuration_fails_closed(monkeypatch):
+    monkeypatch.setenv("CHAT_CSA_CORS_ORIGINS", "*")
+    client = _client()
+
+    response = client.options(
+        "/auth/login",
+        headers={
+            "Origin": "https://origem-externa.example",
+            "Access-Control-Request-Method": "POST",
+        },
+    )
+
+    assert "Access-Control-Allow-Origin" not in response.headers

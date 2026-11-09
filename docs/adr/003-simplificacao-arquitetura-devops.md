@@ -57,7 +57,7 @@ As variáveis de ambiente de runtime são configuradas diretamente no painel da 
 | `KB_BACKEND` | Production, Preview: `github` | Backend da base de conhecimento remota |
 | `KB_REPO` | Production, Preview | Repositório do bundle OKF (ex.: `davi/chat-csa`) |
 | `KB_BRANCH` | Production, Preview: `data` | Branch de dados que hospeda o bundle |
-| `KB_ROOT` | Production, Preview: `knowledge` | Diretório raiz da base no repositório |
+| `KB_ROOT` | Production, Preview: vazio | O `index.md` está diretamente na raiz do branch `data` |
 | `KB_TOKEN` | Production, Preview | Token GitHub com permissão de leitura |
 | `KB_WRITE_TOKEN` | Production, Preview | Token GitHub para endpoints de upload (`/kb/upload`) |
 | `KB_CACHE_TTL` | Production: `300`, Preview: `60` | TTL de cache em segundos na memória |

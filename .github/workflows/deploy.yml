@@ -40,9 +40,11 @@ jobs:
           - name: api
             workdir: .
             project_id_secret: VERCEL_PROJECT_ID_API
+            preview_alias: chat-csa-api-development.vercel.app
           - name: frontend
             workdir: frontend
             project_id_secret: VERCEL_PROJECT_ID_FRONTEND
+            preview_alias: chat-csa-web-development.vercel.app
     steps:
       - name: Checkout do código
         uses: actions/checkout@v4
@@ -93,8 +95,8 @@ jobs:
           DEPLOY_URL=$(npx vercel@59 deploy --yes --token "$VERCEL_TOKEN" $EXTRA_ARGS)
           echo "url=$DEPLOY_URL" >> "$GITHUB_OUTPUT"
 
-          # Atribui a URL fixa e limpa de preview da branch development (sem sufixo de time)
-          ALIAS_HOST="chat-csa-${{ matrix.name }}-development.vercel.app"
+          # Atribui a URL fixa de preview correspondente ao nome real do projeto.
+          ALIAS_HOST="${{ matrix.preview_alias }}"
           npx vercel@59 alias set "$DEPLOY_URL" "$ALIAS_HOST" --token "$VERCEL_TOKEN" || true
 
           echo "### 🔍 Deploy de Preview (${{ matrix.name }})" >> "$GITHUB_STEP_SUMMARY"
