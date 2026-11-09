@@ -29,6 +29,8 @@ import sys
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
+import httpx
+
 # Importa o pacote instalado; se rodar sem `uv sync`, cai para `src/`.
 try:
     from chat_csa.csa_portal import (
@@ -143,11 +145,22 @@ def scrape(
     """Executa o scrape completo e devolve um resumo numérico."""
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    fixed = _fixed_urls(refresh=refresh)
+    discovery_errors = 0
+    try:
+        fixed = _fixed_urls(refresh=refresh)
+    except httpx.HTTPError as exc:
+        fixed = [f"https://csa.uefs.br/index.php/{FALLBACK_SLUG}/{path}" for path in FIXED_PATHS]
+        discovery_errors += 1
+        print(f"[aviso] falha de rede ao descobrir o ciclo vigente ({type(exc).__name__}); usando fallback")
     print(f"[scrape] URLs fixas: {len(fixed)}")
 
-    search = search_portal(query="", limit=limit, refresh=refresh)
-    discovered = [str(item["url"]) for item in search.get("results", []) if item.get("url")]
+    try:
+        search = search_portal(query="", limit=limit, refresh=refresh)
+        discovered = [str(item["url"]) for item in search.get("results", []) if item.get("url")]
+    except httpx.HTTPError as exc:
+        discovered = []
+        discovery_errors += 1
+        print(f"[aviso] falha de rede na busca do portal ({type(exc).__name__}); seguindo com URLs fixas")
     print(f"[scrape] URLs descobertas na busca: {len(discovered)}")
 
     urls = _dedupe(fixed + discovered)
@@ -155,11 +168,16 @@ def scrape(
 
     pages = 0
     written = 0
-    errors = 0
+    errors = discovery_errors
     changes: list[dict[str, str]] = []
 
     for url in urls:
-        result = fetch_page(url, refresh=refresh, extract_text=True)
+        try:
+            result = fetch_page(url, refresh=refresh, extract_text=True)
+        except httpx.HTTPError as exc:
+            print(f"[aviso] falha de rede ao buscar {url}: {type(exc).__name__}")
+            errors += 1
+            continue
 
         if result.get("error"):
             if "não encontrada" in str(result["error"]):

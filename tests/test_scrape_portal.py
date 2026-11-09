@@ -6,6 +6,8 @@ import importlib.util
 import sys
 from pathlib import Path
 
+import httpx
+
 _SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "scrape_portal.py"
 _spec = importlib.util.spec_from_file_location("scrape_portal", _SCRIPT)
 assert _spec and _spec.loader
@@ -94,6 +96,67 @@ def test_scrape_classifica_documento_novo_inalterado_e_alterado(tmp_path, monkey
     changed = scrape_portal.scrape(tmp_path)
     assert changed["written"] == 1
     assert changed["changes"][0]["kind"] == "alterado"
+
+
+def test_scrape_continua_quando_uma_url_tem_timeout(tmp_path, monkeypatch):
+    unavailable = "https://csa.uefs.br/index.php/sisu261/inicial"
+    available = "https://csa.uefs.br/index.php/sisu261/downloads"
+    monkeypatch.setattr(scrape_portal, "_fixed_urls", lambda refresh=True: [unavailable, available])
+    monkeypatch.setattr(
+        scrape_portal,
+        "search_portal",
+        lambda query, limit, refresh: {"results": []},
+    )
+
+    def fake_fetch(page_url, refresh, extract_text):
+        if page_url == unavailable:
+            raise httpx.ConnectTimeout("timeout de teste")
+        return {
+            "url": page_url,
+            "title": "Downloads",
+            "fetched_at": "2026-11-09T00:00:00-03:00",
+            "content_type": "text/html",
+            "source_type": "html",
+            "is_official": True,
+            "content": "conteúdo disponível",
+        }
+
+    monkeypatch.setattr(scrape_portal, "fetch_page", fake_fetch)
+
+    summary = scrape_portal.scrape(tmp_path)
+
+    assert summary["pages"] == 1
+    assert summary["written"] == 1
+    assert summary["errors"] == 1
+
+
+def test_scrape_usa_urls_fixas_quando_busca_tem_timeout(tmp_path, monkeypatch):
+    url = "https://csa.uefs.br/index.php/sisu261/inicial"
+    monkeypatch.setattr(scrape_portal, "_fixed_urls", lambda refresh=True: [url])
+    monkeypatch.setattr(
+        scrape_portal,
+        "search_portal",
+        lambda query, limit, refresh: (_ for _ in ()).throw(httpx.ConnectTimeout("timeout de teste")),
+    )
+    monkeypatch.setattr(
+        scrape_portal,
+        "fetch_page",
+        lambda page_url, refresh, extract_text: {
+            "url": page_url,
+            "title": "Página inicial",
+            "fetched_at": "2026-11-09T00:00:00-03:00",
+            "content_type": "text/html",
+            "source_type": "html",
+            "is_official": True,
+            "content": "conteúdo disponível",
+        },
+    )
+
+    summary = scrape_portal.scrape(tmp_path)
+
+    assert summary["pages"] == 1
+    assert summary["written"] == 1
+    assert summary["errors"] == 1
 
 
 def test_main_grava_resumo_e_falha_quando_nenhuma_pagina_entra(tmp_path, monkeypatch):
