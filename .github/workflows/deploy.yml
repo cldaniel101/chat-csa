@@ -6,7 +6,9 @@
 #   - push em `development` -> deploy de preview (URL de branch determinística)
 #
 # Segredos universais no GitHub:
-#   - VERCEL_TOKEN: Token de deploy com acesso a ambos os projetos
+#   - VERCEL_TOKEN: Token de deploy com acesso a ambos os projetos (fallback)
+#   - VERCEL_TOKEN_API: Token de deploy restrito ao projeto `chat-csa-api` (opcional)
+#   - VERCEL_TOKEN_FRONTEND: Token de deploy restrito ao projeto `chat-csa-web` (opcional)
 #   - VERCEL_ORG_ID: ID do time proprietário dos projetos
 #   - VERCEL_PROJECT_ID_API: ID do projeto backend
 #   - VERCEL_PROJECT_ID_FRONTEND: ID do projeto frontend
@@ -40,10 +42,12 @@ jobs:
           - name: api
             workdir: .
             project_id_secret: VERCEL_PROJECT_ID_API
+            token_secret: VERCEL_TOKEN_API
             preview_alias: chat-csa-api-development.vercel.app
           - name: frontend
             workdir: frontend
             project_id_secret: VERCEL_PROJECT_ID_FRONTEND
+            token_secret: VERCEL_TOKEN_FRONTEND
             preview_alias: chat-csa-web-development.vercel.app
     steps:
       - name: Checkout do código
@@ -51,7 +55,7 @@ jobs:
 
       - name: Valida credenciais da Vercel
         env:
-          TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          TOKEN: ${{ secrets[matrix.token_secret] || secrets.VERCEL_TOKEN }}
           ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           PROJECT_ID: ${{ secrets[matrix.project_id_secret] }}
         run: |
@@ -65,7 +69,7 @@ jobs:
         id: deploy_prod
         working-directory: ${{ matrix.workdir }}
         env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_TOKEN: ${{ secrets[matrix.token_secret] || secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets[matrix.project_id_secret] }}
         run: |
@@ -84,7 +88,7 @@ jobs:
         id: deploy_preview
         working-directory: ${{ matrix.workdir }}
         env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_TOKEN: ${{ secrets[matrix.token_secret] || secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets[matrix.project_id_secret] }}
         run: |
