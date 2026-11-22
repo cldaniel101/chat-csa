@@ -27,9 +27,8 @@ COPY docs ./docs
 
 # Env padrão — sobrescreva em runtime
 ENV AGENT_CONFIG_DIR=.consumer \
-    LLM_PROVIDER=ollama \
-    OLLAMA_BASE_URL=http://host.docker.internal:11434 \
-    LLM_MODEL=gemma4:31b-cloud \
+    LLM_PROVIDER=openrouter \
+    LLM_MODEL=nvidia/nemotron-3.5-lightning:free \
     HOST=0.0.0.0 \
     PORT=8000
 

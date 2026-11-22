@@ -37,7 +37,7 @@ O system prompt é **configuração viva**: `agent/prompt.py` concatena `.consum
 
 ## O caminho de uma pergunta
 
-1. O servidor recebe a mensagem (OpenAI ou compat Ollama) e é **stateless por request** (`server/app.py`).
+1. O servidor recebe a mensagem (API compatível com OpenAI, ou o shim no formato Ollama) e é **stateless por request** (`server/app.py`). O provedor do modelo é o **OpenRouter**.
 2. A pergunta passa pelo `qa_cache.py`: entradas de FAQ curada do prefixo `perguntas-frequentes/` da base remota são pontuadas por similaridade e injetadas no prompt como **referência**, não como resposta pronta (leitura via cliente `kb`, com cache TTL).
 3. O system prompt é remontado com um guia de citações obrigatório (seção `Fontes:`, `[N]`, nunca citar caminho de arquivo — e sim a URL do frontmatter `resource:`/`url:`; conceito sem essas chaves é citado pelo título + caminho).
 4. O agente decide usar ferramentas. Perguntas factuais tendem a `kb_list` → `kb_read` na base; com o portal ligado, complementa com `web_csa_search` → `web_csa_fetch` (allowlist `csa.uefs.br`, intervalo mínimo de 3s, concorrência 1, backoff em 429/5xx, cache em disco com TTL de 1h e extração de texto de PDF — tudo em `csa_portal.py`).
@@ -62,7 +62,7 @@ Os conceitos curados seguem o formato **OKF** (um Markdown por conceito, com fro
 ## Superfícies de interface
 
 - **Widget React** (`frontend/`): botão flutuante com streaming, fontes e sugestões. Pode ser embutido em qualquer página via `public/embed.js` (iframe com `?embed=1` e `?consumerUrl=`).
-- **API HTTP**: rotas OpenAI/Ollama + superfície admin `/kb/*`, documentadas em [api.md](./api.md).
+- **API HTTP**: rotas compatíveis com OpenAI (+ shim Ollama) + superfície admin `/kb/*`, documentadas em [api.md](./api.md).
 
 ## Limites atuais
 

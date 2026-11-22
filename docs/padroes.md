@@ -4,13 +4,13 @@ Este documento reúne os padrões estruturais que se repetem no código do Chat 
 
 ## 1. Fábrica de agente com troca de provedor
 
-`agent/factory.py` concentra a criação do LLM e do agente. O provedor é resolvido em cascata (`get_llm`): argumento → `LLM_PROVIDER` → `ollama`; o modelo segue `LLM_MODEL` → `MODEL` → default do provedor (`OLLAMA_MODEL` ou `OPENAI_MODEL`). Três provedores são suportados:
+`agent/factory.py` concentra a criação do LLM e do agente. O provedor é resolvido em cascata (`get_llm`): argumento → `LLM_PROVIDER` → `openrouter`; o modelo segue `LLM_MODEL` → `MODEL` → default do provedor (`OPENROUTER_MODEL` ou `OPENAI_MODEL`). Três provedores são suportados:
 
 - `openai` — `ChatOpenAI` com `base_url` opcional, cobrindo Azure/OpenRouter/proxies;
-- `ollama` — `ChatOllama`, com header Bearer via `client_kwargs` quando há `OLLAMA_API_KEY` e `reasoning` ligado por padrão;
+- `openrouter` — `ChatOpenAI` apontando para `https://openrouter.ai/api/v1`, com `OPENROUTER_API_KEY`, teto de tokens (`LLM_MAX_TOKENS`) e timeout (`LLM_TIMEOUT_S`); é o provedor padrão;
 - `fake` — um `FakeListChatModel` com `bind_tools` no-op, usado pelos testes para rodar sem LLM.
 
-O motivo de existir uma fábrica (em vez de instanciar o LLM no servidor) é duplo: o mesmo servidor atende OpenAI e Ollama sem ramificação nas rotas, e os testes trocam o provedor por configuração, sem mock de rede. A montagem do agente tenta `langchain.agents.create_agent` e cai para `langgraph.prebuilt.create_react_agent` — um fallback de compatibilidade entre versões do LangChain.
+O motivo de existir uma fábrica (em vez de instanciar o LLM no servidor) é duplo: o mesmo servidor atende OpenRouter (ou OpenAI) e clientes no formato Ollama sem ramificação nas rotas, e os testes trocam o provedor por configuração, sem mock de rede. A montagem do agente tenta `langchain.agents.create_agent` e cai para `langgraph.prebuilt.create_react_agent` — um fallback de compatibilidade entre versões do LangChain.
 
 ## 2. Registro de ferramentas com conjunto único
 

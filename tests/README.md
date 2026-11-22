@@ -64,7 +64,7 @@ npm run test
 tests/
 ├── conftest.py              # fixtures: base local + reset do cliente kb
 ├── test_tools.py            # Ferramentas do consumer: kb_list/kb_read e renderização por tipo
-├── test_server.py           # API FastAPI (health, modelos, completions, Ollama, FAQ e lacunas)
+├── test_server.py           # API FastAPI (health, modelos, completions, shim Ollama, FAQ e lacunas)
 ├── test_kb.py               # Cliente da base: github falso (write atômico) e /kb/upload
 ├── test_admin.py            # Auth admin e CRUD /admin/users (painel removido)
 ├── test_qa_cache.py         # FAQ curada lida da base remota (backend local)

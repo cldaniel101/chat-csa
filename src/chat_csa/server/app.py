@@ -192,8 +192,10 @@ def _openai_chunk(completion_id: str, created: int, model: str, delta: dict, fin
 def _reasoning_from_message(message) -> str:
     """Extrai reasoning (thinking) de uma mensagem ou chunk do LangChain.
 
-    O langchain-ollama mapeia o campo `thinking` do Ollama para
-    additional_kwargs['reasoning_content'] (invoke e stream).
+    Provedores compatíveis com OpenAI entregam o raciocínio fora do `content`:
+    o OpenRouter usa `reasoning` (texto ou lista de blocos) e alguns modelos
+    expõem `reasoning_content`. Ambos chegam em additional_kwargs, tanto no
+    invoke quanto no stream.
     """
     if isinstance(message, dict):
         additional = message.get("additional_kwargs", {}) or {}

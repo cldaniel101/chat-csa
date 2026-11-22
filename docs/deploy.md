@@ -90,7 +90,7 @@ Diferente da arquitetura antiga, variáveis de runtime do backend (`LLM_*`, `KB_
 2. Cadastre as variáveis selecionando os ambientes apropriados (**Production** e **Preview**).
 
 ### Variáveis da API (`chat-csa-api`)
-- **Modelos e Provedores:** `LLM_PROVIDER`, `LLM_MODEL`, `OLLAMA_MODEL`, `OLLAMA_BASE_URL`, `OLLAMA_API_KEY`, `OPENAI_API_KEY`.
+- **Modelos e Provedores:** `LLM_PROVIDER=openrouter`, `LLM_MODEL` (id `:free` ou `openrouter/free`), `OPENROUTER_API_KEY`, `OPENROUTER_BASE_URL` (opcional), `LLM_MAX_TOKENS`, `LLM_TIMEOUT_S`, `LLM_MAX_RETRIES`, `OPENAI_API_KEY` (só se trocar para OpenAI puro).
 - **Base de Conhecimento:** `KB_BACKEND=github`, `KB_REPO=cldaniel101/chat-csa`, `KB_BRANCH=data`, `KB_ROOT` vazio (o `index.md` está na raiz do branch), `KB_TOKEN`, `KB_WRITE_TOKEN`, `KB_CACHE_TTL`.
 - **Painel administrativo:** `CHAT_CSA_ADMIN_USERNAME`, `CHAT_CSA_ADMIN_PASSWORD_HASH`, `CHAT_CSA_AUTH_SECRET`, `CHAT_CSA_AUTH_SESSION_TTL` e `CHAT_CSA_CORS_ORIGINS`. Gere o hash com `uv run python scripts/hash_admin_password.py`; não use prefixo `VITE_` para credenciais.
 - **Perguntas sem resposta:** `CHAT_CSA_UNANSWERED_SECRET` (opcional, mínimo de 32 bytes). Sem ela, o módulo usa `CHAT_CSA_AUTH_SECRET` como chave.
