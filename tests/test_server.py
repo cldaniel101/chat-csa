@@ -197,3 +197,61 @@ def test_selection_response_without_valid_source_is_blocked(kb_local):
     assert "fake-ok" not in content
     records = list((kb_local / ".admin" / "unanswered").glob("*.json"))
     assert len(records) == 1
+
+
+# --- Resposta vazia de modelos gratuitos ---------------------------------
+
+import asyncio  # noqa: E402
+import importlib  # noqa: E402
+
+# `chat_csa.server.app` é reexportado como instância FastAPI no __init__, então
+# o módulo precisa ser resolvido via importlib para acessar as funções internas.
+app_module = importlib.import_module("chat_csa.server.app")
+
+
+def test_retry_on_empty_answer_returns_second_attempt(monkeypatch):
+    from langchain_core.messages import AIMessage
+
+    scope = app_module.infer_selection_scope(["matrícula SiSU 2026"])
+    answers = [
+        {"messages": [AIMessage(content="")]},
+        {"messages": [AIMessage(content="Resposta com fonte: https://csa.uefs.br/x")]},
+    ]
+
+    async def fake_invoke(agent, messages, _scope):
+        return answers.pop(0)
+
+    monkeypatch.setattr(app_module, "_invoke_with_selection_scope", fake_invoke)
+    monkeypatch.setattr(app_module, "_has_successful_evidence_lookup", lambda _msgs: True)
+
+    result, text = asyncio.run(
+        app_module._invoke_with_retry_on_empty(None, [], scope)
+    )
+
+    assert "Resposta com fonte" in text
+    assert answers == [], "a segunda tentativa deveria ter sido consumida"
+
+
+def test_retry_on_empty_answer_stops_when_no_evidence(monkeypatch):
+    from langchain_core.messages import AIMessage
+
+    scope = app_module.infer_selection_scope(["oi"])
+    calls = []
+
+    async def fake_invoke(agent, messages, _scope):
+        calls.append(1)
+        return {"messages": [AIMessage(content="")]}
+
+    monkeypatch.setattr(app_module, "_invoke_with_selection_scope", fake_invoke)
+    monkeypatch.setattr(app_module, "_has_successful_evidence_lookup", lambda _msgs: False)
+
+    result, text = asyncio.run(
+        app_module._invoke_with_retry_on_empty(None, [], scope)
+    )
+
+    assert text == ""
+    assert len(calls) == 1, "sem fontes consultadas não deve repetir"
+
+
+def test_empty_answer_falls_back_to_explicit_message():
+    assert "Não consegui montar a resposta" in app_module._EMPTY_ANSWER_FALLBACK

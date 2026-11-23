@@ -503,6 +503,36 @@ async def _invoke_with_selection_scope(agent, messages: list, scope: SelectionSc
         reset_selection_scope(token)
 
 
+_EMPTY_ANSWER_NUDGE = (
+    "Sua última resposta veio vazia. Responda agora em texto, em português, "
+    "citando as fontes que você consultou."
+)
+
+_EMPTY_ANSWER_FALLBACK = (
+    "Não consegui montar a resposta agora. Tente novamente em instantes ou "
+    "reformule a pergunta."
+)
+
+
+async def _invoke_with_retry_on_empty(agent, messages: list, scope: SelectionScope):
+    """Invoca o agente e repete uma vez quando o modelo encerra sem texto.
+
+    Modelos gratuitos às vezes terminam o turno sem conteúdo depois de usar
+    ferramentas. Sem a repetição o usuário recebe uma bolha vazia.
+    Retorna (resultado, texto_extraído).
+    """
+    result = await _invoke_with_selection_scope(agent, messages, scope)
+    text = _extract_text_from_agent_result(result)
+    if text.strip() or not _has_successful_evidence_lookup(result.get("messages", [])):
+        return result, text
+
+    logger.warning("Resposta vazia após consulta de fontes; repetindo uma vez.")
+    retry = await _invoke_with_selection_scope(
+        agent, [*messages, HumanMessage(content=_EMPTY_ANSWER_NUDGE)], scope
+    )
+    return retry, _extract_text_from_agent_result(retry)
+
+
 def create_app(config_dir: str | Path | None = None) -> FastAPI:
     config_dir = Path(config_dir or os.getenv("AGENT_CONFIG_DIR") or ".consumer")
     auth_store.configure_from_env()
@@ -601,10 +631,10 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
         force_buffer = _is_conversational(last_user_msg) or selection_scope.must_filter
 
         if not stream or force_buffer:
-            result = await _invoke_with_selection_scope(agent, lc_messages, selection_scope)
+            result, raw_text = await _invoke_with_retry_on_empty(agent, lc_messages, selection_scope)
             result_messages = result.get("messages", [])
             text = _format_agent_response(
-                _extract_text_from_agent_result(result),
+                raw_text,
                 source_was_consulted=_has_source_lookup(result_messages) or bool(faq_block),
             )
             text = _enforce_selection_response(
@@ -613,6 +643,8 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
                 messages=result_messages,
                 has_filtered_faq=bool(faq_block),
             )
+            if not text.strip():
+                text = _EMPTY_ANSWER_FALLBACK
             await _record_unanswered_if_needed(
                 text,
                 question=last_user_msg,
@@ -771,10 +803,10 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
         force_buffer = _is_conversational(last_user_msg) or selection_scope.must_filter
 
         if not stream or force_buffer:
-            result = await _invoke_with_selection_scope(agent, lc_messages, selection_scope)
+            result, raw_text = await _invoke_with_retry_on_empty(agent, lc_messages, selection_scope)
             result_messages = result.get("messages", [])
             text = _format_agent_response(
-                _extract_text_from_agent_result(result),
+                raw_text,
                 source_was_consulted=_has_source_lookup(result_messages) or bool(faq_block),
             )
             text = _enforce_selection_response(
@@ -783,6 +815,8 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
                 messages=result_messages,
                 has_filtered_faq=bool(faq_block),
             )
+            if not text.strip():
+                text = _EMPTY_ANSWER_FALLBACK
             await _record_unanswered_if_needed(
                 text,
                 question=last_user_msg,
