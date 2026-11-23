@@ -50,7 +50,9 @@ from ..selection_scope import (
     set_selection_scope,
 )
 from ..unanswered import record_unanswered_question
+from . import audit as audit_store
 from . import auth as auth_store
+from .audit import router as audit_router
 from .kb_api import router as kb_router
 from .models import ChatMessage, ModelCard, ModelsResponse
 from .unanswered_api import router as unanswered_router
@@ -857,49 +859,106 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
         username = body.get("username", "")
         password = body.get("password", "")
         client_id = req.client.host if req.client else "unknown"
-        return auth_store.login(username=username, password=password, client_id=client_id)
+        result = await run_in_threadpool(
+            auth_store.login,
+            username=username,
+            password=password,
+            client_id=client_id,
+        )
+        await run_in_threadpool(
+            audit_store.record_audit_event,
+            user=result["user"],
+            action="auth.login",
+            resource_type="auth",
+            resource_id=result["user"]["id"],
+            details={"client_id": client_id},
+        )
+        return result
 
     @app.get("/auth/me")
     async def auth_me(authorization: str | None = Header(default=None)):
-        user = auth_store.verify_token(authorization)
+        user = await run_in_threadpool(auth_store.verify_token, authorization)
         if not user:
             return JSONResponse({"authenticated": False}, status_code=401)
         return {"authenticated": True, "user": user}
 
-    def _require_admin(authorization: str | None = Header(default=None)):
-        return auth_store.require_auth(authorization)
-
     @app.get("/admin/users")
     async def admin_list(authorization: str | None = Header(default=None)):
-        _require_admin(authorization)
-        return auth_store.list_users()
+        await run_in_threadpool(auth_store.require_superadmin, authorization)
+        return await run_in_threadpool(auth_store.list_users)
 
     @app.post("/admin/users")
     async def admin_create(req: Request, authorization: str | None = Header(default=None)):
-        _require_admin(authorization)
+        actor = await run_in_threadpool(auth_store.require_superadmin, authorization)
         body = await req.json()
-        return auth_store.create_user(
+        created = await run_in_threadpool(
+            auth_store.create_user,
             username=body.get("username", ""),
             password=body.get("password", ""),
             role=body.get("role", "admin"),
+            is_superadmin=bool(body.get("is_superadmin", False)),
+            created_by=actor["id"],
         )
+        await run_in_threadpool(
+            audit_store.record_audit_event,
+            user=actor,
+            action="user.create",
+            resource_type="user",
+            resource_id=created["id"],
+            details={"username": created["username"], "role": created["role"]},
+        )
+        return created
 
     @app.put("/admin/users/{uid}")
     async def admin_update(uid: str, req: Request, authorization: str | None = Header(default=None)):
-        _require_admin(authorization)
+        actor = await run_in_threadpool(auth_store.require_superadmin, authorization)
         body = await req.json()
-        return auth_store.update_user(uid, username=body.get("username"), password=body.get("password"), role=body.get("role"))
+        updated = await run_in_threadpool(
+            auth_store.update_user,
+            uid,
+            username=body.get("username"),
+            password=body.get("password"),
+            role=body.get("role"),
+            is_active=body.get("is_active"),
+            is_superadmin=body.get("is_superadmin"),
+            actor_id=actor["id"],
+        )
+        await run_in_threadpool(
+            audit_store.record_audit_event,
+            user=actor,
+            action="user.update",
+            resource_type="user",
+            resource_id=uid,
+            details={
+                "username": updated["username"],
+                "role": updated["role"],
+                "is_active": updated["is_active"],
+                "changed_fields": sorted(key for key in body if key != "password"),
+                "password_changed": bool(body.get("password")),
+            },
+        )
+        return updated
 
     @app.delete("/admin/users/{uid}")
     async def admin_delete(uid: str, authorization: str | None = Header(default=None)):
-        _require_admin(authorization)
-        return auth_store.delete_user(uid)
+        actor = await run_in_threadpool(auth_store.require_superadmin, authorization)
+        deleted = await run_in_threadpool(auth_store.delete_user, uid, actor_id=actor["id"])
+        await run_in_threadpool(
+            audit_store.record_audit_event,
+            user=actor,
+            action="user.delete",
+            resource_type="user",
+            resource_id=uid,
+            details={"username": deleted.get("username"), "role": deleted.get("role")},
+        )
+        return deleted
 
     # ------------------------------------------------------------------
     # Base de conhecimento remota — superfície admin /kb/* (auth obrigatória)
     # ------------------------------------------------------------------
     app.include_router(kb_router)
     app.include_router(unanswered_router)
+    app.include_router(audit_router)
 
     # Painel FastHTML do ingester removido (só o consumer existe agora);
     # as rotas JSON /admin/users e a auth admin continuam nesta app.
