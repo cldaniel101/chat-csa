@@ -1,5 +1,10 @@
 """Fábrica de agentes: monta um agente LangChain com chamada de ferramentas
-para uma raiz de config."""
+para uma raiz de config.
+
+O provedor de LLM é resolvido em cascata: argumento → ``LLM_PROVIDER`` →
+``openrouter``. O padrão é OpenRouter (endpoint compatível com OpenAI, modelos
+com tier gratuito), configurado apenas por variáveis de ambiente.
+"""
 
 from __future__ import annotations
 
@@ -11,16 +16,60 @@ from langchain_core.language_models import BaseChatModel
 from .prompt import build_system_prompt
 from .tools import ALL_TOOLS, CSA_TOOLS
 
+# Endpoint compatível com OpenAI (mesmo formato usado pelo SDK oficial).
+OPENROUTER_DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
+# Roteador de modelos gratuitos: escolhe um modelo free disponível no momento.
+OPENROUTER_DEFAULT_MODEL = "openrouter/free"
+
+
+def _openrouter_llm(model: str, temperature: float) -> BaseChatModel:
+    """Monta o cliente OpenRouter (API compatível com OpenAI)."""
+    from langchain_openai import ChatOpenAI
+
+    api_key = (os.getenv("OPENROUTER_API_KEY") or "").strip()
+    if not api_key:
+        raise ValueError(
+            "OPENROUTER_API_KEY não configurada: defina a chave no .env (não versionado) "
+            "ou nas variáveis de ambiente do deploy."
+        )
+
+    # Cabeçalhos opcionais recomendados pelo OpenRouter para atribuição no ranking.
+    headers: dict[str, str] = {}
+    site_url = (os.getenv("OPENROUTER_SITE_URL") or "").strip()
+    app_name = (os.getenv("OPENROUTER_APP_NAME") or "").strip()
+    if site_url:
+        headers["HTTP-Referer"] = site_url
+    if app_name:
+        headers["X-Title"] = app_name
+
+    # Modelos de reasoning gastam tokens antes de emitir texto: sem teto explícito
+    # a resposta pode voltar vazia com finish_reason="length".
+    max_tokens = int(os.getenv("LLM_MAX_TOKENS", "1024"))
+    timeout = float(os.getenv("LLM_TIMEOUT_S", "60"))
+
+    return ChatOpenAI(
+        model=model or OPENROUTER_DEFAULT_MODEL,
+        temperature=temperature,
+        api_key=api_key,
+        base_url=(os.getenv("OPENROUTER_BASE_URL") or OPENROUTER_DEFAULT_BASE_URL).rstrip("/"),
+        max_tokens=max_tokens,
+        timeout=timeout,
+        max_retries=int(os.getenv("LLM_MAX_RETRIES", "2")),
+        default_headers=headers or None,
+    )
+
 
 def get_llm(
     provider: str | None = None,
     model: str | None = None,
     temperature: float = 0.2,
 ) -> BaseChatModel:
-    provider = (provider or os.getenv("LLM_PROVIDER") or "ollama").lower()
+    provider = (provider or os.getenv("LLM_PROVIDER") or "openrouter").lower()
     model = model or os.getenv("LLM_MODEL") or os.getenv("MODEL") or ""
 
-    if provider == "openai":
+    if provider == "openrouter":
+        return _openrouter_llm(model or os.getenv("OPENROUTER_MODEL", ""), temperature)
+    elif provider == "openai":
         from langchain_openai import ChatOpenAI
 
         return ChatOpenAI(
@@ -28,38 +77,6 @@ def get_llm(
             temperature=temperature,
             api_key=os.getenv("OPENAI_API_KEY"),
             base_url=os.getenv("OPENAI_BASE_URL") or None,
-        )
-    elif provider == "ollama":
-        from langchain_ollama import ChatOllama
-
-        # Ollama Cloud exige token Bearer; Ollama local ignora headers extras.
-        # A versão instalada do langchain-ollama não tem parâmetro api_key,
-        # então o header vai via client_kwargs (cliente sync e async).
-        extra: dict = {}
-        if os.getenv("OLLAMA_API_KEY"):
-            headers = {"Authorization": f"Bearer {os.getenv('OLLAMA_API_KEY')}"}
-            extra = {
-                "client_kwargs": {"headers": headers},
-                "async_client_kwargs": {"headers": headers},
-            }
-
-        # Reasoning/thinking: ligado por padrão (gemma4:31b-cloud suporta e
-        # expõe o raciocínio via additional_kwargs["reasoning_content"]).
-        # Desliga com OLLAMA_REASONING=0|false|no|off — modelos sem suporte
-        # seguem o fallback da UI (só tool steps).
-        reasoning = os.getenv("OLLAMA_REASONING", "1").strip().lower() not in (
-            "0",
-            "false",
-            "no",
-            "off",
-        )
-
-        return ChatOllama(
-            model=model or os.getenv("OLLAMA_MODEL", "gemma4:31b-cloud"),
-            temperature=temperature,
-            base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
-            reasoning=reasoning,
-            **extra,
         )
     elif provider == "fake":
         # para testes/CI sem LLM — precisa de suporte a bind_tools
@@ -71,7 +88,7 @@ def get_llm(
 
         return FakeToolChatModel(responses=["fake-ok: agent is working (no LLM configured)"])
     else:
-        raise ValueError(f"Unknown LLM_PROVIDER={provider!r} (expected openai|ollama|fake)")
+        raise ValueError(f"Unknown LLM_PROVIDER={provider!r} (expected openrouter|openai|fake)")
 
 
 def tools_for_config(root: Path) -> list:

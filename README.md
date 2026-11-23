@@ -240,7 +240,7 @@ Registros autorais vivem em [`docs/DESIGN.md`](docs/DESIGN.md) (design system) e
 |---|---|
 | [`docs/desenvolvimento.md`](docs/desenvolvimento.md) | Setup local, Makefile, frontend e Docker |
 | [`docs/estrutura.md`](docs/estrutura.md) | Mapa de diretórios do repositório |
-| [`docs/api.md`](docs/api.md) | Rotas OpenAI/Ollama, auth e superfície admin `/kb/*` |
+| [`docs/api.md`](docs/api.md) | Rotas OpenAI-compatíveis (+ shim Ollama), auth e superfície admin `/kb/*` |
 | [`docs/configuracao.md`](docs/configuracao.md) | Variáveis de ambiente e configuração |
 | [`docs/arquitetura.md`](docs/arquitetura.md) | Base remota (branch `data`), o agente consumer e o fluxo de uma resposta |
 | [`docs/testes.md`](docs/testes.md) | Suíte offline e contrato de citação |
@@ -280,7 +280,7 @@ EOF
 
 **Tools do agente:** `kb_list(prefix)`, `kb_read(path)` — leitura da base remota em processo (sem HTTP, sem credencial de admin). Com `CHAT_CSA_PORTAL_TOOLS=1`, entram também `web_csa_fetch` e `web_csa_search` (desligadas por padrão).
 
-**API:** OpenAI-compatible (`POST /v1/chat/completions`, `GET /v1/models`) **+** Ollama-native shim (`POST /api/chat`, `GET /api/tags`). Works with the OpenAI SDK, `curl`, and Ollama clients pointing at `http://localhost:8001/v1`.
+**API:** OpenAI-compatible (`POST /v1/chat/completions`, `GET /v1/models`) **+** shim com o formato do Ollama (`POST /api/chat`, `GET /api/tags`), para clientes que já falam esse protocolo. Works with the OpenAI SDK, `curl`, and Ollama-style clients pointing at `http://localhost:8002/v1`. O provedor de LLM é o **OpenRouter** (endpoint compatível com OpenAI, modelos `:free`).
 
 ### Quickstart (uv)
 
@@ -293,7 +293,7 @@ make run-consumer   # :8002  (uses CONSUMER_CONFIG_DIR/CONSUMER_PORT)
 curl http://localhost:8002/v1/chat/completions \
   -H 'Content-Type: application/json' \
   -d '{"model":"chat-csa","messages":[{"role":"user","content":"quais documentos para matrícula?"}]}'
-# Ollama shim
+# shim com o formato do Ollama (mesmo agente)
 curl http://localhost:8002/api/chat \
   -H 'Content-Type: application/json' \
   -d '{"model":"chat-csa","messages":[{"role":"user","content":"oi"}]}'
@@ -301,17 +301,26 @@ curl http://localhost:8002/api/chat \
 
 Single agent (override per-run):
 ```bash
-LLM_PROVIDER=ollama LLM_MODEL=gemma4:31b-cloud uv run chat-csa serve --config-dir .consumer --port 8002
+LLM_PROVIDER=openrouter LLM_MODEL=nvidia/nemotron-3.5-lightning:free uv run chat-csa serve --config-dir .consumer --port 8002
 LLM_PROVIDER=openai OPENAI_API_KEY=sk-... OPENAI_MODEL=gpt-4o-mini uv run chat-csa serve --config-dir .consumer --port 8002
 ```
 
 Base remota em dev: por padrão o cliente usa o backend `github` (`KB_REPO`/`KB_BRANCH=data`). Para testar sem rede, use `KB_BACKEND=local` e `KB_LOCAL_PATH=knowledge` (pasta local gitignored).
 
-Ollama local model (default):
+OpenRouter (provedor padrão):
 ```bash
-ollama pull gemma4:31b-cloud
-ollama serve  # default http://localhost:11434
+# 1. crie uma chave em https://openrouter.ai/keys
+# 2. coloque-a no .env (não versionado): OPENROUTER_API_KEY=sk-or-v1-...
+# 3. escolha um modelo gratuito: https://openrouter.ai/models?max_price=0
+grep OPENROUTER_API_KEY .env >/dev/null && echo "chave configurada"
 ```
+
+Prefira fixar um id com sufixo `:free` em `LLM_MODEL`: o roteador
+`openrouter/free` escolhe um modelo aleatório e, em teste, chegou a devolver
+resposta vazia (tool calls sem texto final) neste agente. Modelos
+gratuitos têm limite diário por conta (o valor aparece em `GET /api/v1/key`,
+campo `free_model_daily_requests`) e podem devolver `429` quando o pool
+compartilhado do provedor está saturado.
 
 ### Extração de texto de PDFs
 

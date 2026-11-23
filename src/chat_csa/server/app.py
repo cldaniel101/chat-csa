@@ -62,6 +62,21 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 
+def _llm_diagnostics() -> dict:
+    """Estado do provedor de LLM, sem expor segredos (usado no /health)."""
+    provider = (os.getenv("LLM_PROVIDER") or "openrouter").strip().lower()
+    model = (
+        os.getenv("LLM_MODEL") or os.getenv("MODEL") or os.getenv("OPENROUTER_MODEL") or ""
+    ).strip()
+    if provider == "openrouter":
+        configured = bool((os.getenv("OPENROUTER_API_KEY") or "").strip())
+    elif provider == "openai":
+        configured = bool((os.getenv("OPENAI_API_KEY") or "").strip())
+    else:
+        configured = provider == "fake"
+    return {"provider": provider, "model": model or None, "configured": configured}
+
+
 def _cors_origins() -> list[str]:
     """Lê a allowlist de origens do frontend; sem curinga por padrão."""
     configured = os.getenv("CHAT_CSA_CORS_ORIGINS", "")
@@ -194,8 +209,10 @@ def _openai_chunk(completion_id: str, created: int, model: str, delta: dict, fin
 def _reasoning_from_message(message) -> str:
     """Extrai reasoning (thinking) de uma mensagem ou chunk do LangChain.
 
-    O langchain-ollama mapeia o campo `thinking` do Ollama para
-    additional_kwargs['reasoning_content'] (invoke e stream).
+    Provedores compatíveis com OpenAI entregam o raciocínio fora do `content`:
+    o OpenRouter usa `reasoning` (texto ou lista de blocos) e alguns modelos
+    expõem `reasoning_content`. Ambos chegam em additional_kwargs, tanto no
+    invoke quanto no stream.
     """
     if isinstance(message, dict):
         additional = message.get("additional_kwargs", {}) or {}
@@ -525,6 +542,9 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
             "status": "ok",
             "config_dir": str(config_dir.resolve()),
             "config_exists": config_dir.exists(),
+            "llm": _llm_diagnostics(),
+            "build": (os.getenv("VERCEL_GIT_COMMIT_SHA") or "")[:7] or None,
+            "env": os.getenv("VERCEL_ENV") or "local",
         }
 
     @app.get("/v1/models")
@@ -565,7 +585,16 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
             Path(config_dir).resolve(),
             extra=_prompt_extra(faq_block, scope_prompt(selection_scope)),
         )
-        agent, _, _, _ = build_agent(config_dir=config_dir)
+        try:
+            agent, _, _, _ = build_agent(config_dir=config_dir)
+        except ValueError as exc:
+            # configuração inválida (provedor desconhecido, chave ausente):
+            # erro explícito em vez de 500 opaco; nada sensível é exposto.
+            logger.error("Falha ao montar o LLM: %s", exc)
+            return JSONResponse(
+                {"error": {"message": str(exc), "type": "configuration_error"}},
+                status_code=503,
+            )
 
         lc_messages = _openai_messages_to_lc(messages, system_prompt)
 
@@ -729,7 +758,16 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
             Path(config_dir).resolve(),
             extra=_prompt_extra(faq_block, scope_prompt(selection_scope)),
         )
-        agent, _, _, _ = build_agent(config_dir=config_dir)
+        try:
+            agent, _, _, _ = build_agent(config_dir=config_dir)
+        except ValueError as exc:
+            # configuração inválida (provedor desconhecido, chave ausente):
+            # erro explícito em vez de 500 opaco; nada sensível é exposto.
+            logger.error("Falha ao montar o LLM: %s", exc)
+            return JSONResponse(
+                {"error": {"message": str(exc), "type": "configuration_error"}},
+                status_code=503,
+            )
         lc_messages = _openai_messages_to_lc(messages, system_prompt)
 
         force_buffer = _is_conversational(last_user_msg) or selection_scope.must_filter

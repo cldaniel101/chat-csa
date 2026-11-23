@@ -21,7 +21,7 @@ chat-csa/
 ├── .consumer/           # AGENTS home do agente consumer (AGENTS.md + skills/)
 ├── scripts/             # scrape do portal e sincronização de env da Vercel
 ├── tests/               # suíte offline (pytest)
-├── examples/            # clientes de exemplo (curl, OpenAI SDK, Ollama)
+├── examples/            # clientes de exemplo (curl, OpenAI SDK, shim Ollama)
 ├── docs/                # documentação do projeto
 ├── frontend/            # SPA React/Vite do consumer + embed.js
 ├── .github/workflows/   # deploy, sync de env e scrape manual
@@ -40,14 +40,14 @@ O pacote segue o layout `src/`, então o código importável fica em `src/chat_c
 
 | Caminho | Responsabilidade |
 |---|---|
-| `src/chat_csa/agent/factory.py` | escolhe o provedor (`ollama`/`openai`/`fake`) e monta o agente |
+| `src/chat_csa/agent/factory.py` | escolhe o provedor (`openrouter`/`openai`/`fake`) e monta o agente |
 | `src/chat_csa/agent/prompt.py` | concatena `AGENTS.md` + `skills/*/SKILL.md` no system prompt |
 | `src/chat_csa/agent/tools.py` | ferramentas `kb_list`/`kb_read` + `web_csa_fetch`/`web_csa_search` (opcionais) |
 | `src/chat_csa/kb.py` | cliente da base remota: `list`/`read`/`write`, backends github/local, renderizador e cache TTL |
 | `src/chat_csa/kb_upload.py` | processa o `/kb/upload`: valida caminhos e orçamento, converte o lote e monta o commit atômico |
 | `src/chat_csa/kb_convert.py` | conversão por tipo em Markdown: pdf (texto por layout + páginas rasterizadas), imagem, csv/tsv e texto |
 | `src/chat_csa/kb_okf.py` | conceitos OKF e índices: frontmatter do template, normalização de caminho, índice de seção e raiz |
-| `src/chat_csa/server/app.py` | rotas HTTP compatíveis com OpenAI e Ollama + montagem do `/kb/*` |
+| `src/chat_csa/server/app.py` | rotas HTTP compatíveis com OpenAI (+ shim no formato Ollama) e montagem do `/kb/*` |
 | `src/chat_csa/server/kb_api.py` | endpoints admin `/kb/list`, `/kb/file`, `/kb/upload` |
 | `src/chat_csa/server/auth.py` | usuários/tokens em memória (admin) |
 | `src/chat_csa/server/models.py` | modelos Pydantic da API |
@@ -94,7 +94,7 @@ A base é um bundle **OKF** com um conceito por arquivo Markdown (frontmatter YA
 - `scripts/notify_update.py` envia o aviso de revisão quando o resumo do scrape contém documento novo ou alterado; o workflow continua manual e publica a saída como artifact, sem commit na base.
 - `scripts/sync-vercel-env.sh` sincroniza uma allowlist de variáveis (LLM + `KB_*`) do `.env` para a Vercel, sem imprimir valores.
 - `tests/` cobre ferramentas (`kb_list`/`kb_read`), servidor, cliente da base, portal, cache de QA e qualidade de citação (veja [testes.md](./testes.md)).
-- `examples/` traz clientes mínimos (`curl.md`, `openai_client.py`, `ollama_client.py`) apontando para `:8002`.
+- `examples/` traz clientes mínimos (`curl.md`, `openai_client.py`, `ollama_client.py` — este último exercita o shim, não o provedor) apontando para `:8002`.
 
 ## Decisão de layout
 

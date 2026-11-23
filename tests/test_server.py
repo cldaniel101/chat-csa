@@ -43,6 +43,30 @@ def test_health():
     assert r.json()["status"] == "ok"
 
 
+def test_health_reports_llm_configuration(monkeypatch):
+    monkeypatch.setenv("LLM_PROVIDER", "openrouter")
+    monkeypatch.setenv("LLM_MODEL", "openrouter/free")
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+
+    r = TestClient(create_app(".consumer")).get("/health")
+
+    llm = r.json()["llm"]
+    assert llm == {"provider": "openrouter", "model": "openrouter/free", "configured": False}
+
+
+def test_chat_returns_503_when_llm_is_misconfigured(monkeypatch):
+    monkeypatch.setenv("LLM_PROVIDER", "ollama")
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+
+    r = TestClient(create_app(".consumer")).post(
+        "/v1/chat/completions",
+        json={"model": "chat-csa", "messages": [{"role": "user", "content": "oi"}]},
+    )
+
+    assert r.status_code == 503
+    assert "LLM_PROVIDER" in r.json()["error"]["message"]
+
+
 def test_models():
     app = create_app(".consumer")
     c = TestClient(app)

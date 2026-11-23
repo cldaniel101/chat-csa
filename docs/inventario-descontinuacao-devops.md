@@ -33,6 +33,11 @@ Com a adoção de URLs de branch determinísticas da Vercel (`-git-development-.
 7. `VERCEL_PROJECT_ID_API_PREVIEW` — *Obsoleto (projeto staging)*
 8. `VERCEL_PROJECT_ID_FRONTEND_PREVIEW` — *Obsoleto (projeto staging)*
 
+> **Nota (2026-11-22):** este inventário é histórico. O provedor de LLM passou de Ollama para
+> OpenRouter ([ADR-005](./adr/005-openrouter-como-provedor-llm.md)); as variáveis `OLLAMA_*`
+> abaixo foram removidas e substituídas por `OPENROUTER_*`. Consulte `docs/configuracao.md`
+> para a configuração atual.
+
 #### B. Segredos de Runtime Sincronizados via GitHub Actions (Agora Nativos na Vercel)
 Estes segredos eram consumidos exclusivamente pelo workflow `env-sync.yml` (agora removido). Devem ser configurados nas **Environment Variables** do projeto `chat-csa-api` na Vercel e depois removidos do GitHub para evitar duplicidade e vazamentos:
 1. `LLM_PROVIDER`

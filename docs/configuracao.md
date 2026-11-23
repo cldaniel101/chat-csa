@@ -8,15 +8,19 @@ Fonte principal: `.env.example` (copie para `.env`). Variáveis que aparecem ape
 
 | Variável | Para que serve | Default / origem |
 |---|---|---|
-| `LLM_PROVIDER` | provedor: `ollama`, `openai` ou `fake` | `ollama` (`agent/factory.py`) |
+| `LLM_PROVIDER` | provedor: `openrouter`, `openai` ou `fake` | `openrouter` (`agent/factory.py`) |
 | `LLM_MODEL` | modelo (fallback `MODEL`) | — |
-| `OLLAMA_MODEL` | modelo do Ollama quando `LLM_MODEL` não cobre | `gemma4:31b-cloud` (`factory.py`) |
-| `OLLAMA_BASE_URL` | endpoint do Ollama | `http://localhost:11434` |
-| `OLLAMA_API_KEY` | token do Ollama Cloud; vira header Bearer | vazio |
-| `OLLAMA_REASONING` | liga/desliga o campo `reasoning` (`0/false/no/off` desliga) | `1` (`factory.py`) |
-| `OPENAI_API_KEY` | chave OpenAI-compatible | — |
+| `OPENROUTER_API_KEY` | chave criada em <https://openrouter.ai/keys> | vazio (o provedor falha com mensagem clara se ausente) |
+| `OPENROUTER_MODEL` | modelo do OpenRouter quando `LLM_MODEL` não cobre | `openrouter/free` (`factory.py`, fallback de código) |
+| `OPENROUTER_BASE_URL` | endpoint compatível com OpenAI | `https://openrouter.ai/api/v1` |
+| `OPENROUTER_SITE_URL` | vira `HTTP-Referer` (atribuição no ranking) | vazio |
+| `OPENROUTER_APP_NAME` | vira `X-Title` | vazio |
+| `LLM_MAX_TOKENS` | teto de tokens por resposta | `1024` (`factory.py`) |
+| `LLM_TIMEOUT_S` | timeout por chamada ao provedor | `60` (`factory.py`) |
+| `LLM_MAX_RETRIES` | tentativas em erro transitório | `2` (`factory.py`) |
+| `OPENAI_API_KEY` | chave OpenAI pura (alternativa ao OpenRouter) | — |
 | `OPENAI_MODEL` | modelo OpenAI quando `LLM_MODEL` não cobre | `gpt-4o-mini` (`factory.py`) |
-| `OPENAI_BASE_URL` | base para Azure/OpenRouter/proxies | vazio |
+| `OPENAI_BASE_URL` | base para Azure/proxies | vazio |
 | `AGENT_CONFIG_DIR` | config dir do agente | `.consumer` (`app.py`, `cli.py`, `api/index.py`) |
 | `HOST` / `PORT` | bind do `chat-csa serve` | `0.0.0.0` / `8000` (`cli.py`) |
 | `CONSUMER_CONFIG_DIR` / `CONSUMER_PORT` | dir e porta do consumer | `.consumer` / `8002` (Makefile) |
@@ -65,7 +69,7 @@ Precedência do provedor de LLM: flags do CLI (`--provider`/`--model`) sobrepõe
 
 ## Docker e Compose
 
-O `Dockerfile` da raiz instala o pacote com `pip install .` (sem uv), inclui `curl` e `poppler-utils`, define `AGENT_CONFIG_DIR=.consumer`, `LLM_PROVIDER=ollama`, `OLLAMA_BASE_URL=http://host.docker.internal:11434`, `LLM_MODEL=gemma4:31b-cloud`, `HOST=0.0.0.0`, `PORT=8000`, expõe a porta 8000 e checa saúde com `curl -sf http://localhost:8000/health`.
+O `Dockerfile` da raiz instala o pacote com `pip install .` (sem uv), inclui `curl` e `poppler-utils`, define `AGENT_CONFIG_DIR=.consumer`, `LLM_PROVIDER=openrouter`, `LLM_MODEL=nvidia/nemotron-3.5-lightning:free`, `HOST=0.0.0.0`, `PORT=8000`, expõe a porta 8000 e checa saúde com `curl -sf http://localhost:8000/health`. A chave **não** é embutida na imagem: passe `OPENROUTER_API_KEY` em runtime (`--env-file .env`).
 
 O `docker-compose.yml` sobe dois serviços:
 
@@ -74,7 +78,7 @@ O `docker-compose.yml` sobe dois serviços:
 | `consumer` | `.` | `${CONSUMER_PORT:-8002}` → 8000 | `AGENT_CONFIG_DIR=.consumer` |
 | `frontend` | `./frontend` | `${FRONTEND_PORT:-5173}` → 80 | `VITE_CONSUMER_URL=http://localhost:${CONSUMER_PORT:-8002}` |
 
-O consumer monta `./data` como volume e lê o `.env` via `env_file`; as variáveis de LLM têm fallback em cadeia (`CONSUMER_LLM_PROVIDER` → `LLM_PROVIDER` → `ollama`). A base de conhecimento **não** é montada: ela vem da API do GitHub (`KB_*`). O frontend tem Dockerfile próprio (build Vite → nginx) e recebe `VITE_CONSUMER_URL` como `ARG` de build.
+O consumer monta `./data` como volume e lê o `.env` via `env_file`; as variáveis de LLM têm fallback em cadeia (`CONSUMER_LLM_PROVIDER` → `LLM_PROVIDER` → `openrouter`). A base de conhecimento **não** é montada: ela vem da API do GitHub (`KB_*`). O frontend tem Dockerfile próprio (build Vite → nginx) e recebe `VITE_CONSUMER_URL` como `ARG` de build.
 
 ## Frontend
 

@@ -1,6 +1,6 @@
 # API HTTP
 
-Este documento descreve a API HTTP do agente **consumer**: rotas compatíveis com OpenAI e com Ollama, o formato de streaming (incluindo os campos extras do Chat CSA) e a superfície admin `/kb/*` da base de conhecimento remota. O público são integradores que vão consumir a API de outra aplicação.
+Este documento descreve a API HTTP do agente **consumer**: rotas compatíveis com OpenAI e o shim no formato do Ollama, o formato de streaming (incluindo os campos extras do Chat CSA) e a superfície admin `/kb/*` da base de conhecimento remota. O público são integradores que vão consumir a API de outra aplicação.
 
 ## Endpoints
 
@@ -52,7 +52,9 @@ Mensagens sociais curtas ("oi", "obrigado") são detectadas por `_is_conversatio
 
 Perguntas sobre processos seletivos passam por um filtro de edição no backend. O escopo é inferido do histórico de mensagens (por exemplo, `sisu261` para SiSU 2026 e `sisu271` para SiSU 2027) e aplicado a `kb_list`, `kb_read`, FAQ e ferramentas do portal. Consultas ambíguas pedem processo e ano; fontes de outra edição e documentos cujas URLs versionadas contradizem o próprio documento são bloqueados. Essas respostas são bufferizadas para que a validação final aconteça antes do primeiro token enviado ao cliente.
 
-## Shim do Ollama
+## Shim do Ollama (compatibilidade de entrada)
+
+O provedor do modelo é o **OpenRouter** (`agent/factory.py`). As rotas desta seção existem apenas para clientes que já falam o protocolo do Ollama; elas chamam o mesmo agente e não usam mais o runtime do Ollama.
 
 `POST /api/chat` aceita `{model, messages, stream}` e devolve o formato do Ollama: sem stream, um JSON com `message.role`, `message.content`, `done: true` (e os extras `reasoning`/`tool_steps`); com stream, NDJSON com uma linha por evento e `done: true` na última. `GET /api/tags` devolve o modelo derivado do config dir para ferramentas que listam modelos.
 

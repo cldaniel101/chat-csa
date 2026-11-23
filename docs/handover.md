@@ -30,10 +30,12 @@ No painel da Vercel, acesse as configurações de cada projeto (*Settings → En
 
 #### A. No projeto `chat-csa-api`:
 Cadastre para os ambientes **Production** e **Preview**:
-- `LLM_PROVIDER`: Provedor do modelo (`ollama`, `openai`, `groq`, etc.)
-- `LLM_MODEL`: Nome do modelo (ex.: `gpt-4o-mini`, `gemma4:31b-cloud`)
-- `OLLAMA_BASE_URL` e `OLLAMA_API_KEY` (se usar Ollama remoto)
-- `OPENAI_API_KEY` (se usar OpenAI)
+- `LLM_PROVIDER`: `openrouter` (padrão)
+- `LLM_MODEL`: id do modelo (ex.: `openrouter/free` ou um modelo `:free` específico)
+- `OPENROUTER_API_KEY`: chave criada em <https://openrouter.ai/keys> (obrigatória)
+- `OPENROUTER_BASE_URL` (opcional): padrão `https://openrouter.ai/api/v1`
+- `LLM_MAX_TOKENS`, `LLM_TIMEOUT_S`, `LLM_MAX_RETRIES` (opcionais)
+- `OPENAI_API_KEY` (se trocar para OpenAI puro)
 - `KB_BACKEND`: `github`
 - `KB_REPO`: Repositório da base (ex.: `seu-usuario-ou-org/chat-csa`)
 - `KB_BRANCH`: `data`

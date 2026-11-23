@@ -44,7 +44,7 @@ docker-run: ## Roda o Docker como consumer
 	docker run --rm -p 8002:8000 --env-file .env -e AGENT_CONFIG_DIR=$(CONSUMER_CONFIG_DIR) chat-csa:latest
 
 docker-run-consumer: ## Roda o Docker como consumer (alias explícito)
-	docker run --rm -p 8002:8000 -e AGENT_CONFIG_DIR=$(CONSUMER_CONFIG_DIR) -e LLM_PROVIDER=ollama -e OLLAMA_BASE_URL=http://host.docker.internal:11434 chat-csa:latest
+	docker run --rm -p 8002:8000 --env-file .env -e AGENT_CONFIG_DIR=$(CONSUMER_CONFIG_DIR) -e LLM_PROVIDER=openrouter chat-csa:latest
 
 docker-run-both: ## Sobe o compose (consumer + frontend)
 	docker compose up --build

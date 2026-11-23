@@ -11,7 +11,7 @@ curl -N http://localhost:8001/v1/chat/completions \
   -H 'Content-Type: application/json' \
   -d '{"model":"chat-csa","messages":[{"role":"user","content":"hello"}],"stream":true}'
 
-## Shim do Ollama
+## Shim do Ollama (compatibilidade de entrada — o provedor é o OpenRouter)
 
 curl http://localhost:8001/api/chat \
   -H 'Content-Type: application/json' \

@@ -4,6 +4,7 @@
 **Status:** Aceita
 **Decisores:** Equipe Chat CSA
 **Substituída parcialmente por:** [ADR-004](./004-tokens-deploy-project-scoped.md) — o token único de time (`VERCEL_TOKEN`) foi trocado por tokens project-scoped, um por projeto.
+**Variáveis de LLM substituídas por:** [ADR-005](./005-openrouter-como-provedor-llm.md) — o provedor passou de Ollama para OpenRouter; a seção de variáveis abaixo é registro histórico, não configuração atual.
 
 ---
 

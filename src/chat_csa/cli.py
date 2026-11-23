@@ -1,7 +1,7 @@
 """Ponto de entrada da CLI: chat-csa
 
 Uso:
-  chat-csa --config-dir .consumer --port 8002 --provider ollama --model gemma4:31b-cloud
+  chat-csa --config-dir .consumer --port 8002 --provider openrouter --model openrouter/free
   chat-csa --help
 """
 
@@ -17,7 +17,7 @@ from rich.console import Console
 
 load_dotenv()
 
-app = typer.Typer(add_completion=False, help="Chat CSA — LangChain agent server (OpenAI + Ollama compat)")
+app = typer.Typer(add_completion=False, help="Chat CSA — LangChain agent server (OpenRouter/OpenAI + Ollama-compatible API)")
 console = Console()
 
 
@@ -34,7 +34,7 @@ def serve(
     provider: str = typer.Option(
         None,
         "--provider",
-        help="LLM provider: openai | ollama | fake (default: $LLM_PROVIDER or ollama)",
+        help="LLM provider: openrouter | openai | fake (default: $LLM_PROVIDER or openrouter)",
     ),
     model: str = typer.Option(None, "--model", "-m", help="Model name (default: $LLM_MODEL)"),
     reload: bool = typer.Option(False, "--reload", help="Auto-reload on code change"),
@@ -51,9 +51,9 @@ def serve(
     root.mkdir(parents=True, exist_ok=True)
 
     console.print(f"[bold green]Chat CSA agent[/]  config=[cyan]{root}[/]  -> [bold]{host}:{port}[/]")
-    console.print(f"  provider=[yellow]{os.getenv('LLM_PROVIDER','ollama')}[/]  model=[yellow]{os.getenv('LLM_MODEL','(default)')}[/]")
+    console.print(f"  provider=[yellow]{os.getenv('LLM_PROVIDER','openrouter')}[/]  model=[yellow]{os.getenv('LLM_MODEL','(default)')}[/]")
     console.print(f"  OpenAI compat: [underline]http://{host}:{port}/v1/chat/completions[/]")
-    console.print(f"  Ollama  compat: [underline]http://{host}:{port}/api/chat[/]")
+    console.print(f"  Ollama-compat:  [underline]http://{host}:{port}/api/chat[/]")
     console.print(f"  Health:        [underline]http://{host}:{port}/health[/]")
     console.print(f"  Docs:          [underline]http://{host}:{port}/docs[/]")
 

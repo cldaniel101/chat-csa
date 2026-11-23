@@ -9,7 +9,7 @@ Este documento cobre o ambiente de desenvolvimento local do Chat CSA: pré-requi
 | Python | 3.11 (fixado) — `pyproject.toml` aceita `>=3.10` | `.python-version`, `pyproject.toml` (`requires-python`) |
 | uv | gerenciador de pacotes do projeto | `pyproject.toml` (`[dependency-groups]`, `[tool.uv]`), `uv.lock` |
 | Node + npm | 20 (imagem `node:20-alpine` do frontend) | `frontend/Dockerfile` |
-| Ollama ou API OpenAI-compatible | provedor de LLM; o default é Ollama | `.env.example` |
+| Chave do OpenRouter (API compatível com OpenAI) | provedor de LLM; o default é OpenRouter | `.env.example` |
 
 O projeto usa **uv** em vez de pip/venv porque o `pyproject.toml` já declara o grupo de dependências de dev e o `uv.lock` versiona a árvore inteira — a mesma resolução vale para qualquer máquina e para o CI do scraper (`.github/workflows/scrape-csa.yml` roda `uv sync --frozen`).
 
@@ -44,10 +44,10 @@ O `.env.example` é a referência completa. As essenciais para rodar localmente:
 
 | Variável | Papel | Default no `.env.example` |
 |---|---|---|
-| `LLM_PROVIDER` | provedor compartilhado (`ollama` ou `openai`) | `ollama` |
-| `LLM_MODEL` / `OLLAMA_MODEL` | modelo usado quando o agente não define o próprio | `gemma4:31b-cloud` |
-| `OLLAMA_BASE_URL` | endpoint do Ollama (local ou nuvem) | `http://localhost:11434` |
-| `OLLAMA_API_KEY` | token do Ollama Cloud (o Ollama local ignora) | vazio |
+| `LLM_PROVIDER` | provedor compartilhado (`openrouter` ou `openai`) | `openrouter` |
+| `LLM_MODEL` / `OPENROUTER_MODEL` | modelo usado quando o agente não define o próprio | `openrouter/free` |
+| `OPENROUTER_BASE_URL` | endpoint compatível com OpenAI | `https://openrouter.ai/api/v1` |
+| `OPENROUTER_API_KEY` | chave do OpenRouter (só no `.env`, nunca versionada) | vazio |
 | `OPENAI_API_KEY` / `OPENAI_MODEL` / `OPENAI_BASE_URL` | alternativa OpenAI-compatible | comentados |
 | `AGENT_CONFIG_DIR` | config dir do agente | `.consumer` |
 | `CONSUMER_CONFIG_DIR` / `CONSUMER_PORT` | dir e porta do consumer | `.consumer` / `8002` |
