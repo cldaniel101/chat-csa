@@ -11,6 +11,7 @@ from starlette.concurrency import run_in_threadpool
 
 from ..kb import KBAuthError, KBConfigError, KBError, KBNotFoundError, KBUpstreamError
 from ..unanswered import delete_unanswered_question, list_unanswered_questions
+from . import audit as audit_store
 from . import auth as auth_store
 
 router = APIRouter(prefix="/admin/unanswered", tags=["admin"])
@@ -53,4 +54,12 @@ async def unanswered_delete(
         await run_in_threadpool(delete_unanswered_question, record_id)
     except KBError as exc:
         return _error_response(exc)
+    await run_in_threadpool(
+        audit_store.record_audit_event,
+        user=_user,
+        action="unanswered.delete",
+        resource_type="unanswered",
+        resource_id=record_id,
+        details={"record_id": record_id},
+    )
     return {"ok": True, "id": record_id}

@@ -25,6 +25,7 @@ dependencies = [
     "rich>=13.8",
     "pymupdf>=1.24",
     "cryptography>=44",
+    "psycopg[binary]>=3.2",
 ]
 
 [project.optional-dependencies]

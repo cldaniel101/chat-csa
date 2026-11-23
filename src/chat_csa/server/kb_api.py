@@ -35,6 +35,7 @@ from ..kb import (
 )
 from ..kb_convert import DEFAULT_PAGES_PER_CALL, default_model_call
 from ..kb_upload import DEFAULT_MAX_UPLOAD_BYTES, BatchResult, find_original, process_upload
+from . import audit as audit_store
 from . import auth as auth_store
 
 _AUTHOR_RE = re.compile(r"^author:\s*[\"']?([^\r\n\"']+)[\"']?", re.M)
@@ -186,9 +187,25 @@ async def kb_delete_route(
         kb = get_kb()
         if permanent:
             commit = await run_in_threadpool(kb.delete, path)
+            await run_in_threadpool(
+                audit_store.record_audit_event,
+                user=_user,
+                action="kb.file.delete_permanent",
+                resource_type="kb_file",
+                resource_id=path,
+                details={"path": path, "permanent": True, "sha": commit.sha},
+            )
             return {"ok": True, "sha": commit.sha, "permanent": True, "path": path}
         else:
             commit = await run_in_threadpool(kb.soft_delete, path)
+            await run_in_threadpool(
+                audit_store.record_audit_event,
+                user=_user,
+                action="kb.file.delete",
+                resource_type="kb_file",
+                resource_id=path,
+                details={"path": path, "permanent": False, "trashed": True, "sha": commit.sha},
+            )
             return {"ok": True, "sha": commit.sha, "trashed": True, "path": path}
     except KBError as exc:
         return _error_response(exc)
@@ -205,6 +222,14 @@ async def kb_restore_route(
     except KBError as exc:
         return _error_response(exc)
     orig_path = path.removeprefix(".trash/")
+    await run_in_threadpool(
+        audit_store.record_audit_event,
+        user=_user,
+        action="kb.file.restore",
+        resource_type="kb_file",
+        resource_id=orig_path,
+        details={"trash_path": path, "restored_path": orig_path, "sha": commit.sha},
+    )
     return {"ok": True, "sha": commit.sha, "path": orig_path}
 
 
@@ -244,6 +269,14 @@ async def kb_file_update_route(
         )
     except KBError as exc:
         return _error_response(exc)
+    await run_in_threadpool(
+        audit_store.record_audit_event,
+        user=_user,
+        action="kb.file.update",
+        resource_type="kb_file",
+        resource_id=req.path,
+        details={"path": req.path, "sha": commit.sha, "message": req.message},
+    )
     return {"ok": True, "sha": commit.sha, "path": req.path}
 
 
@@ -263,6 +296,14 @@ async def kb_move_route(
         )
     except KBError as exc:
         return _error_response(exc)
+    await run_in_threadpool(
+        audit_store.record_audit_event,
+        user=_user,
+        action="kb.file.move",
+        resource_type="kb_file",
+        resource_id=req.target,
+        details={"source": req.source, "target": req.target, "sha": commit.sha, "message": req.message},
+    )
     return {"ok": True, "sha": commit.sha, "source": req.source, "target": req.target}
 
 
@@ -283,6 +324,19 @@ async def kb_bulk_delete_route(
         )
     except KBError as exc:
         return _error_response(exc)
+    await run_in_threadpool(
+        audit_store.record_audit_event,
+        user=_user,
+        action="kb.file.bulk_delete",
+        resource_type="kb_file",
+        resource_id=",".join(commit.paths),
+        details={
+            "paths": list(commit.paths),
+            "count": len(commit.paths),
+            "sha": commit.sha,
+            "message": req.message,
+        },
+    )
     return {"ok": True, "sha": commit.sha, "paths": commit.paths}
 
 
@@ -296,6 +350,14 @@ async def kb_create_folder_route(
         commit = await run_in_threadpool(get_kb().create_folder, req.path, req.message)
     except KBError as exc:
         return _error_response(exc)
+    await run_in_threadpool(
+        audit_store.record_audit_event,
+        user=_user,
+        action="kb.folder.create",
+        resource_type="kb_folder",
+        resource_id=req.path,
+        details={"path": req.path, "sha": commit.sha, "message": req.message},
+    )
     return {"ok": True, "sha": commit.sha, "path": req.path}
 
 
@@ -310,6 +372,14 @@ async def kb_delete_folder_route(
         commit = await run_in_threadpool(get_kb().delete_folder, path, message)
     except KBError as exc:
         return _error_response(exc)
+    await run_in_threadpool(
+        audit_store.record_audit_event,
+        user=_user,
+        action="kb.folder.delete",
+        resource_type="kb_folder",
+        resource_id=path,
+        details={"path": path, "sha": commit.sha, "message": message},
+    )
     return {"ok": True, "sha": commit.sha, "path": path}
 
 
@@ -395,6 +465,25 @@ async def kb_upload_route(
             "files": [{"path": path, "ok": False} for path, _ in payload],
         }
         return JSONResponse(body, status_code=_error_status(exc))
+
+    for (declared_name, _), file_res in zip(payload, result.files, strict=False):
+        if not file_res.ok:
+            continue
+        await run_in_threadpool(
+            audit_store.record_audit_event,
+            user=_user,
+            action="kb.file.upload",
+            resource_type="kb_file",
+            resource_id=file_res.path,
+            details={
+                "file_name": declared_name,
+                "path": file_res.path,
+                "size": file_res.size,
+                "converted": file_res.converted,
+                "sha": result.sha,
+                "message": message,
+            },
+        )
 
     return {
         "ok": True,
