@@ -97,3 +97,7 @@ Documentos oficiais da edição SiSU/UEFS 2026 (`sisu261`), convertidos do porta
 ## geral
 
 * [hello calabreso](geral/hello_calabreso.md) - hello calabreso
+
+## zz-teste-crud4
+
+* [Upload](zz-teste-crud4/nota-upload.md) - ok
