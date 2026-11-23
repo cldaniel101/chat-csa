@@ -101,3 +101,7 @@ Documentos oficiais da edição SiSU/UEFS 2026 (`sisu261`), convertidos do porta
 ## zz-teste-crud4
 
 * [Upload](zz-teste-crud4/nota-upload.md) - ok
+
+## zz-teste-crud5
+
+* [Documento de teste CRUD - Chat CSA](zz-teste-crud5/teste-crud.md) - Este PDF existe apenas para validar o upload e a conversao.
